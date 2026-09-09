@@ -1,0 +1,487 @@
+<!--
+  SmartMat pressure heatmap widget (chair mat)
+  ---------------------------------------------
+  Elementor: add an "HTML" widget to the page and paste this whole block
+  into its content box (search "HTML" in the widget panel). No plugins,
+  no external scripts. Works down to phone width - the mode buttons sit
+  in a wrapping row under the heatmap rather than a side column.
+
+  DROPPING IN YOUR OWN RECORDED DATA
+  ----------------------------------
+  Once you've flashed the ESP32 and captured a real reading, paste it into
+  RECORDED_FRAMES below (search for it). Each entry is one flat array of
+  ROWS x COLS numbers, 0..1, in row-major order (row 0 first, left to
+  right within each row). Leave an entry as null to keep the placeholder
+  scenario. That's the only edit needed - rendering, buttons, tooltip all
+  read from the same place either way.
+
+  "Live" is separate: it's stubbed via checkLiveConnection() to always
+  report offline until the ESP32 + Pi relay exists. Replace that one
+  function with a real fetch() later; it should resolve to
+  {connected: true, frame: [...]} in the same ROWS x COLS format.
+-->
+<div class="smartmat-heatmap" id="smartmat-heatmap-root">
+  <style>
+    #smartmat-heatmap-root {
+      --surface:      #fcfcfb;
+      --panel:        #ffffff;
+      --ink-primary:  #0b0b0b;
+      --ink-secondary:#52514e;
+      --ink-muted:    #898781;
+      --hairline:     #e1e0d9;
+      --status-good:  #0ca30c;
+      --status-crit:  #d03b3b;
+      --status-offline: #b8b6ad;
+      color-scheme: light;
+
+      max-width: 640px;
+      margin: 0 auto;
+      background: var(--panel);
+      border: 1px solid var(--hairline);
+      border-radius: 12px;
+      padding: 18px;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: var(--ink-primary);
+      box-sizing: border-box;
+    }
+    @media (prefers-color-scheme: dark) {
+      #smartmat-heatmap-root {
+        --surface:      #1a1a19;
+        --panel:        #1a1a19;
+        --ink-primary:  #ffffff;
+        --ink-secondary:#c3c2b7;
+        --ink-muted:    #898781;
+        --hairline:     #2c2c2a;
+        color-scheme: dark;
+      }
+    }
+    #smartmat-heatmap-root * { box-sizing: border-box; }
+    @media (max-width: 400px) {
+      #smartmat-heatmap-root { padding: 12px; }
+    }
+
+    .smartmat-heatmap__title {
+      font-size: 15px;
+      font-weight: 600;
+      margin: 0 0 12px;
+    }
+
+    .smartmat-heatmap__canvas-wrap {
+      position: relative;
+      width: 100%;
+      line-height: 0;
+    }
+    #smartmat-heatmap-canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 6px;
+      background: #000;
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    .smartmat-heatmap__offline-overlay {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    .smartmat-heatmap__offline-overlay-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      text-align: center;
+      padding: 16px 22px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+    .smartmat-heatmap__offline-overlay strong {
+      display: block;
+      color: #e7e6e2;
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+    .smartmat-heatmap__offline-overlay span {
+      display: block;
+      color: #9a988f;
+      font-size: 12px;
+      line-height: 1.3;
+    }
+
+    .smartmat-heatmap__tooltip {
+      position: fixed;
+      pointer-events: none;
+      background: var(--ink-primary);
+      color: var(--surface);
+      font-size: 12px;
+      line-height: 1.4;
+      padding: 6px 9px;
+      border-radius: 6px;
+      transform: translate(-50%, calc(-100% - 10px));
+      white-space: nowrap;
+      opacity: 0;
+      transition: opacity 0.08s ease;
+      z-index: 10;
+    }
+    .smartmat-heatmap__tooltip strong { font-weight: 600; }
+
+    .smartmat-heatmap__controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .smartmat-heatmap__mode-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      flex: 1 1 auto;
+      min-width: 108px;
+      padding: 9px 12px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--ink-primary);
+      background: transparent;
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.12s ease, border-color 0.12s ease;
+    }
+    .smartmat-heatmap__mode-btn:hover {
+      border-color: var(--ink-muted);
+    }
+    .smartmat-heatmap__mode-btn.is-active {
+      background: var(--ink-primary);
+      color: var(--surface);
+      border-color: var(--ink-primary);
+    }
+    .smartmat-heatmap__live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--status-offline);
+      flex: none;
+    }
+    .smartmat-heatmap__live-dot.is-connected {
+      background: var(--status-good);
+    }
+
+    .smartmat-heatmap__legend {
+      margin-top: 16px;
+    }
+    .smartmat-heatmap__legend-bar {
+      height: 8px;
+      border-radius: 4px;
+      border: 1px solid var(--hairline);
+      background: linear-gradient(
+        to right,
+        #000000 0%,
+        var(--status-good) 50%,
+        var(--status-crit) 100%
+      );
+    }
+    .smartmat-heatmap__legend-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 6px;
+      font-size: 11px;
+      color: var(--ink-muted);
+    }
+  </style>
+
+  <p class="smartmat-heatmap__title">Pressure map demo</p>
+
+  <div class="smartmat-heatmap__canvas-wrap">
+    <canvas id="smartmat-heatmap-canvas" width="640" height="600" role="img"
+            aria-label="Chair seat pressure grid"></canvas>
+    <div id="smartmat-heatmap-offline" class="smartmat-heatmap__offline-overlay">
+      <div class="smartmat-heatmap__offline-overlay-box">
+        <strong>No live connection</strong>
+        <span>Waiting for the mat to come online</span>
+      </div>
+    </div>
+  </div>
+  <div id="smartmat-heatmap-tooltip" class="smartmat-heatmap__tooltip"></div>
+
+  <div class="smartmat-heatmap__controls" role="group" aria-label="Select scenario">
+    <button type="button" class="smartmat-heatmap__mode-btn" data-mode="none">No pressure</button>
+    <button type="button" class="smartmat-heatmap__mode-btn" data-mode="bad">Bad distribution</button>
+    <button type="button" class="smartmat-heatmap__mode-btn" data-mode="good">Good distribution</button>
+    <button type="button" class="smartmat-heatmap__mode-btn" data-mode="hand">Hand</button>
+    <button type="button" class="smartmat-heatmap__mode-btn" data-mode="live">
+      <span>Live</span>
+      <span id="smartmat-heatmap-live-dot" class="smartmat-heatmap__live-dot" aria-hidden="true"></span>
+    </button>
+  </div>
+
+  <div class="smartmat-heatmap__legend">
+    <div class="smartmat-heatmap__legend-bar"></div>
+    <div class="smartmat-heatmap__legend-labels">
+      <span>No pressure</span>
+      <span>Distributed</span>
+      <span>High pressure</span>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    "use strict";
+
+    // ---- Grid geometry (15x16 chair-seat mat) ----
+    var ROWS = 15;
+    var COLS = 16;
+
+    var root = document.getElementById("smartmat-heatmap-root");
+    var canvas = document.getElementById("smartmat-heatmap-canvas");
+    var ctx = canvas.getContext("2d");
+    var tooltip = document.getElementById("smartmat-heatmap-tooltip");
+    var offlineOverlay = document.getElementById("smartmat-heatmap-offline");
+    var liveDot = document.getElementById("smartmat-heatmap-live-dot");
+    var buttons = Array.prototype.slice.call(
+      document.querySelectorAll("#smartmat-heatmap-root .smartmat-heatmap__mode-btn")
+    );
+
+    // ------------------------------------------------------------------
+    // YOUR REAL DATA GOES HERE. Each value is a flat ROWS*COLS (15*16 =
+    // 240) array, 0..1, row-major. Leave null to keep the placeholder
+    // scenario below. Example shape (don't copy the numbers, just the
+    // format): [0, 0, 0.05, ..., 0.62, 0.58, ...]  <- 240 entries total.
+    // ------------------------------------------------------------------
+    var RECORDED_FRAMES = {
+      none: null,
+      bad: null,
+      good: null,
+      hand: null
+    };
+
+    // ---- Color ramp: black (no pressure) -> green -> red (high pressure) ----
+    var STOPS = [
+      { t: 0.0, rgb: [0, 0, 0] },
+      { t: 0.5, rgb: [12, 163, 12] },
+      { t: 1.0, rgb: [208, 59, 59] }
+    ];
+
+    function lerp(a, b, f) { return a + (b - a) * f; }
+
+    function colorForValue(v) {
+      v = Math.max(0, Math.min(1, v));
+      for (var i = 0; i < STOPS.length - 1; i++) {
+        var a = STOPS[i], b = STOPS[i + 1];
+        if (v >= a.t && v <= b.t) {
+          var f = (v - a.t) / (b.t - a.t || 1);
+          var r = Math.round(lerp(a.rgb[0], b.rgb[0], f));
+          var g = Math.round(lerp(a.rgb[1], b.rgb[1], f));
+          var bl = Math.round(lerp(a.rgb[2], b.rgb[2], f));
+          return "rgb(" + r + "," + g + "," + bl + ")";
+        }
+      }
+      return "rgb(208,59,59)";
+    }
+
+    function statusLabel(v) {
+      if (v < 0.08) return "No pressure";
+      if (v < 0.55) return "Distributed";
+      return "High pressure";
+    }
+
+    function gaussian(r, c, cr, cc, rr, rc) {
+      var dr = (r - cr) / rr;
+      var dc = (c - cc) / rc;
+      return Math.exp(-(dr * dr + dc * dc) * 1.3);
+    }
+
+    function blankFrame() {
+      return new Array(ROWS * COLS).fill(0);
+    }
+
+    // ------------------------------------------------------------------
+    // PLACEHOLDER SCENARIOS - each is a single static frame modelled on
+    // how a real seat pressure map actually looks (two ischial-tuberosity
+    // "sit bone" peaks toward the rear, thigh contact spreading toward
+    // the front edge, low pressure at the edges). Used only when
+    // RECORDED_FRAMES[mode] above is null.
+    // ------------------------------------------------------------------
+    function frameNone() {
+      return blankFrame();
+    }
+
+    function frameBad() {
+      // Poor posture: weight almost entirely on one sit bone (leaning to
+      // one side) - a sharp, high peak with barely any contact anywhere
+      // else. This concentrated, one-sided pattern is exactly the risk
+      // this product exists to flag.
+      var frame = blankFrame();
+      for (var r = 0; r < ROWS; r++) {
+        for (var c = 0; c < COLS; c++) {
+          var peak = gaussian(r, c, 10, 5, 0.9, 0.9) * 0.97;
+          var faintThigh = gaussian(r, c, 7, 5, 2.0, 1.5) * 0.10;
+          frame[r * COLS + c] = Math.max(0, Math.min(1, Math.max(peak, faintThigh)));
+        }
+      }
+      return frame;
+    }
+
+    function frameGood() {
+      // Healthy posture: weight spread across both sit bones (two
+      // moderate peaks, close together but distinct) plus broader, lower
+      // thigh contact toward the front edge - no single sharp hotspot.
+      var frame = blankFrame();
+      for (var r = 0; r < ROWS; r++) {
+        for (var c = 0; c < COLS; c++) {
+          var itLeft = gaussian(r, c, 10.5, 5.5, 1.3, 1.1) * 0.58;
+          var itRight = gaussian(r, c, 10.5, 9.5, 1.3, 1.1) * 0.58;
+          var thighs = gaussian(r, c, 6, 7.5, 4.2, 5.8) * 0.32;
+          var v = Math.max(itLeft, itRight, thighs);
+          frame[r * COLS + c] = Math.max(0, Math.min(1, v));
+        }
+      }
+      return frame;
+    }
+
+    function frameHand() {
+      // A hand pressed flat on the mat - palm, thumb and four fingertips
+      // as a small cluster, roughly life-sized against the grid.
+      var blobs = [
+        { dr: 0,    dc: 0,    rr: 1.4, rc: 1.1, w: 0.8 },  // palm
+        { dr: -1.6, dc: -2.1, rr: 0.7, rc: 0.6, w: 0.5 },  // thumb
+        { dr: -3.4, dc: -1.1, rr: 0.6, rc: 0.5, w: 0.65 }, // index
+        { dr: -4.0, dc: 0.2,  rr: 0.6, rc: 0.5, w: 0.7 },  // middle
+        { dr: -3.8, dc: 1.5,  rr: 0.6, rc: 0.5, w: 0.62 }, // ring
+        { dr: -3.0, dc: 2.6,  rr: 0.55,rc: 0.45,w: 0.5 }   // little
+      ];
+      var baseR = 9, baseC = 7.5;
+      var frame = blankFrame();
+      for (var r = 0; r < ROWS; r++) {
+        for (var c = 0; c < COLS; c++) {
+          var v = 0;
+          for (var i = 0; i < blobs.length; i++) {
+            var b = blobs[i];
+            var g = gaussian(r, c, baseR + b.dr, baseC + b.dc, b.rr, b.rc) * b.w;
+            v = Math.max(v, g);
+          }
+          frame[r * COLS + c] = Math.max(0, Math.min(1, v));
+        }
+      }
+      return frame;
+    }
+
+    var SCENARIOS = { none: frameNone, bad: frameBad, good: frameGood, hand: frameHand };
+
+    function getScenarioFrame(mode) {
+      var recorded = RECORDED_FRAMES[mode];
+      if (recorded && recorded.length === ROWS * COLS) return recorded;
+      var gen = SCENARIOS[mode];
+      return gen ? gen() : blankFrame();
+    }
+
+    // ------------------------------------------------------------------
+    // LIVE - stubbed until the ESP32 + Pi relay exists. Replace the body
+    // with a real fetch to your relay endpoint; resolve/return
+    // {connected: true, frame: [...]}. Until then this honestly reports
+    // "offline" rather than showing anything fake.
+    // ------------------------------------------------------------------
+    function checkLiveConnection() {
+      return { connected: false, frame: null };
+    }
+
+    var currentMode = "none";
+    var currentFrame = null;
+
+    // ---- Rendering ----
+    var GAP = 2;
+    var cellW, cellH;
+
+    function resizeCanvas() {
+      var wrapWidth = canvas.parentElement.clientWidth;
+      var aspect = ROWS / COLS;
+      canvas.style.width = "100%";
+      canvas.width = Math.round(wrapWidth * 2);
+      canvas.height = Math.round(wrapWidth * aspect * 2);
+      canvas.style.height = Math.round(wrapWidth * aspect) + "px";
+      cellW = canvas.width / COLS;
+      cellH = canvas.height / ROWS;
+    }
+
+    function render(frame) {
+      currentFrame = frame;
+      ctx.fillStyle = "#000000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      for (var r = 0; r < ROWS; r++) {
+        for (var c = 0; c < COLS; c++) {
+          ctx.fillStyle = colorForValue(frame[r * COLS + c]);
+          ctx.fillRect(c * cellW + GAP / 2, r * cellH + GAP / 2, cellW - GAP, cellH - GAP);
+        }
+      }
+    }
+
+    function refreshLive() {
+      var live = checkLiveConnection();
+      liveDot.classList.toggle("is-connected", !!live.connected);
+      offlineOverlay.style.display = live.connected ? "none" : "flex";
+      render(live.connected && live.frame ? live.frame : blankFrame());
+    }
+
+    function setMode(mode) {
+      currentMode = mode;
+      buttons.forEach(function (btn) {
+        btn.classList.toggle("is-active", btn.getAttribute("data-mode") === mode);
+      });
+      if (mode === "live") {
+        refreshLive();
+      } else {
+        offlineOverlay.style.display = "none";
+        render(getScenarioFrame(mode));
+      }
+    }
+    buttons.forEach(function (btn) {
+      btn.addEventListener("click", function () { setMode(btn.getAttribute("data-mode")); });
+    });
+
+    // Live polls periodically (for a future real connection check);
+    // static scenarios only re-render on resize.
+    setInterval(function () {
+      if (currentMode === "live") refreshLive();
+    }, 1000);
+
+    // ---- Hover tooltip ----
+    function handlePointer(evt) {
+      if (!currentFrame) return;
+      var rect = canvas.getBoundingClientRect();
+      var x = (evt.clientX - rect.left) / rect.width;
+      var y = (evt.clientY - rect.top) / rect.height;
+      if (x < 0 || x > 1 || y < 0 || y > 1) { hideTooltip(); return; }
+      var c = Math.min(COLS - 1, Math.floor(x * COLS));
+      var r = Math.min(ROWS - 1, Math.floor(y * ROWS));
+      var v = currentFrame[r * COLS + c];
+      var pct = Math.round(v * 100);
+      tooltip.innerHTML = "";
+      var strong = document.createElement("strong");
+      strong.textContent = pct + "%";
+      tooltip.appendChild(strong);
+      tooltip.appendChild(document.createTextNode(" - " + statusLabel(v) +
+        "  (row " + (r + 1) + ", col " + (c + 1) + ")"));
+      tooltip.style.left = evt.clientX + "px";
+      tooltip.style.top = evt.clientY + "px";
+      tooltip.style.opacity = "1";
+    }
+    function hideTooltip() { tooltip.style.opacity = "0"; }
+    canvas.addEventListener("pointermove", handlePointer);
+    canvas.addEventListener("pointerleave", hideTooltip);
+
+    // ---- Boot ----
+    resizeCanvas();
+    window.addEventListener("resize", function () {
+      resizeCanvas();
+      if (currentFrame) render(currentFrame);
+    });
+    setMode("none");
+  })();
+  </script>
+</div>

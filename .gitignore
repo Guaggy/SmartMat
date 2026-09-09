@@ -1,0 +1,5 @@
+SmartMat_Resistive/.pio/
+SmartMat_Resistive/CLAUDE.local.md
+**/__pycache__/
+*.pyc
+node_modules/
