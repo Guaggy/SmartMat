@@ -1,5 +1,7 @@
 SmartMat_Resistive/.pio/
 SmartMat_Resistive/CLAUDE.local.md
+SmartMat_Resistive/src/secrets.h
+Raspberry Pi/config.py
 **/__pycache__/
 *.pyc
 node_modules/
