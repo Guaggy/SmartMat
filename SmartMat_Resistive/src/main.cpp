@@ -7,10 +7,11 @@
 #include "secrets.h" // Wifi and passcodes
 
 // CONFIG
+const bool serial_debug = true; // print debug info to serial
 const bool smoothing_enabled = true; // Enable lowpass filter
 const bool send_frame_serial = false; // Send frame over serial
 const bool read_linear_voltage = true; // Convert ADC to linear measurements --> can calculate absolute pressure etc.
-'
+
 // Wiring
 const uint8_t adc_read_pin = 34;
 
@@ -29,6 +30,8 @@ const uint16_t address_settling_delay_us = 2; // Delay after changing mux channe
 const uint16_t mux_settling_delay_us = 100; // Delay after enabling mux
 const uint16_t adc_resample_delay_us = 5; // Delay between repeted measurments
 
+const float adc_volt_max = 3.3;
+const uint16_t adc_linear_max = static_cast<uint16_t>(adc_volt_max * 1000); // analogReadMilliVolts() max, in mV
 const uint16_t adc_raw_max = 4095;
 const uint16_t normalized_max = 1000; // Final pressure values = 0-1000
 
@@ -94,13 +97,18 @@ void select_cell(uint8_t row, uint8_t col) {
 uint16_t read_cell(uint8_t row, uint8_t col) {
   select_cell(row, col);
 
-  int trash = analogRead(adc_read_pin); // Remove any charge from last cell
+  (void)analogReadMilliVolts(adc_read_pin); // Remove any charge from last cell
   delayMicroseconds(adc_resample_delay_us);
 
   // Measure average of cell
   uint32_t raw_sum = 0;
   for (uint8_t sample = 0; sample < samples_per_cell; ++sample) {
-    raw_sum += analogRead(adc_read_pin);
+    if (read_linear_voltage) {
+      raw_sum += analogReadMilliVolts(adc_read_pin);
+    }
+    else {
+      raw_sum += analogRead(adc_read_pin);
+    }
     if (sample + 1 < samples_per_cell) {
       delayMicroseconds(adc_resample_delay_us);
     }
@@ -108,8 +116,15 @@ uint16_t read_cell(uint8_t row, uint8_t col) {
   disable_muxes();
   
   const uint32_t average_raw = raw_sum / samples_per_cell;
-  const uint16_t normalized_raw = (average_raw * normalized_max) / adc_raw_max;
-  
+
+  uint16_t normalized_raw;
+  if (read_linear_voltage) {
+      normalized_raw = (average_raw * normalized_max) / adc_linear_max;
+  }
+  else {
+      normalized_raw = (average_raw * normalized_max) / adc_raw_max;
+  }
+
   return normalized_raw;
 }
 
@@ -163,6 +178,7 @@ void maintain_wifi() {
   }
   last_wifi_attempt_ms = now;
   WiFi.begin(wifi_ssid, wifi_password);
+  if (serial_debug) Serial.println("Wifi not connected, will try again ...");
 }
 
 // Try to reconnect if no MQTT and rung MQTT loop
@@ -180,15 +196,37 @@ void maintain_mqtt() {
   }
   last_mqtt_attempt_ms = now;
   mqtt_client.connect(mqtt_client_name, mqtt_username, mqtt_password);
+  if (serial_debug) Serial.println("MQTT not connected, will try again ...");
 }
 
 // Build latest frame and send over MQTT
 void send_frame() {
   build_frame_text();
-  Serial.println(frame_text);
 
   if (mqtt_client.connected()) {
     mqtt_client.publish(mqtt_topic, frame_text, true);
+    if (serial_debug) Serial.println("MQTT frame sent");
+  }
+
+  if (send_frame_serial) {
+    Serial.println(frame_text);
+    if (serial_debug) Serial.println("Serial frame sent");
+  }
+}
+
+// Print current estimated fps
+void print_fps(uint32_t loop_time_ms) {
+  static uint8_t frame_count = 0;
+  static uint32_t time_sum_ms = 0;
+
+  time_sum_ms += loop_time_ms;
+  frame_count ++;
+  if (frame_count >= 10) {
+    const float avg_loop_ms = time_sum_ms / static_cast<float>(frame_count);
+    const float fps = 1000.0f / avg_loop_ms;
+    Serial.printf("FPS: %.2f \n", fps);
+    frame_count = 0;
+    time_sum_ms = 0;
   }
 }
 
@@ -208,7 +246,9 @@ void setup() {
   // Configure ADC pin
   pinMode(adc_read_pin, INPUT);
   analogReadResolution(12);
-  analogSetPinAttenuation(adc_read_pin, ADC_11db);
+  if (!read_linear_voltage) {
+     analogSetPinAttenuation(adc_read_pin, ADC_11db);
+  }
 
   WiFi.mode(WIFI_STA);
   mqtt_client.setServer(mqtt_broker_ip, mqtt_port);
@@ -232,4 +272,5 @@ void loop() {
   if (elapsed_ms < frame_interval_ms) {
     delay(frame_interval_ms - elapsed_ms);
   }
+  if (serial_debug) print_fps(millis() - frame_started_ms);
 }
