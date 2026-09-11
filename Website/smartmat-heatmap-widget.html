@@ -15,10 +15,10 @@
   scenario. That's the only edit needed - rendering, buttons, tooltip all
   read from the same place either way.
 
-  "Live" is separate: it's stubbed via checkLiveConnection() to always
-  report offline until the ESP32 + Pi relay exists. Replace that one
-  function with a real fetch() later; it should resolve to
-  {connected: true, frame: [...]} in the same ROWS x COLS format.
+  "Live" fetches LIVE_DATA_URL below (search for it) - point it at your
+  local app's /data endpoint (gui/web.py), reachable from the internet
+  (e.g. a tunnel like ngrok) and served over HTTPS, or browsers will block
+  it as mixed content. Leave it blank to keep "Live" honestly offline.
 -->
 <div class="smartmat-heatmap" id="smartmat-heatmap-root">
   <style>
@@ -199,7 +199,7 @@
   <p class="smartmat-heatmap__title">Pressure map demo</p>
 
   <div class="smartmat-heatmap__canvas-wrap">
-    <canvas id="smartmat-heatmap-canvas" width="640" height="600" role="img"
+    <canvas id="smartmat-heatmap-canvas" width="600" height="640" role="img"
             aria-label="Chair seat pressure grid"></canvas>
     <div id="smartmat-heatmap-offline" class="smartmat-heatmap__offline-overlay">
       <div class="smartmat-heatmap__offline-overlay-box">
@@ -234,9 +234,9 @@
   (function () {
     "use strict";
 
-    // ---- Grid geometry (15x16 chair-seat mat) ----
-    var ROWS = 15;
-    var COLS = 16;
+    // ---- Grid geometry (16x15 mat - matches config.py/main.cpp on the ESP32) ----
+    var ROWS = 16;
+    var COLS = 15;
 
     var root = document.getElementById("smartmat-heatmap-root");
     var canvas = document.getElementById("smartmat-heatmap-canvas");
@@ -249,7 +249,7 @@
     );
 
     // ------------------------------------------------------------------
-    // YOUR REAL DATA GOES HERE. Each value is a flat ROWS*COLS (15*16 =
+    // YOUR REAL DATA GOES HERE. Each value is a flat ROWS*COLS (16*15 =
     // 240) array, 0..1, row-major. Leave null to keep the placeholder
     // scenario below. Example shape (don't copy the numbers, just the
     // format): [0, 0, 0.05, ..., 0.62, 0.58, ...]  <- 240 entries total.
@@ -320,8 +320,8 @@
       var frame = blankFrame();
       for (var r = 0; r < ROWS; r++) {
         for (var c = 0; c < COLS; c++) {
-          var peak = gaussian(r, c, 10, 5, 0.9, 0.9) * 0.97;
-          var faintThigh = gaussian(r, c, 7, 5, 2.0, 1.5) * 0.10;
+          var peak = gaussian(r, c, 10.67, 4.69, 0.96, 0.84) * 0.97;
+          var faintThigh = gaussian(r, c, 7.47, 4.69, 2.13, 1.41) * 0.10;
           frame[r * COLS + c] = Math.max(0, Math.min(1, Math.max(peak, faintThigh)));
         }
       }
@@ -335,9 +335,9 @@
       var frame = blankFrame();
       for (var r = 0; r < ROWS; r++) {
         for (var c = 0; c < COLS; c++) {
-          var itLeft = gaussian(r, c, 10.5, 5.5, 1.3, 1.1) * 0.58;
-          var itRight = gaussian(r, c, 10.5, 9.5, 1.3, 1.1) * 0.58;
-          var thighs = gaussian(r, c, 6, 7.5, 4.2, 5.8) * 0.32;
+          var itLeft = gaussian(r, c, 11.2, 5.16, 1.39, 1.03) * 0.58;
+          var itRight = gaussian(r, c, 11.2, 8.91, 1.39, 1.03) * 0.58;
+          var thighs = gaussian(r, c, 6.4, 7.03, 4.48, 5.44) * 0.32;
           var v = Math.max(itLeft, itRight, thighs);
           frame[r * COLS + c] = Math.max(0, Math.min(1, v));
         }
@@ -349,14 +349,14 @@
       // A hand pressed flat on the mat - palm, thumb and four fingertips
       // as a small cluster, roughly life-sized against the grid.
       var blobs = [
-        { dr: 0,    dc: 0,    rr: 1.4, rc: 1.1, w: 0.8 },  // palm
-        { dr: -1.6, dc: -2.1, rr: 0.7, rc: 0.6, w: 0.5 },  // thumb
-        { dr: -3.4, dc: -1.1, rr: 0.6, rc: 0.5, w: 0.65 }, // index
-        { dr: -4.0, dc: 0.2,  rr: 0.6, rc: 0.5, w: 0.7 },  // middle
-        { dr: -3.8, dc: 1.5,  rr: 0.6, rc: 0.5, w: 0.62 }, // ring
-        { dr: -3.0, dc: 2.6,  rr: 0.55,rc: 0.45,w: 0.5 }   // little
+        { dr: 0,     dc: 0,     rr: 1.49, rc: 1.03, w: 0.8 },  // palm
+        { dr: -1.71, dc: -1.97, rr: 0.75, rc: 0.56, w: 0.5 },  // thumb
+        { dr: -3.63, dc: -1.03, rr: 0.64, rc: 0.47, w: 0.65 }, // index
+        { dr: -4.27, dc: 0.19,  rr: 0.64, rc: 0.47, w: 0.7 },  // middle
+        { dr: -4.05, dc: 1.41,  rr: 0.64, rc: 0.47, w: 0.62 }, // ring
+        { dr: -3.2,  dc: 2.44,  rr: 0.59, rc: 0.42, w: 0.5 }   // little
       ];
-      var baseR = 9, baseC = 7.5;
+      var baseR = 9.6, baseC = 7.03;
       var frame = blankFrame();
       for (var r = 0; r < ROWS; r++) {
         for (var c = 0; c < COLS; c++) {
@@ -382,13 +382,32 @@
     }
 
     // ------------------------------------------------------------------
-    // LIVE - stubbed until the ESP32 + Pi relay exists. Replace the body
-    // with a real fetch to your relay endpoint; resolve/return
-    // {connected: true, frame: [...]}. Until then this honestly reports
-    // "offline" rather than showing anything fake.
+    // LIVE - fetches the local app's /data endpoint (gui/web.py). Point
+    // this at a URL reachable from the internet (e.g. an ngrok tunnel to
+    // your machine, or your relay once it exists), served over HTTPS or
+    // browsers will block it as mixed content. Leave blank to keep "Live"
+    // honestly reporting offline instead of showing anything fake.
     // ------------------------------------------------------------------
+    var LIVE_DATA_URL = "https://president-editorial-colin-childhood.trycloudflare.com/data";
+
     function checkLiveConnection() {
-      return { connected: false, frame: null };
+      if (!LIVE_DATA_URL) {
+        return Promise.resolve({ connected: false, frame: null });
+      }
+      return fetch(LIVE_DATA_URL, { cache: "no-store" })
+        .then(function (response) {
+          if (!response.ok) throw new Error("bad response");
+          return response.json();
+        })
+        .then(function (data) {
+          if (data.status !== "live" || !Array.isArray(data.grid) || data.grid.length !== ROWS * COLS) {
+            return { connected: false, frame: null };
+          }
+          return { connected: true, frame: data.grid };
+        })
+        .catch(function () {
+          return { connected: false, frame: null };
+        });
     }
 
     var currentMode = "none";
@@ -422,10 +441,13 @@
     }
 
     function refreshLive() {
-      var live = checkLiveConnection();
-      liveDot.classList.toggle("is-connected", !!live.connected);
-      offlineOverlay.style.display = live.connected ? "none" : "flex";
-      render(live.connected && live.frame ? live.frame : blankFrame());
+      checkLiveConnection().then(function (live) {
+        // The mode may have changed while the fetch was in flight.
+        if (currentMode !== "live") return;
+        liveDot.classList.toggle("is-connected", !!live.connected);
+        offlineOverlay.style.display = live.connected ? "none" : "flex";
+        render(live.connected && live.frame ? live.frame : blankFrame());
+      });
     }
 
     function setMode(mode) {

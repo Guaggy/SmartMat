@@ -2,6 +2,7 @@ SmartMat_Resistive/.pio/
 SmartMat_Resistive/CLAUDE.local.md
 SmartMat_Resistive/src/secrets.h
 Raspberry Pi/config.py
+Raspberry Pi/recordings/
 **/__pycache__/
 *.pyc
 node_modules/

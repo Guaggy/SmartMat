@@ -31,6 +31,6 @@ VS Code's Source Control panel (branch icon in the left sidebar) does the same t
 
 ## Folder structure
 
-- **`SmartMat_Resistive/`** — ESP32 firmware for the resistive pressure mat, built with PlatformIO (`platformio.ini`, `src/`, `include/`, `lib/`).
-- **`Website/`** — Browser-based heatmap widget (`smartmat-heatmap-widget.html`) for displaying mat pressure data.
-- **`Raspberry Pi/`** — Python serial reader and live pressure heatmap (`heatmap.py`), with pinned dependencies in `requirements.txt`.
+- **`SmartMat_Resistive/`** — ESP32 firmware for the resistive pressure mat, built with PlatformIO (`platformio.ini`, `src/`, `include/`, `lib/`); see `SmartMat_Resistive/README.md`.
+- **`Website/`** — Browser-based heatmap widget (`smartmat-heatmap-widget.html`) for smsolutions.no; see `Website/README.md`.
+- **`Raspberry Pi/`** — Python desktop app (`main.py`) for viewing and recording the live pressure heatmap over Serial, MQTT, or simulated data; see `Raspberry Pi/README.md` for how it works and `requirements.txt` for dependencies.
