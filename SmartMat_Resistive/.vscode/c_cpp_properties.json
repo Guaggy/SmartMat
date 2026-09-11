@@ -8,8 +8,9 @@
         {
             "name": "PlatformIO",
             "includePath": [
-                "C:/Users/evenm/Desktop/Liggematte Resistive/SmartMat_Resistive/include",
-                "C:/Users/evenm/Desktop/Liggematte Resistive/SmartMat_Resistive/src",
+                "C:/Users/evenm/Desktop/SmartMat/SmartMat_Resistive/include",
+                "C:/Users/evenm/Desktop/SmartMat/SmartMat_Resistive/src",
+                "C:/Users/evenm/Desktop/SmartMat/SmartMat_Resistive/.pio/libdeps/esp32doit-devkit-v1/PubSubClient/src",
                 "C:/Users/evenm/.platformio/packages/framework-arduinoespressif32-libs/esp32/include/newlib/platform_include",
                 "C:/Users/evenm/.platformio/packages/framework-arduinoespressif32-libs/esp32/include/freertos/config/include",
                 "C:/Users/evenm/.platformio/packages/framework-arduinoespressif32-libs/esp32/include/freertos/config/include/freertos",
@@ -341,8 +342,9 @@
             "browse": {
                 "limitSymbolsToIncludedHeaders": true,
                 "path": [
-                    "C:/Users/evenm/Desktop/Liggematte Resistive/SmartMat_Resistive/include",
-                    "C:/Users/evenm/Desktop/Liggematte Resistive/SmartMat_Resistive/src",
+                    "C:/Users/evenm/Desktop/SmartMat/SmartMat_Resistive/include",
+                    "C:/Users/evenm/Desktop/SmartMat/SmartMat_Resistive/src",
+                    "C:/Users/evenm/Desktop/SmartMat/SmartMat_Resistive/.pio/libdeps/esp32doit-devkit-v1/PubSubClient/src",
                     "C:/Users/evenm/.platformio/packages/framework-arduinoespressif32-libs/esp32/include/newlib/platform_include",
                     "C:/Users/evenm/.platformio/packages/framework-arduinoespressif32-libs/esp32/include/freertos/config/include",
                     "C:/Users/evenm/.platformio/packages/framework-arduinoespressif32-libs/esp32/include/freertos/config/include/freertos",
