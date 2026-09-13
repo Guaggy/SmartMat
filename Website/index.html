@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SmartMat</title>
+<meta name="description" content="SmartMat — a pressure-sensing smart mat with a 16x15 sensor grid. Under development.">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0a0c10;
+    --bg-2: #10131a;
+    --fg: #f2f4f8;
+    --muted: #8a93a3;
+    --accent: #4fd1ff;
+    --accent-2: #6a5cff;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(1200px 800px at 50% 20%, var(--bg-2), var(--bg) 70%);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Pressure-grid background motif */
+  #grid-bg {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .content {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    padding: 32px 24px;
+    max-width: 640px;
+  }
+
+  .eyebrow {
+    display: inline-block;
+    font-size: 0.75rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid rgba(79, 209, 255, 0.35);
+    background: rgba(79, 209, 255, 0.08);
+    padding: 6px 14px;
+    border-radius: 999px;
+    margin-bottom: 22px;
+  }
+
+  h1 {
+    font-size: clamp(2.6rem, 9vw, 4.5rem);
+    line-height: 1;
+    margin: 0 0 16px;
+    letter-spacing: -0.03em;
+    font-weight: 700;
+    background: linear-gradient(135deg, #ffffff 0%, #cfe9ff 45%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: clamp(1rem, 2.6vw, 1.25rem);
+    line-height: 1.6;
+    margin: 0 0 6px;
+  }
+
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 22px;
+    font-size: 0.85rem;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+  }
+
+  .status .pulse-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 0 rgba(79, 209, 255, 0.6);
+    animation: dotpulse 2.2s ease-out infinite;
+  }
+
+  @keyframes dotpulse {
+    0%   { box-shadow: 0 0 0 0 rgba(79, 209, 255, 0.55); }
+    70%  { box-shadow: 0 0 0 10px rgba(79, 209, 255, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(79, 209, 255, 0); }
+  }
+
+  footer {
+    position: fixed;
+    bottom: 18px;
+    left: 0;
+    right: 0;
+    z-index: 1;
+    text-align: center;
+    font-size: 0.75rem;
+    color: rgba(138, 147, 163, 0.6);
+    letter-spacing: 0.03em;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pulse-dot { animation: none; }
+  }
+</style>
+</head>
+<body>
+  <canvas id="grid-bg"></canvas>
+
+  <div class="content">
+    <span class="eyebrow">16 &times; 15 Sensor Grid</span>
+    <h1>SmartMat</h1>
+    <p class="subtitle">A pressure-sensing smart mat, mapping load in real time.</p>
+    <div class="status"><span class="pulse-dot"></span> Under development</div>
+  </div>
+
+  <footer>&copy; <span id="year"></span> SmartMat</footer>
+
+  <script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // Animated pressure-grid motif: a soft field of glowing cells that
+    // gently pulse at random, evoking a live sensor mat readout.
+    (function () {
+      var canvas = document.getElementById('grid-bg');
+      var ctx = canvas.getContext('2d');
+      var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      var cols, rows, cellSize, dpr;
+      var cells = [];
+
+      function resize() {
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        var w = window.innerWidth;
+        var h = window.innerHeight;
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
+        canvas.style.width = w + 'px';
+        canvas.style.height = h + 'px';
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        cellSize = w < 700 ? 46 : 60;
+        cols = Math.ceil(w / cellSize) + 1;
+        rows = Math.ceil(h / cellSize) + 1;
+
+        cells = [];
+        for (var i = 0; i < rows; i++) {
+          for (var j = 0; j < cols; j++) {
+            cells.push({
+              x: j * cellSize,
+              y: i * cellSize,
+              phase: Math.random() * Math.PI * 2,
+              speed: 0.4 + Math.random() * 0.5,
+              base: 0.05 + Math.random() * 0.08
+            });
+          }
+        }
+      }
+
+      function draw(t) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        var seconds = t / 1000;
+
+        for (var k = 0; k < cells.length; k++) {
+          var c = cells[k];
+          var wave = reduceMotion ? 0 : Math.sin(seconds * c.speed + c.phase);
+          var intensity = c.base + Math.max(0, wave) * 0.16;
+          var radius = cellSize * 0.30 * (0.7 + intensity * 2.2);
+
+          var grad = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, radius);
+          grad.addColorStop(0, 'rgba(79, 209, 255, ' + intensity + ')');
+          grad.addColorStop(0.6, 'rgba(106, 92, 255, ' + (intensity * 0.5) + ')');
+          grad.addColorStop(1, 'rgba(106, 92, 255, 0)');
+
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(c.x, c.y, radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        if (!reduceMotion) {
+          requestAnimationFrame(draw);
+        }
+      }
+
+      window.addEventListener('resize', resize);
+      resize();
+      requestAnimationFrame(draw);
+      if (reduceMotion) draw(0);
+    })();
+  </script>
+</body>
+</html>

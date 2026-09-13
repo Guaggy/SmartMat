@@ -1,4 +1,17 @@
-# SmartMat website widget
+# SmartMat website
+
+This folder holds two independent, self-contained (no build step, no dependencies)
+HTML files:
+
+- `index.html` - placeholder landing page, auto-deployed to GitHub Pages by
+  `.github/workflows/deploy-pages.yml` on every push to `main` that touches
+  `Website/**`. Just branding for now; edit it directly and push to update the live
+  site.
+- `smartmat-heatmap-widget.html` - the Elementor widget described below. It's pasted
+  manually into the smsolutions.no site and is **not** part of the GitHub Pages
+  deploy.
+
+## SmartMat website widget
 
 Self-contained HTML/JS/CSS heatmap widget for embedding in the smsolutions.no Elementor
 site (no build step, no dependencies) - `smartmat-heatmap-widget.html`.
