@@ -1,6 +1,6 @@
-SmartMat_Resistive/.pio/
-SmartMat_Resistive/CLAUDE.local.md
-SmartMat_Resistive/src/secrets.h
+ESP32/.pio/
+ESP32/CLAUDE.local.md
+ESP32/src/secrets.h
 Raspberry Pi/config.py
 Raspberry Pi/recordings/
 **/__pycache__/
