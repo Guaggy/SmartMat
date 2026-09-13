@@ -1,8 +1,10 @@
 ### Notes for future improvements and bugfixes
 
-- `index.html` in this folder is the placeholder landing page deployed to GitHub Pages
-  (via `.github/workflows/deploy-pages.yml`, triggered on push to `main` under
-  `Website/**`). It's separate from `smartmat-heatmap-widget.html`, which is pasted
-  manually into the Elementor site and is not part of the Pages deploy.
-- Swap `index.html` for the real project site when there's something to show; until
-  then it's just branding + an animated pressure-grid motif, no real data.
+- `site/index.html` is the placeholder landing page deployed to GitHub Pages (via
+  `.github/workflows/deploy-pages.yml`, which publishes `Website/site` on push to
+  `main` under `Website/**`). It's separate from `smartmat-heatmap-widget.html`, which
+  is pasted manually into the Elementor site and is not part of the Pages deploy.
+- Swap `site/index.html` for the real project site when there's something to show;
+  until then it's just branding + an animated pressure-grid motif, no real data.
+- If the real site ever needs more than one file (assets, extra pages), they all go
+  under `site/` since that whole folder is what gets published as-is.
