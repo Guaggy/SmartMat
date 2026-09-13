@@ -43,5 +43,5 @@ plain `http://` fetch from it as mixed content.
 ## Grid orientation
 
 `ROWS`/`COLS` here (16x15) must match `TOTAL_ROWS`/`TOTAL_COLS` in `Raspberry Pi/config.py`
-and `grid_rows`/`grid_cols` in `SmartMat_Resistive/src/main.cpp`. If any of these change,
-update all three, and rescale the placeholder scenarios' hardcoded coordinates to match.
+and `grid_rows`/`grid_cols` in `ESP32/src/main.cpp`. If any of these change, update all
+three, and rescale the placeholder scenarios' hardcoded coordinates to match.
