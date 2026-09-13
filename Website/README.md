@@ -1,12 +1,14 @@
 # SmartMat website
 
+**Live site (temporary domain):** https://guaggy.github.io/SmartMat/
+
 This folder holds two independent, self-contained (no build step, no dependencies)
 pieces:
 
 - `site/index.html` - placeholder landing page, auto-deployed to GitHub Pages by
   `.github/workflows/deploy-pages.yml` (which publishes the `Website/site` folder) on
   every push to `main` that touches `Website/**`. Just branding for now; edit it
-  directly and push to update the live site at guaggy.github.io/SmartMat.
+  directly and push to update the live site above.
 - `smartmat-heatmap-widget.html` - the Elementor widget described below. It's pasted
   manually into the smsolutions.no site and is **not** part of the GitHub Pages
   deploy.
