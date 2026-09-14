@@ -1,0 +1,50 @@
+const CASES = [
+  {
+    title: 'Sykehjem',
+    body: 'Døgnkontinuerlig beskyttelse for beboere med begrenset mobilitet, uten å øke belastningen på et allerede presset personale.',
+  },
+  {
+    title: 'Sykehus',
+    body: 'Oversikt over hele avdelingen for akutte og postoperative pasienter som ligger lenge og sammenhengende i sengen.',
+  },
+  {
+    title: 'Ryggmargsskadeenheter',
+    body: 'Presis trykkmåling for pasienter med høyest risiko, der ett enkelt sår kan bety måneder med rehabilitering.',
+  },
+  {
+    title: 'Hjemme- og kommunehelse',
+    body: 'Lokalt grensesnitt og varsler på telefon bringer proaktiv forebygging ut til hjemmesykepleiere og pårørende.',
+  },
+]
+
+export function UseCases() {
+  return (
+    <section id="use-cases" className="mx-auto max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
+      <div className="max-w-2xl">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-brand">
+          Hvor det passer
+        </p>
+        <h2 className="text-balance text-3xl font-medium tracking-[-0.01em] text-ink sm:text-4xl">
+          Laget for overalt der pasienter ligger stille for lenge.
+        </h2>
+      </div>
+
+      <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {CASES.map((c) => (
+          <div
+            key={c.title}
+            className="group flex flex-col rounded-xl bg-card p-6 ring-1 ring-border transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-lg hover:ring-brand/30"
+          >
+            <span aria-hidden="true" className="mb-4 h-0.5 w-6 rounded bg-brand transition-all duration-300 group-hover:w-10" />
+            <h3 className="text-lg font-semibold tracking-tight text-ink">
+              {c.title}
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              {c.body}
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
