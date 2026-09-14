@@ -10,9 +10,9 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'Vilia Medical — Kontinuerlig trykkmåling som forebygger liggesår',
+  title: 'Verdia Medical | Pressure monitoring for wheelchair seating',
   description:
-    'SmartMat er en tynn, forseglet trykksensor-matte som kartlegger trykk over hundrevis av punkter i sanntid, og gjør forebygging av liggesår om fra en manuell snurutine til en proaktiv, varselstyrt arbeidsflyt.',
+    'Verdia Stol is a chair-mounted pressure monitor that tracks seat load in real time and helps prevent pressure injuries in wheelchair users.',
   generator: 'v0.app',
   icons: {
     icon: [
@@ -44,7 +44,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="no" className={`light ${inter.variable}`}>
+    <html lang="no" suppressHydrationWarning className={`light ${inter.variable}`}>
       <body className="antialiased font-sans">
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}

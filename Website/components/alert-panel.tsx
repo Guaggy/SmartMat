@@ -2,24 +2,24 @@
 
 const ALERTS = [
   {
-    room: 'Rom 14 · Seng A',
+    room: 'Rom 14 · Stol A',
     status: 'action',
-    title: 'Snuing forfalt',
-    detail: 'Høyt korsryggtrykk i 1t 58m',
+    title: 'Justering uteblitt',
+    detail: 'Høyt trykk i seteområdet i 1t 58m',
     time: 'nå',
   },
   {
-    room: 'Rom 09 · Seng B',
+    room: 'Rom 09 · Stol B',
     status: 'watch',
     title: 'Nærmer seg grensen',
-    detail: 'Venstre hæl stigende siste 40m',
+    detail: 'Venstre side stigende siste 40m',
     time: '6m',
   },
   {
-    room: 'Rom 22 · Seng A',
+    room: 'Rom 22 · Stol A',
     status: 'ok',
-    title: 'Snudd',
-    detail: 'Trykk omfordelt — tidtaker nullstilt',
+    title: 'Justert',
+    detail: 'Trykk omfordelt, tidsmåling nullstilt',
     time: '18m',
   },
 ]
@@ -46,8 +46,8 @@ export function AlertPanel() {
   return (
     <figure className="sensor-grid rounded-xl bg-hero p-5 sm:p-6">
       <div className="mb-5 flex items-center justify-between">
-        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-hero-muted">
-          Ward view · turning queue
+        <p className="text-[11px] font-medium tracking-[0.18em] text-hero-muted">
+          Overvåkning av setetrykk
         </p>
         <span className="flex items-center gap-1.5 text-[11px] font-medium text-hero-muted">
           <span className="inline-block size-1.5 animate-pulse rounded-full bg-brand" />

@@ -1,19 +1,19 @@
 const CASES = [
   {
-    title: 'Sykehjem',
-    body: 'Døgnkontinuerlig beskyttelse for beboere med begrenset mobilitet, uten å øke belastningen på et allerede presset personale.',
+    title: 'Rullestoler',
+    body: 'Kontinuerlig overvåkning for brukere som sitter lenge i samme stilling, uten at belastningen blir usynlig for personalet.',
   },
   {
-    title: 'Sykehus',
-    body: 'Oversikt over hele avdelingen for akutte og postoperative pasienter som ligger lenge og sammenhengende i sengen.',
+    title: 'Rehabilitering',
+    body: 'Oversikt over trykk i setet under opptrening, langvarige samtaler eller transport i individuelle løsninger.',
   },
   {
-    title: 'Ryggmargsskadeenheter',
-    body: 'Presis trykkmåling for pasienter med høyest risiko, der ett enkelt sår kan bety måneder med rehabilitering.',
+    title: 'Høyrisiko brukere',
+    body: 'Presis måling i de områdene som får mest belastning, slik at justering og støtte kan skje før ubehag utvikler seg.',
   },
   {
-    title: 'Hjemme- og kommunehelse',
-    body: 'Lokalt grensesnitt og varsler på telefon bringer proaktiv forebygging ut til hjemmesykepleiere og pårørende.',
+    title: 'Hjemme og kommune',
+    body: 'Lokalt grensesnitt og varsler på telefon gir en enkel, proaktiv oppfølging i hverdagen uten behov for ekstra administrasjon.',
   },
 ]
 
@@ -21,11 +21,11 @@ export function UseCases() {
   return (
     <section id="use-cases" className="mx-auto max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
       <div className="max-w-2xl">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-brand">
+        <p className="mb-3 text-xs font-semibold tracking-[0.16em] text-brand">
           Hvor det passer
         </p>
         <h2 className="text-balance text-3xl font-medium tracking-[-0.01em] text-ink sm:text-4xl">
-          Laget for overalt der pasienter ligger stille for lenge.
+          Byggd for bruk der en person sitter lenge i samme stilling.
         </h2>
       </div>
 

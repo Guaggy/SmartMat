@@ -20,13 +20,13 @@ export default function Page() {
         <FeatureRow
           eyebrow="Sensorer"
           titleLead="Kontinuerlig trykkmåling"
-          title="over hele kroppen."
-          body="Et tett sensornettverk måler relativt trykk i hundrevis av punkter, flere ganger i sekundet. I stedet for å gjette mellom runder ser personalet nøyaktig hvor belastningen samler seg — korsrygg, hæler, skuldre — og hvordan den endrer seg når pasienten legger seg til rette."
+          title="i setet."
+          body="Et tett sensornettverk måler trykket i setet, i lår og i de områdene som får mest belastning under bruk. I stedet for å gjette mellom justeringer ser brukeren eller personalet hvor kraften samler seg og hvordan den endrer seg når stolen justeres."
           points={[
             'Hundrevis av trykkpunkter, målt kontinuerlig',
-            'Forseglet matte som tåler avtørking og passer eksisterende senger',
-            'Ingen bærbare sensorer, ledninger eller forberedelse av pasienten',
-            'Fungerer oppå vanlige skum- og luftmadrasser',
+            'Forseglet sensorpanel tilpasset stol og rullestol',
+            'Ingen ekstra utstyr eller klumpete tilkoblinger',
+            'Fungerer i en vanlig daglig bruk med enkel justering',
           ]}
           visual={<PressureHeatmap />}
         />
@@ -35,13 +35,13 @@ export default function Page() {
           reverse
           eyebrow="Innsikt"
           titleLead="Levende varmekart og analyse"
-          title="teamet leser på et blikk."
-          body="Rådata om trykk blir til et tydelig bilde: et fargevarmekart ved sengen og trendanalyser over tid. Pleieteamet ser når et område har hatt høyt trykk for lenge, og forstår mønsteret bak et varsel — ikke bare alarmen."
+          title="som er lett å lese."
+          body="Rådata om trykk blir til et tydelig bilde av setet og de områdene som får mest belastning. Brukeren eller personalet ser når et område har vært under høyt trykk for lenge, og forstår mønsteret bak en advarsel i stedet for bare en alarm."
           points={[
-            'Varmekart ved sengen med en intuitiv risikofargeskala',
-            'Trender over minutter, timer og vakter',
-            'Liggetid og terskelsporing per område',
-            'Lokalt grensesnitt — ingen skyavhengighet nødvendig',
+            'Varmekart av setet med enkel risikofargeskala',
+            'Trender over minutter og timer',
+            'Trykk og belastningssporing per område',
+            'Lokalt grensesnitt uten behov for skytilkobling',
           ]}
           visual={<AnalyticsPanel />}
         />
@@ -49,13 +49,13 @@ export default function Page() {
         <FeatureRow
           eyebrow="Handling"
           titleLead="Automatiske risikovarsler"
-          title="som utløser riktig snuing."
-          body="Når trykket holder seg høyt i ett område utover et trygt tidsrom, varsler SmartMat om snuing — rutet til riktig person, på avdelingsskjermen eller en telefon. Det erstatter en stiv klokkestyrt rutine med forebygging drevet av hva som faktisk skjer i sengen."
+          title="som styrer riktig justering."
+          body="Når trykket holder seg høyt i ett område over en trygg tidsgrense, varsler Verdia Stol brukeren eller personalet om justering. Det erstatter en rigid rutine med en mer proaktiv oppfølging av det som faktisk skjer i setet."
           points={[
-            'Terskel- og liggetidsvarsler, tilpasset hver pasient',
-            'Rutet til avdelingsskjermer eller pleiernes telefoner',
-            'Snulogging som nullstiller risikotidtakeren automatisk',
-            'En tydelig kø så den mest akutte sengen kommer først',
+            'Terskel- og belastningsvarsler, tilpasset brukeren',
+            'Rutet til skjerm eller telefon i samme arbeidsflyt',
+            'Logg for justeringer og belastningshistorikk',
+            'Tydelig prioritering av de mest kritiske setepunktene',
           ]}
           visual={<AlertPanel />}
         />
@@ -63,19 +63,19 @@ export default function Page() {
         <FeatureRow
           reverse
           eyebrow="Holdbarhet"
-          titleLead="Bygget for å tåle"
-          title="hverdagen på avdelingen."
-          body="Pleiemiljøer er krevende: konstant rengjøring, desinfeksjon og tung daglig bruk. SmartMat er utviklet som en helt forseglet matte med lav profil som tåler rutinemessig rengjøring og fortsetter å virke vakt etter vakt."
+          titleLead="Bygget for hverdagens bruk"
+          title="i en stol eller rullestol."
+          body="Bruk i hverdagen krever enkelhet, hygiene og robusthet. Verdia Stol er utviklet som et tett, forseglet sensorelement som tåler rengjøring, daglig bruk og stadig tilpasning i arbeid med brukeren."
           points={[
-            'Helt forseglet mot væsker og rengjøringsmidler',
-            'Lav profil så pasienten knapt merker den',
-            'Enkel å ta i bruk — rull ut, koble til og i gang',
+            'Helt forseglet mot væsker og rengjøring',
+            'Lav profil uten å påvirke komforten',
+            'Enkel å ta i bruk i eksisterende oppsett',
             'Personvern innebygd: kun trykkdata, ingen bilder',
           ]}
           visual={
             <img
               src="/mat-detail.png"
-              alt="Nærbilde av den forseglede SmartMat trykksensor-matten på en sykehusseng."
+              alt="Nærbilde av den forseglede Verdia Stol sensorplaten i en stol."
               className="w-full rounded-xl object-cover ring-1 ring-border"
             />
           }
