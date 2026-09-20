@@ -1,4 +1,4 @@
-"""Processing modes applied to each new grid before calibration/recording/display.
+"""Processing modes applied to each new grid before tare and pressure conversion.
 Each has at most one adjustable parameter, so the GUI can show one generic field.
 """
 
@@ -44,7 +44,11 @@ class AverageMode:
 
     def apply(self, grid):
         self._history.append(grid)
-        return np.mean(self._history, axis=0)
+        values = np.asarray(self._history)
+        valid = np.isfinite(values)
+        totals = np.where(valid, values, 0).sum(axis=0)
+        count = valid.sum(axis=0)
+        return np.divide(totals, count, out=np.full_like(grid, np.nan), where=count > 0)
 
 
 class ExponentialAverageMode:
@@ -66,9 +70,11 @@ class ExponentialAverageMode:
 
     def apply(self, grid):
         if self._previous is None:
-            self._previous = grid
+            self._previous = grid.copy()
         else:
-            self._previous = self.smoothing * self._previous + (1 - self.smoothing) * grid
+            blended = self.smoothing * self._previous + (1 - self.smoothing) * grid
+            self._previous = np.where(np.isfinite(grid),
+                                      np.where(np.isfinite(self._previous), blended, grid), np.nan)
         return self._previous
 
 

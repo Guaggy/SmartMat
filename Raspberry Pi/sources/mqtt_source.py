@@ -2,7 +2,8 @@
 
 import paho.mqtt.client as mqtt
 import config
-from general import LatestFrame, parse_frame_text
+from general import LatestFrame, parse_frame_text, parse_frame_text_with_reason
+from processing.source_quality import SourceQuality
 
 def parse_frame(payload):
     """Decode one MQTT payload and convert it to grid"""
@@ -19,6 +20,7 @@ class MqttSource:
 
     def __init__(self):
         self.latest = LatestFrame()
+        self.quality = SourceQuality()
         self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="smartmat-pi")
         self._client.username_pw_set(config.mqtt_username, config.mqtt_password)
         self._client.on_connect = self._on_connect
@@ -29,9 +31,14 @@ class MqttSource:
         client.subscribe(config.mqtt_topic)
 
     def _on_message(self, client, userdata, message):
-        grid = parse_frame(message.payload)
+        try:
+            grid, reason = parse_frame_text_with_reason(message.payload.decode("ascii"))
+        except UnicodeDecodeError:
+            grid, reason = None, "malformed"
+        self.quality.packet(reason, timestamp=False)
         if grid is not None:
-            self.latest.set(grid)
+            if self.latest.set(grid):
+                self.quality.drop()
 
     def start(self):
         """Connect and start paho's background network loop (raises if unreachable)"""

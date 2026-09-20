@@ -1,8 +1,11 @@
-"""Controls the heatmap's display range and an optional baseline correction"""
+"""Display tare and per-sensor pressure calibration."""
+
+import json
+from pathlib import Path
 
 import numpy as np
 
-from config import VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT
+from config import TOTAL_ROWS, TOTAL_COLS, VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT
 
 class Calibration:
     """Display range, plus an optional baseline grid subtracted from future frames"""
@@ -41,3 +44,131 @@ class Calibration:
         self.vmin = VALUE_MIN_DEFAULT
         self.vmax = VALUE_MAX_DEFAULT
         self.baseline = None
+
+
+class PressureCalibration:
+    """Convert received sensor values to kPa using each cell's saved curve."""
+
+    def __init__(self):
+        self.cells = {}
+        self.path = None
+
+    @property
+    def calibrated_count(self):
+        return sum(self.is_calibrated(row, col) for row, col in self.cells)
+
+    @property
+    def is_complete(self):
+        return self.calibrated_count == TOTAL_ROWS * TOTAL_COLS
+
+    def _cell(self, row, col):
+        if not (0 <= row < TOTAL_ROWS and 0 <= col < TOTAL_COLS):
+            raise ValueError("Sensor cell is outside the configured grid")
+        return self.cells.setdefault((row, col), {"offset": 0.0, "model": "linear", "points": []})
+
+    def get_cell(self, row, col):
+        cell = self._cell(row, col)
+        return {"offset": cell["offset"], "model": cell["model"],
+                "points": [point[:] for point in cell["points"]]}
+
+    def set_offset(self, row, col, raw):
+        raw = float(raw)
+        if not np.isfinite(raw):
+            raise ValueError("Offset must be finite")
+        self._cell(row, col)["offset"] = raw
+
+    def add_point(self, row, col, raw, pressure_kpa):
+        raw = float(raw)
+        pressure_kpa = float(pressure_kpa)
+        if not np.isfinite(raw) or not np.isfinite(pressure_kpa) or pressure_kpa < 0:
+            raise ValueError("Calibration values must be finite and pressure nonnegative")
+        cell = self._cell(row, col)
+        cell["points"] = [point for point in cell["points"] if point[0] != raw]
+        cell["points"].append([raw, pressure_kpa])
+        cell["points"].sort(key=lambda point: point[0])
+
+    def remove_point(self, row, col, index):
+        self._cell(row, col)["points"].pop(index)
+
+    def set_model(self, row, col, model):
+        if model not in ("linear", "piecewise"):
+            raise ValueError("Unknown calibration model")
+        self._cell(row, col)["model"] = model
+
+    def copy_cell_to_all(self, row, col):
+        source = self.get_cell(row, col)
+        if not self.is_calibrated(row, col):
+            raise ValueError("Calibrate the selected cell first")
+        for target_row in range(TOTAL_ROWS):
+            for target_col in range(TOTAL_COLS):
+                self.cells[(target_row, target_col)] = {
+                    "offset": source["offset"], "model": source["model"],
+                    "points": [point[:] for point in source["points"]],
+                }
+
+    def is_calibrated(self, row, col):
+        cell = self.cells.get((row, col))
+        if cell is None:
+            return False
+        return any(raw > cell["offset"] and pressure > 0
+                   for raw, pressure in cell["points"])
+
+    def _convert_cell(self, values, cell):
+        offset = cell["offset"]
+        points = [(raw, pressure) for raw, pressure in cell["points"] if raw > offset]
+        if not points or not any(pressure > 0 for _, pressure in points):
+            return np.full_like(values, np.nan, dtype=float)
+        if cell["model"] == "linear":
+            inputs = np.asarray([raw - offset for raw, _ in points])
+            outputs = np.asarray([pressure for _, pressure in points])
+            slope = float(np.dot(inputs, outputs) / np.dot(inputs, inputs))
+            return np.maximum(0.0, (values - offset) * slope)
+        knots = [(offset, 0.0)] + points
+        return np.interp(values, [raw for raw, _ in knots],
+                         [pressure for _, pressure in knots])
+
+    def convert_cell(self, row, col, raw):
+        return float(self._convert_cell(np.asarray([raw], dtype=float), self._cell(row, col))[0])
+
+    def apply(self, grid):
+        if grid.shape != (TOTAL_ROWS, TOTAL_COLS):
+            raise ValueError("Calibration grid size does not match configuration")
+        pressure = np.full(grid.shape, np.nan, dtype=float)
+        for (row, col), cell in self.cells.items():
+            pressure[row, col] = self._convert_cell(np.asarray([grid[row, col]]), cell)[0]
+        return pressure
+
+    def to_dict(self):
+        return {
+            "format": "smartmat_pressure_calibration_v1",
+            "units": "kPa",
+            "grid_shape": [TOTAL_ROWS, TOTAL_COLS],
+            "cells": [dict(row=row, col=col, **self.get_cell(row, col))
+                      for row, col in sorted(self.cells)],
+        }
+
+    def load_dict(self, data):
+        if data.get("format") != "smartmat_pressure_calibration_v1":
+            raise ValueError("Unsupported pressure calibration format")
+        if data.get("grid_shape") != [TOTAL_ROWS, TOTAL_COLS] or data.get("units") != "kPa":
+            raise ValueError("Calibration grid or units do not match configuration")
+        loaded = PressureCalibration()
+        for item in data["cells"]:
+            row, col = int(item["row"]), int(item["col"])
+            loaded.set_offset(row, col, item["offset"])
+            loaded.set_model(row, col, item["model"])
+            for raw, pressure in item["points"]:
+                loaded.add_point(row, col, raw, pressure)
+        self.cells = loaded.cells
+
+    def save(self, path):
+        path = Path(path)
+        with path.open("w") as file:
+            json.dump(self.to_dict(), file, indent=2)
+        self.path = path
+
+    def load(self, path):
+        path = Path(path)
+        with path.open() as file:
+            self.load_dict(json.load(file))
+        self.path = path

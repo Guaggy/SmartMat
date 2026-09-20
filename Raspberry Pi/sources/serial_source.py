@@ -5,7 +5,8 @@ import time
 import serial
 import serial.tools.list_ports
 
-from general import LatestFrame, parse_frame_text
+from general import LatestFrame, parse_frame_text, parse_frame_text_with_reason
+from processing.source_quality import SourceQuality
 from config import BAUD_RATE
 
 POLL_INTERVAL_S = 0.02  # How often the background thread checks for new bytes
@@ -28,7 +29,7 @@ def parse_frame(raw_line):
     return parse_frame_text(text)
 
 
-def _read_latest_frame(connection, receive_buffer):
+def _read_latest_frame(connection, receive_buffer, quality=None):
     """Empty serial data, keep any partial line, and return the newest grid"""
 
     available = connection.in_waiting
@@ -39,17 +40,26 @@ def _read_latest_frame(connection, receive_buffer):
     if last_newline < 0:
         if len(receive_buffer) > MAX_RECEIVE_BUFFER_BYTES:
             receive_buffer.clear()
+            if quality is not None:
+                quality.packet("malformed", timestamp=False)
         return None
 
     complete_data = bytes(receive_buffer[:last_newline])
     del receive_buffer[: last_newline + 1]
 
-    # Search newest to oldest
-    for raw_line in reversed(complete_data.split(b"\n")):
-        grid = parse_frame(raw_line)
+    newest = None
+    for raw_line in complete_data.split(b"\n"):
+        try:
+            grid, reason = parse_frame_text_with_reason(raw_line.decode("ascii"))
+        except UnicodeDecodeError:
+            grid, reason = None, "malformed"
+        if quality is not None:
+            quality.packet(reason, timestamp=False)
         if grid is not None:
-            return grid
-    return None
+            if newest is not None and quality is not None:
+                quality.drop()
+            newest = grid
+    return newest
 
 
 class SerialSource:
@@ -58,6 +68,7 @@ class SerialSource:
     def __init__(self, port):
         self.port = port
         self.latest = LatestFrame()
+        self.quality = SourceQuality()
         self._connection = None
         self._thread = None
         self._running = False
@@ -72,9 +83,10 @@ class SerialSource:
     def _run(self):
         receive_buffer = bytearray()
         while self._running:
-            grid = _read_latest_frame(self._connection, receive_buffer)
+            grid = _read_latest_frame(self._connection, receive_buffer, self.quality)
             if grid is not None:
-                self.latest.set(grid)
+                if self.latest.set(grid):
+                    self.quality.drop()
             time.sleep(POLL_INTERVAL_S)
 
     def stop(self):

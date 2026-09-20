@@ -1,11 +1,13 @@
 """Fake/recorded data source for testing the app without real hardware"""
 
+import math
 import threading
 import time
 
 import numpy as np
 
-from general import LatestFrame
+from general import LatestFrame, QueuedFrames
+from processing.source_quality import SourceQuality
 from config import TOTAL_ROWS, TOTAL_COLS, VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT
 
 FRAME_INTERVAL_S = 0.1  # matches the ESP32 10fps
@@ -64,9 +66,15 @@ SCENARIOS = {
 class SimulatedSource:
     """Fake grids on a background thread: a named scenario, or a recording played back in a loop"""
 
-    def __init__(self, playback_frames=None, scenario="Drifting blob"):
-        self.latest = LatestFrame()
+    def __init__(self, playback_frames=None, playback_timestamps=None, scenario="Drifting blob"):
+        if playback_frames is not None and len(playback_frames) == 0:
+            raise ValueError("Recording contains no frames")
+        self.is_playback = playback_frames is not None
+        self.latest = QueuedFrames() if self.is_playback else LatestFrame()
+        self.quality = SourceQuality()
         self._playback_frames = playback_frames
+        self._playback_timestamps = playback_timestamps
+        self.playback_speed = 1.0
         self._generate = SCENARIOS.get(scenario, _drifting_blob)
         self._running = False
         self._paused = False
@@ -81,21 +89,55 @@ class SimulatedSource:
         """Freeze exactly where the source is - a recording resumes at the next frame"""
         self._paused = True
 
+    @property
+    def paused(self):
+        return self._paused
+
     def resume(self):
         self._paused = False
+
+    def set_playback_speed(self, speed):
+        speed = float(speed)
+        if not math.isfinite(speed) or speed <= 0:
+            raise ValueError("Playback speed must be positive")
+        self.playback_speed = speed
+
+    def _wait_interval(self, interval):
+        remaining = interval
+        while self._running and remaining > 0:
+            if self._paused:
+                time.sleep(0.02)
+                continue
+            start = time.monotonic()
+            time.sleep(min(0.02, remaining / self.playback_speed))
+            remaining -= (time.monotonic() - start) * self.playback_speed
 
     def _run(self):
         start_time = time.time()
         frame_index = 0
         while self._running:
             if not self._paused:
-                if self._playback_frames:
-                    grid = self._playback_frames[frame_index % len(self._playback_frames)]
+                if self.is_playback:
+                    index = frame_index % len(self._playback_frames)
+                    grid = self._playback_frames[index]
+                    timestamp = (self._playback_timestamps[index] if self._playback_timestamps is not None
+                                 else index * FRAME_INTERVAL_S)
+                    if self._playback_timestamps is not None and index < len(self._playback_frames) - 1:
+                        interval = self._playback_timestamps[index + 1] - self._playback_timestamps[index]
+                    else:
+                        interval = FRAME_INTERVAL_S
                     frame_index += 1
+                    self.latest.set((grid, timestamp))
+                    self.quality.packet(timestamp=self._playback_timestamps is not None)
                 else:
                     grid = self._generate(time.time() - start_time)
-                self.latest.set(grid)
-            time.sleep(FRAME_INTERVAL_S)
+                    interval = FRAME_INTERVAL_S
+                    if self.latest.set(grid):
+                        self.quality.drop()
+                    self.quality.packet()
+                self._wait_interval(interval)
+            else:
+                time.sleep(0.02)
 
     def stop(self):
         self._running = False

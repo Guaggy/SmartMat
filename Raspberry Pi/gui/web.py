@@ -3,6 +3,7 @@ Serves a live heatmap page, and (once "sharing" is on) a /data endpoint
 with the current grid - what the public website's live mode pulls from.
 """
 
+import math
 import threading
 
 from flask import Flask, jsonify
@@ -111,7 +112,8 @@ def data():
         sharing, grid = _sharing, _grid
     if not sharing or grid is None:
         return jsonify({"status": "offline"})
-    normalized = (grid.flatten() / VALUE_MAX_DEFAULT).tolist()
+    normalized = [float(value) / VALUE_MAX_DEFAULT if math.isfinite(value) else 0.0
+                  for value in grid.flatten()]
     return jsonify({"status": "live", "grid": normalized})
 
 
