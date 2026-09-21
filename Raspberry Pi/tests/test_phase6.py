@@ -28,6 +28,19 @@ def calibrated():
 
 
 class Phase6Tests(unittest.TestCase):
+    def test_default_and_whole_grid_calibration(self):
+        calibration = PressureCalibration.default()
+        self.assertTrue(calibration.is_complete)
+        self.assertGreater(calibration.convert_cell(0, 0, 1000), 0)
+
+        offsets = np.arange(240.0).reshape(16, 15)
+        readings = offsets + 100
+        calibration.capture_offsets(offsets)
+        calibration.add_grid_point(readings, 10)
+        self.assertAlmostEqual(calibration.convert_cell(7, 6, readings[7, 6]), 10)
+        calibration.set_model_all("piecewise")
+        self.assertEqual(calibration.get_cell(15, 14)["model"], "piecewise")
+
     def test_loaded_start_keeps_prior_duration_and_relief_unknown(self):
         temporal = TemporalAnalysis()
         tracker = HotspotTracker()

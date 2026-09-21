@@ -23,6 +23,14 @@ CELL_HEIGHT_MM = None
 # Minimum calibrated pressure for a sensor to count as contacted.
 CONTACT_THRESHOLD_KPA = 2.0
 
+# Raw/processed values at or below this level are hidden and ignored by signal CoP.
+SIGNAL_NOISE_THRESHOLD = 0.0
+
+# Startup pressure calibration; set a JSON file to replace the linear fallback.
+DEFAULT_PRESSURE_CALIBRATION_FILE = None
+DEFAULT_PRESSURE_CALIBRATION_RAW_MAX = VALUE_MAX_DEFAULT
+DEFAULT_PRESSURE_CALIBRATION_KPA = 50.0
+
 # Fixed heatmap maximum in pressure mode when auto-scale is off.
 PRESSURE_DISPLAY_MAX_KPA = 50.0
 

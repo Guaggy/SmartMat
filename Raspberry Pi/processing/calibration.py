@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
+import config
 from config import TOTAL_ROWS, TOTAL_COLS, VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT
 
 class Calibration:
@@ -52,6 +53,34 @@ class PressureCalibration:
     def __init__(self):
         self.cells = {}
         self.path = None
+        self._default_cells = set()
+
+    @classmethod
+    def default(cls):
+        """Load the configured startup calibration or create a usable linear default."""
+        calibration = cls()
+        configured_path = getattr(config, "DEFAULT_PRESSURE_CALIBRATION_FILE", None)
+        if configured_path:
+            path = Path(configured_path)
+            if not path.is_absolute():
+                path = Path(config.__file__).resolve().parent / path
+            if path.exists():
+                calibration.load(path)
+                return calibration
+
+        raw_max = float(getattr(config, "DEFAULT_PRESSURE_CALIBRATION_RAW_MAX",
+                                VALUE_MAX_DEFAULT))
+        pressure_max = float(getattr(config, "DEFAULT_PRESSURE_CALIBRATION_KPA",
+                                     getattr(config, "PRESSURE_DISPLAY_MAX_KPA", 50.0)))
+        if raw_max <= VALUE_MIN_DEFAULT or pressure_max <= 0:
+            raise ValueError("Default pressure calibration values must be positive")
+        calibration.set_all_offsets(VALUE_MIN_DEFAULT)
+        calibration.add_grid_point(
+            np.full((TOTAL_ROWS, TOTAL_COLS), raw_max, dtype=float), pressure_max)
+        calibration._default_cells = {
+            (row, col) for row in range(TOTAL_ROWS) for col in range(TOTAL_COLS)
+        }
+        return calibration
 
     @property
     def calibrated_count(self):
@@ -77,15 +106,39 @@ class PressureCalibration:
             raise ValueError("Offset must be finite")
         self._cell(row, col)["offset"] = raw
 
+    def set_all_offsets(self, raw):
+        for row in range(TOTAL_ROWS):
+            for col in range(TOTAL_COLS):
+                self.set_offset(row, col, raw)
+
+    def capture_offsets(self, grid):
+        values = np.asarray(grid, dtype=float)
+        if values.shape != (TOTAL_ROWS, TOTAL_COLS) or not np.all(np.isfinite(values)):
+            raise ValueError("Current grid must contain a finite value for every sensor")
+        for row in range(TOTAL_ROWS):
+            for col in range(TOTAL_COLS):
+                self.set_offset(row, col, values[row, col])
+
     def add_point(self, row, col, raw, pressure_kpa):
         raw = float(raw)
         pressure_kpa = float(pressure_kpa)
         if not np.isfinite(raw) or not np.isfinite(pressure_kpa) or pressure_kpa < 0:
             raise ValueError("Calibration values must be finite and pressure nonnegative")
         cell = self._cell(row, col)
+        if (row, col) in self._default_cells:
+            cell["points"] = []
+            self._default_cells.remove((row, col))
         cell["points"] = [point for point in cell["points"] if point[0] != raw]
         cell["points"].append([raw, pressure_kpa])
         cell["points"].sort(key=lambda point: point[0])
+
+    def add_grid_point(self, grid, pressure_kpa):
+        values = np.asarray(grid, dtype=float)
+        if values.shape != (TOTAL_ROWS, TOTAL_COLS) or not np.all(np.isfinite(values)):
+            raise ValueError("Current grid must contain a finite value for every sensor")
+        for row in range(TOTAL_ROWS):
+            for col in range(TOTAL_COLS):
+                self.add_point(row, col, values[row, col], pressure_kpa)
 
     def remove_point(self, row, col, index):
         self._cell(row, col)["points"].pop(index)
@@ -94,6 +147,11 @@ class PressureCalibration:
         if model not in ("linear", "piecewise"):
             raise ValueError("Unknown calibration model")
         self._cell(row, col)["model"] = model
+
+    def set_model_all(self, model):
+        for row in range(TOTAL_ROWS):
+            for col in range(TOTAL_COLS):
+                self.set_model(row, col, model)
 
     def copy_cell_to_all(self, row, col):
         source = self.get_cell(row, col)
@@ -105,6 +163,7 @@ class PressureCalibration:
                     "offset": source["offset"], "model": source["model"],
                     "points": [point[:] for point in source["points"]],
                 }
+        self._default_cells.clear()
 
     def is_calibrated(self, row, col):
         cell = self.cells.get((row, col))
@@ -160,6 +219,7 @@ class PressureCalibration:
             for raw, pressure in item["points"]:
                 loaded.add_point(row, col, raw, pressure)
         self.cells = loaded.cells
+        self._default_cells.clear()
 
     def save(self, path):
         path = Path(path)

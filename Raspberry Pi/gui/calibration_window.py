@@ -18,9 +18,16 @@ class CalibrationWindow:
         self.on_change = on_change
         self.window = tk.Toplevel(parent)
         self.window.title("Pressure calibration")
-        self.window.geometry("660x620")
+        self.window.geometry("700x650")
 
-        controls = ttk.Frame(self.window, padding=10)
+        notebook = ttk.Notebook(self.window)
+        notebook.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=(10, 0))
+        individual = ttk.Frame(notebook)
+        whole_grid = ttk.Frame(notebook)
+        notebook.add(individual, text="Individual cell")
+        notebook.add(whole_grid, text="Whole grid")
+
+        controls = ttk.Frame(individual, padding=10)
         controls.pack(side=tk.TOP, fill=tk.X)
 
         self.row_var = tk.IntVar(value=0)
@@ -30,6 +37,11 @@ class CalibrationWindow:
         self.pressure_var = tk.StringVar()
         self.input_unit_var = tk.StringVar(value="kPa")
         self.model_var = tk.StringVar(value="linear")
+        self.grid_raw_var = tk.StringVar(value="Current grid: -")
+        self.grid_offset_var = tk.StringVar(value="0")
+        self.grid_pressure_var = tk.StringVar()
+        self.grid_input_unit_var = tk.StringVar(value="kPa")
+        self.grid_model_var = tk.StringVar(value="linear")
         self.status_var = tk.StringVar()
 
         ttk.Label(controls, text="Row:").grid(row=0, column=0, sticky="w")
@@ -63,14 +75,54 @@ class CalibrationWindow:
         ttk.Button(controls, text="Copy cell curve to all", command=self._copy_all).grid(
             row=3, column=3, columnspan=2, sticky="w")
 
-        self.points_list = tk.Listbox(self.window, height=5)
+        self.points_list = tk.Listbox(individual, height=5)
         self.points_list.pack(fill=tk.X, padx=10)
-        ttk.Button(self.window, text="Remove selected point", command=self._remove_point).pack(anchor="w", padx=10, pady=4)
+        ttk.Button(individual, text="Remove selected point", command=self._remove_point).pack(
+            anchor="w", padx=10, pady=4)
 
         self.figure = Figure(figsize=(5, 3))
         self.axes = self.figure.add_subplot()
-        self.canvas = FigureCanvasTkAgg(self.figure, master=self.window)
+        self.canvas = FigureCanvasTkAgg(self.figure, master=individual)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=10)
+
+        grid_controls = ttk.Frame(whole_grid, padding=16)
+        grid_controls.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(
+            grid_controls,
+            text=("Apply the same known pressure to the full mat in one capture. "
+                  "Each sensor keeps its own measured raw calibration points."),
+            wraplength=620,
+        ).grid(row=0, column=0, columnspan=5, sticky="w", pady=(0, 14))
+        ttk.Label(grid_controls, textvariable=self.grid_raw_var).grid(
+            row=1, column=0, columnspan=5, sticky="w", pady=(0, 12))
+
+        ttk.Label(grid_controls, text="Same offset for all:").grid(row=2, column=0, sticky="w")
+        ttk.Entry(grid_controls, textvariable=self.grid_offset_var, width=10).grid(
+            row=2, column=1, sticky="w")
+        ttk.Button(grid_controls, text="Set all offsets", command=self._set_all_offsets).grid(
+            row=2, column=2, sticky="w", padx=(8, 0))
+        ttk.Button(grid_controls, text="Capture each cell's current raw as zero",
+                   command=self._capture_all_offsets).grid(
+            row=2, column=3, columnspan=2, sticky="w", padx=(8, 0))
+
+        ttk.Label(grid_controls, text="Uniform kPa / total N:").grid(
+            row=3, column=0, sticky="w", pady=(14, 0))
+        ttk.Entry(grid_controls, textvariable=self.grid_pressure_var, width=10).grid(
+            row=3, column=1, sticky="w", pady=(14, 0))
+        ttk.Combobox(grid_controls, textvariable=self.grid_input_unit_var, state="readonly",
+                     values=["kPa", "N"], width=5).grid(
+            row=3, column=2, sticky="w", padx=(8, 0), pady=(14, 0))
+        ttk.Button(grid_controls, text="Add point to every cell from current grid",
+                   command=self._add_grid_point).grid(
+            row=3, column=3, columnspan=2, sticky="w", padx=(8, 0), pady=(14, 0))
+
+        ttk.Label(grid_controls, text="Model for all cells:").grid(
+            row=4, column=0, sticky="w", pady=(14, 0))
+        ttk.Combobox(grid_controls, textvariable=self.grid_model_var, state="readonly",
+                     values=["linear", "piecewise"], width=10).grid(
+            row=4, column=1, sticky="w", pady=(14, 0))
+        ttk.Button(grid_controls, text="Apply model to all", command=self._update_all_models).grid(
+            row=4, column=2, sticky="w", padx=(8, 0), pady=(14, 0))
 
         buttons = ttk.Frame(self.window, padding=10)
         buttons.pack(fill=tk.X)
@@ -88,18 +140,29 @@ class CalibrationWindow:
         return row, col
 
     def _current_raw(self):
+        return float(self._current_grid()[self._cell()])
+
+    def _current_grid(self):
         grid = self.raw_grid_getter()
         if grid is None:
             raise ValueError("Connect a data source before capturing a reading")
-        return float(grid[self._cell()])
+        return np.asarray(grid, dtype=float)
 
     def _refresh_raw(self):
         if not self.window.winfo_exists():
             return
         try:
-            self.raw_var.set(f"Current raw: {self._current_raw():.1f}")
+            grid = self._current_grid()
+            self.raw_var.set(f"Current raw: {float(grid[self._cell()]):.1f}")
+            finite = grid[np.isfinite(grid)]
+            if finite.size:
+                self.grid_raw_var.set(
+                    f"Current grid: mean {finite.mean():.1f}, min {finite.min():.1f}, max {finite.max():.1f}")
+            else:
+                self.grid_raw_var.set("Current grid: no valid values")
         except (ValueError, tk.TclError):
             self.raw_var.set("Current raw: -")
+            self.grid_raw_var.set("Current grid: -")
         self.window.after(200, self._refresh_raw)
 
     def _select_cell(self):
@@ -136,12 +199,48 @@ class CalibrationWindow:
 
     def _add_point(self):
         try:
-            pressure = float(self.pressure_var.get())
-            if self.input_unit_var.get() == "N":
-                if not CELL_WIDTH_MM or not CELL_HEIGHT_MM or CELL_WIDTH_MM <= 0 or CELL_HEIGHT_MM <= 0:
-                    raise ValueError("Set positive cell dimensions in config.py to use newtons")
-                pressure = pressure * 1000 / (CELL_WIDTH_MM * CELL_HEIGHT_MM)
+            pressure = self._pressure_kpa(self.pressure_var.get(), self.input_unit_var.get())
             self.calibration.add_point(*self._cell(), self._current_raw(), pressure)
+            self._changed()
+        except ValueError as error:
+            messagebox.showerror("Pressure calibration", str(error), parent=self.window)
+
+    @staticmethod
+    def _pressure_kpa(value, unit, cell_count=1):
+        pressure = float(value)
+        if unit == "N":
+            if not CELL_WIDTH_MM or not CELL_HEIGHT_MM or CELL_WIDTH_MM <= 0 or CELL_HEIGHT_MM <= 0:
+                raise ValueError("Set positive cell dimensions in config.py to use newtons")
+            pressure = pressure * 1000 / (CELL_WIDTH_MM * CELL_HEIGHT_MM * cell_count)
+        return pressure
+
+    def _set_all_offsets(self):
+        try:
+            self.calibration.set_all_offsets(float(self.grid_offset_var.get()))
+            self._changed()
+        except ValueError as error:
+            messagebox.showerror("Pressure calibration", str(error), parent=self.window)
+
+    def _capture_all_offsets(self):
+        try:
+            self.calibration.capture_offsets(self._current_grid())
+            self._changed()
+        except ValueError as error:
+            messagebox.showerror("Pressure calibration", str(error), parent=self.window)
+
+    def _add_grid_point(self):
+        try:
+            pressure = self._pressure_kpa(
+                self.grid_pressure_var.get(), self.grid_input_unit_var.get(),
+                TOTAL_ROWS * TOTAL_COLS)
+            self.calibration.add_grid_point(self._current_grid(), pressure)
+            self._changed()
+        except ValueError as error:
+            messagebox.showerror("Pressure calibration", str(error), parent=self.window)
+
+    def _update_all_models(self):
+        try:
+            self.calibration.set_model_all(self.grid_model_var.get())
             self._changed()
         except ValueError as error:
             messagebox.showerror("Pressure calibration", str(error), parent=self.window)

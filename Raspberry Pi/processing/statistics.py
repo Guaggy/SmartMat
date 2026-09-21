@@ -7,6 +7,20 @@ def contact_mask(pressure_kpa, threshold_kpa):
     return np.isfinite(pressure_kpa) & (pressure_kpa > threshold_kpa)
 
 
+def weighted_center(values, threshold=0.0):
+    """Return the value-weighted center of real cells above a noise threshold."""
+    weights = np.asarray(values, dtype=float)
+    mask = np.isfinite(weights) & (weights > threshold)
+    if not mask.any():
+        return None, None
+    rows, cols = np.nonzero(mask)
+    loaded = weights[mask]
+    total = loaded.sum()
+    if total <= 0:
+        return None, None
+    return float(np.dot(cols, loaded) / total), float(np.dot(rows, loaded) / total)
+
+
 def pressure_statistics(pressure_kpa, threshold_kpa, cell_area_m2=None):
     mask = contact_mask(pressure_kpa, threshold_kpa)
     count = int(mask.sum())
@@ -25,8 +39,5 @@ def pressure_statistics(pressure_kpa, threshold_kpa, cell_area_m2=None):
     if cell_area_m2 is not None:
         stats["contact_area_m2"] = count * cell_area_m2
 
-    rows, cols = np.nonzero(mask)
-    total = loaded.sum()
-    stats["cop_x"] = float(np.dot(cols, loaded) / total)
-    stats["cop_y"] = float(np.dot(rows, loaded) / total)
+    stats["cop_x"], stats["cop_y"] = weighted_center(pressure_kpa, threshold_kpa)
     return stats

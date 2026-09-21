@@ -7,6 +7,7 @@ import numpy as np
 from processing.analysis import load_distribution, pressure_distribution, roi_statistics
 from processing.display import interpolate_grid
 from processing.sensor_health import SensorHealth
+from processing.statistics import weighted_center
 
 
 class Phase3ProcessingTests(unittest.TestCase):
@@ -63,6 +64,13 @@ class Phase3ProcessingTests(unittest.TestCase):
             health.update(grid, float(index + 10))
         self.assertEqual(health.cell(2, 2)["state"], "Missing")
         self.assertEqual(health.cell(3, 3)["state"], "Invalid")
+
+    def test_weighted_center_supports_relative_grids_and_noise_cutoff(self):
+        values = np.zeros((16, 15))
+        values[1, 2] = 4
+        values[5, 8] = 12
+        self.assertEqual(weighted_center(values, 5), (8.0, 5.0))
+        self.assertEqual(weighted_center(values, 20), (None, None))
 
 
 if __name__ == "__main__":

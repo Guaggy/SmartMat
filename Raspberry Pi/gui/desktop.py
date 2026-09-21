@@ -7,6 +7,7 @@ from collections import deque
 from tkinter import simpledialog, ttk
 
 import numpy as np
+import config as app_config
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.figure import Figure
@@ -34,7 +35,7 @@ from processing.hotspots import HotspotTracker
 from processing.motion import MotionAnalyzer
 from processing.temporal import TemporalAnalysis
 from processing.timeline import EventTimeline
-from processing.statistics import contact_mask, pressure_statistics
+from processing.statistics import contact_mask, pressure_statistics, weighted_center
 from sources.mqtt_source import MqttSource
 from sources.serial_source import SerialSource, list_ports
 from sources.simulated_source import SCENARIOS, SimulatedSource
@@ -88,7 +89,7 @@ class DesktopApp:
         self.recorder = None
         self.web_server = None
         self.calibration = Calibration()
-        self.pressure_calibration = PressureCalibration()
+        self.pressure_calibration = PressureCalibration.default()
         self.sensor_health = SensorHealth()
         self.temporal = TemporalAnalysis()
         self.hotspots = HotspotTracker()
@@ -117,6 +118,7 @@ class DesktopApp:
         self._last_malformed = 0
         self._last_dropped = 0
         self.contact_threshold_kpa = CONTACT_THRESHOLD_KPA
+        self.signal_noise_threshold = float(getattr(app_config, "SIGNAL_NOISE_THRESHOLD", 0.0))
         self.cell_area_m2 = None
         if CELL_WIDTH_MM and CELL_HEIGHT_MM and CELL_WIDTH_MM > 0 and CELL_HEIGHT_MM > 0:
             self.cell_area_m2 = CELL_WIDTH_MM * CELL_HEIGHT_MM / 1_000_000
@@ -142,6 +144,7 @@ class DesktopApp:
         self._last_diagnostics_draw = 0.0
         self._last_temporal_draw = 0.0
         self.stats = None
+        self.display_cop = (None, None)
         self.interpolation_method = "None"
         self.display_scale = DISPLAY_SCALE
         self.show_contours = False
@@ -274,6 +277,13 @@ class DesktopApp:
         threshold_entry.bind("<FocusOut>", lambda _event: self._apply_contact_threshold())
         ttk.Label(bar, text="kPa").pack(side=tk.LEFT, padx=(0, 12))
 
+        ttk.Label(bar, text="Ignore signal <=").pack(side=tk.LEFT)
+        self.noise_threshold_var = tk.StringVar(value=str(self.signal_noise_threshold))
+        noise_entry = ttk.Entry(bar, textvariable=self.noise_threshold_var, width=6)
+        noise_entry.pack(side=tk.LEFT, padx=(2, 8))
+        noise_entry.bind("<Return>", lambda _event: self._apply_noise_threshold())
+        noise_entry.bind("<FocusOut>", lambda _event: self._apply_noise_threshold())
+
         self.cop_var = self._checkbox(bar, "Show CoP", self._update_plot)
         ttk.Button(bar, text="Pressure calibration...", command=self._open_calibration).pack(side=tk.LEFT, padx=(0, 8))
         ttk.Button(bar, text="Plot options...", command=self._open_plot_options).pack(side=tk.LEFT, padx=(0, 8))
@@ -313,7 +323,7 @@ class DesktopApp:
 
         stats_panel = ttk.LabelFrame(sidebar, text="Live pressure", padding=8)
         stats_panel.pack(side=tk.TOP, fill=tk.X)
-        self.pressure_status_var = tk.StringVar(value="Pressure calibration needed")
+        self.pressure_status_var = tk.StringVar(value="Default pressure calibration active")
         ttk.Label(stats_panel, textvariable=self.pressure_status_var, wraplength=190).pack(anchor="w")
         self.peak_var = tk.StringVar(value="Peak: -")
         self.mean_var = tk.StringVar(value="Mean contact: -")
@@ -670,6 +680,7 @@ class DesktopApp:
         if self.difference_var.get() and DATA_MODES[self.data_mode_var.get()] != self.reference_mode:
             self.difference_var.set(False)
         self.roi_history.clear()
+        self._update_stats()
         if self.frame is not None:
             self._build_plot()
         self._update_history_plot()
@@ -689,6 +700,19 @@ class DesktopApp:
         except ValueError:
             self.threshold_var.set(str(self.contact_threshold_kpa))
             self.status_var.set("Contact threshold must be a nonnegative number")
+
+    def _apply_noise_threshold(self):
+        try:
+            value = float(self.noise_threshold_var.get())
+            if not np.isfinite(value) or value < 0:
+                raise ValueError
+            self.signal_noise_threshold = value
+            self.cop_history.clear()
+            self._update_stats()
+            self._update_plot()
+        except ValueError:
+            self.noise_threshold_var.set(str(self.signal_noise_threshold))
+            self.status_var.set("Signal noise threshold must be a nonnegative number")
 
     def _open_calibration(self):
         editor = CalibrationWindow(self.root, self.pressure_calibration,
@@ -1157,8 +1181,8 @@ class DesktopApp:
                                   pressure_calibration=self.pressure_calibration)
         self.calibration.update(self.current_grid)
         self._update_stats()
-        if self.stats is not None and self.stats["cop_x"] is not None:
-            self.cop_history.append((self.frame_timestamp, self.stats["cop_x"], self.stats["cop_y"]))
+        if self.display_cop[0] is not None:
+            self.cop_history.append((self.frame_timestamp, *self.display_cop))
         self._add_history_sample()
         self._add_roi_history_sample()
         if self.recorder is not None:
@@ -1220,11 +1244,20 @@ class DesktopApp:
         pressure_unavailable = grid is None
         if pressure_unavailable:
             grid = np.zeros((TOTAL_ROWS, TOTAL_COLS))
+        elif key != "pressure":
+            grid = np.where(np.isfinite(grid) & (grid > self.signal_noise_threshold), grid, 0.0)
         finite_values = grid[np.isfinite(grid)]
         difference = (self.difference_var.get() and self.reference_grid is not None
                       and self.reference_mode == key and not pressure_unavailable)
         if difference:
-            grid = (self.comparison_grid if self.comparison_grid is not None else grid) - self.reference_grid
+            comparison = self.comparison_grid if self.comparison_grid is not None else grid
+            reference = self.reference_grid
+            if key != "pressure":
+                comparison = np.where(
+                    np.isfinite(comparison) & (comparison > self.signal_noise_threshold), comparison, 0.0)
+                reference = np.where(
+                    np.isfinite(reference) & (reference > self.signal_noise_threshold), reference, 0.0)
+            grid = comparison - reference
             finite_difference = grid[np.isfinite(grid)]
             limit = max(1.0, float(np.max(np.abs(finite_difference)))) if finite_difference.size else 1.0
             vmin, vmax = -limit, limit
@@ -1241,11 +1274,12 @@ class DesktopApp:
             cols, rows = np.meshgrid(np.linspace(0, TOTAL_COLS - 1, plot_grid.shape[1]),
                                      np.linspace(0, TOTAL_ROWS - 1, plot_grid.shape[0]))
             self.axes.plot_surface(
-                cols, rows, plot_grid, cmap="coolwarm" if difference else HEATMAP_COLORS,
-                vmin=vmin, vmax=vmax,
+                cols, rows, -plot_grid,
+                cmap="coolwarm_r" if difference else HEATMAP_COLORS.reversed(),
+                vmin=-vmax, vmax=-vmin,
             )
-            self.axes.set_zlim(vmin, vmax)
-            self.axes.set_zlabel("kPa" if key == "pressure" else "Relative sensor value")
+            self.axes.set_zlim(-vmax, -vmin)
+            self.axes.set_zlabel("-kPa" if key == "pressure" else "Negative sensor value")
         else:
             for collection in list(self.axes.collections):
                 collection.remove()
@@ -1302,8 +1336,8 @@ class DesktopApp:
                 self.axes.add_patch(self.roi_patch)
             if self.selected_cell is not None:
                 self.selected_marker.set_data([self.selected_cell[1]], [self.selected_cell[0]])
-            if self.cop_var.get() and self.stats is not None and self.stats["cop_x"] is not None:
-                self.cop_marker.set_data([self.stats["cop_x"]], [self.stats["cop_y"]])
+            if self.cop_var.get() and self.display_cop[0] is not None:
+                self.cop_marker.set_data([self.display_cop[0]], [self.display_cop[1]])
             else:
                 self.cop_marker.set_data([], [])
             if self.cell_labels is not None:
@@ -1328,6 +1362,19 @@ class DesktopApp:
         self.status_var.set(prefix + ("Difference vs reference | " if difference else "") + status)
 
     def _update_stats(self):
+        if self.frame is None:
+            self.display_cop = (None, None)
+            return
+
+        key = DATA_MODES[self.data_mode_var.get()]
+        selected_grid = self.frame[key]
+        if selected_grid is None:
+            self.display_cop = (None, None)
+        elif key == "pressure":
+            self.display_cop = weighted_center(selected_grid, self.contact_threshold_kpa)
+        else:
+            self.display_cop = weighted_center(selected_grid, self.signal_noise_threshold)
+
         if self.frame is None or self.frame["pressure"] is None:
             count = self.pressure_calibration.calibrated_count
             self.pressure_status_var.set(f"Calibrate {TOTAL_ROWS * TOTAL_COLS - count} more cells for pressure statistics")
@@ -1335,7 +1382,9 @@ class DesktopApp:
             self.mean_var.set("Mean contact: -")
             self.area_var.set("Contact area: -")
             self.force_var.set("Force: -")
-            self.cop_text_var.set("CoP: -")
+            x, y = self.display_cop
+            self.cop_text_var.set(
+                f"CoP (relative): x={x:.1f}, y={y:.1f} cells" if x is not None else "CoP (relative): -")
             self.stats = None
             return
 
@@ -1351,8 +1400,9 @@ class DesktopApp:
                           else f"Contact area: {count} cells")
         force = self.stats["force_n"]
         self.force_var.set(f"Force: {force:.1f} N" if force is not None else "Force: set cell dimensions")
-        x, y = self.stats["cop_x"], self.stats["cop_y"]
-        self.cop_text_var.set(f"CoP: x={x:.1f}, y={y:.1f} cells" if x is not None else "CoP: -")
+        x, y = self.display_cop
+        label = "CoP" if key == "pressure" else "CoP (relative)"
+        self.cop_text_var.set(f"{label}: x={x:.1f}, y={y:.1f} cells" if x is not None else f"{label}: -")
 
     def _on_plot_click(self, event):
         if self.plot_type_var.get() != "2D Heatmap" or event.inaxes != self.axes:
