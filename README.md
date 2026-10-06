@@ -4,33 +4,6 @@ Pressure-sensing smart mat project — resistive sensor firmware, a Raspberry Pi
 
 **Live site (temporary domain):** https://guaggy.github.io/SmartMat/
 
-## Git / GitHub basics
-
-Day-to-day loop after making changes in VS Code:
-
-```
-git status                  # see what changed
-git add -A                  # stage everything (or `git add <file>` for specific files)
-git commit -m "message"     # commit staged changes locally
-git push                    # send commits to GitHub
-```
-
-Getting changes down (e.g. after editing on another machine or in the GitHub web UI):
-
-```
-git pull
-```
-
-Useful extras:
-
-```
-git log --oneline           # quick commit history
-git diff                    # see uncommitted changes before staging
-git branch                  # confirm which branch you're on
-```
-
-VS Code's Source Control panel (branch icon in the left sidebar) does the same thing without the terminal: `+` stages a file, the checkmark commits, and the sync (↕) button pulls then pushes in one click.
-
 ## Folder structure
 
 - **`ESP32/`** — ESP32 firmware for the resistive pressure mat, built with PlatformIO (`platformio.ini`, `src/`, `include/`, `lib/`); see `ESP32/README.md`.
