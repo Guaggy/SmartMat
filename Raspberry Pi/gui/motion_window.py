@@ -4,6 +4,8 @@ import tkinter as tk
 from tkinter import ttk
 from datetime import datetime
 
+from gui.reposition_window import RepositionWindow
+
 
 def _time_label(timestamp):
     return datetime.fromtimestamp(timestamp).strftime("%H:%M:%S") if timestamp > 1_000_000_000 else f"{timestamp:.1f}s"
@@ -15,6 +17,7 @@ class MotionWindow:
         self.window = tk.Toplevel(parent)
         self.window.title("Movement and reposition")
         self.window.geometry("900x560")
+        ttk.Label(self.window, text='Shows when the person moved or repositioned, and how much the pressure changed afterwards.', wraplength=760, padding=(8, 6)).pack(side=tk.TOP, fill=tk.X)
         self.score_var = tk.StringVar()
         ttk.Label(self.window, textvariable=self.score_var, padding=8).pack(fill=tk.X)
         ttk.Button(self.window, text="Annotate known reposition...",
@@ -35,7 +38,7 @@ class MotionWindow:
         self.details_var = tk.StringVar(value="Select a reposition")
         ttk.Label(reposition_tab, textvariable=self.details_var, wraplength=860,
                   padding=8).pack(fill=tk.X)
-        ttk.Button(reposition_tab, text="Show after - before on main heatmap",
+        ttk.Button(reposition_tab, text="Open before / after view...",
                    command=self._show_difference).pack(anchor="w", padx=8, pady=6)
         self.timeline = tk.Listbox(timeline_tab)
         self.timeline.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
@@ -84,27 +87,16 @@ class MotionWindow:
         if record is None:
             self.details_var.set("Select a reposition")
             return
-        before, after = record["before"], record["after"]
-        def pair(key, unit=""):
-            first, second = before[key], after[key]
-            if first is None or second is None:
-                return "-"
-            return f"{first:.1f} → {second:.1f}{unit}"
-        self.details_var.set(
-            f"Peak {pair('peak_kpa', ' kPa')} | mean contact {pair('mean_kpa', ' kPa')} | "
-            f"contact {pair('contact_cells', ' cells')} | "
-            f"contact area {pair('contact_area_m2', ' m²')} | "
-            f"high-pressure area {pair('high_pressure_cells', ' cells')}\n"
-            f"Hotspots {pair('hotspot_count')} | persistent {pair('persistent_count')} | "
-            f"max burden {pair('max_burden')} | exposure {pair('exposure', ' kPa·min')} | "
-            f"hotspot exposure rate {pair('hotspot_exposure_rate', ' kPa')}\n"
-            f"Left load {pair('left_percent', '%')} | upper load {pair('upper_percent', '%')} | "
-            f"CoP travel {record['cop_displacement_cells']} cells")
+        self.details_var.set(f"Peak pressure {record['before']['peak_kpa']:.1f} → {record['after']['peak_kpa']:.1f} kPa. "
+                             "Open the before / after view for the full comparison."
+                             if None not in (record['before']['peak_kpa'], record['after']['peak_kpa'])
+                             else "Open the before / after view for the full comparison.")
 
     def _show_difference(self):
         record = self._selected()
         if record is not None:
-            self.app.show_reposition_difference(record)
+            from gui.desktop import HEATMAP_COLORS  # lazy: desktop imports this module
+            RepositionWindow(self.window, record, _time_label(record["timestamp"]), HEATMAP_COLORS)
 
     def _timeline_details(self):
         selection = self.timeline.curselection()

@@ -2,6 +2,7 @@ ESP32/.pio/
 ESP32/CLAUDE.local.md
 ESP32/src/secrets.h
 Raspberry Pi/config.py
+Raspberry Pi/mats.json
 Raspberry Pi/recordings/
 **/__pycache__/
 *.pyc

@@ -1,5 +1,6 @@
 """The Tkinter desktop app"""
 
+import copy
 import socket
 import time
 import tkinter as tk
@@ -11,18 +12,18 @@ import config as app_config
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.figure import Figure
-from matplotlib.patches import Rectangle
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 - registers the 3D projection
 
 from config import (
-    TOTAL_ROWS, TOTAL_COLS, VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT,
+    VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT,
     BAUD_RATE, WEB_PORT, STALE_AFTER_S, RECONNECT_INTERVAL_S,
     CELL_WIDTH_MM, CELL_HEIGHT_MM, CONTACT_THRESHOLD_KPA,
     PRESSURE_DISPLAY_MAX_KPA, HISTORY_MAX_FRAMES,
     DISPLAY_SCALE, PRESSURE_CONTOUR_LEVELS_KPA, RELATIVE_CONTOUR_LEVELS,
-    VALIDATION_MATCH_WINDOW_S,
+    VALIDATION_MATCH_WINDOW_S, INDEX_UPDATE_INTERVAL_S,
 )
-from processing.calibration import Calibration, PressureCalibration
+from general import load_mat_names, mat_labels, save_mat_names
+from processing.calibration import Calibration, IndividualCalibration, PressureCalibration, UniformCalibration
 from processing.session_events import STATE_EVENTS, apply_state_event, event_is_due
 from processing.session_state import initial_session_state
 from processing.settings import apply_settings, capture_settings, default_settings
@@ -33,6 +34,10 @@ from processing.recording import RECORDINGS_DIR, Recorder, load_session
 from processing.sensor_health import SensorHealth
 from processing.hotspots import HotspotTracker
 from processing.motion import MotionAnalyzer
+from processing.occupancy import OccupancyDetector
+from processing.roi import mask_to_cells
+from processing.indices import NEAR, OK, OVER, IndexMonitor
+from processing.signals import Context
 from processing.temporal import TemporalAnalysis
 from processing.timeline import EventTimeline
 from processing.statistics import contact_mask, pressure_statistics, weighted_center
@@ -46,6 +51,8 @@ from gui.diagnostics_window import DiagnosticsWindow
 from gui.temporal_window import TemporalWindow
 from gui.hotspot_window import HotspotWindow
 from gui.motion_window import MotionWindow
+from gui.indices_window import IndicesWindow
+from gui.roi_window import RoiWindow
 from gui.annotation_window import AnnotationWindow
 from gui.engineering_window import EngineeringWindow
 from gui.help_window import HelpWindow
@@ -60,9 +67,20 @@ DATA_MODES = {
     "Calibrated pressure": "pressure",
 }
 
+OCCUPANCY_LABELS = {  # muted: this sits on screen all day
+    True: ("Patient detected", "#5b9d61"),
+    False: ("No patient", "#777777"),
+    None: ("Patient: unknown", "#9da7b1"),
+}
+
+INDEX_CHIP_COLORS = {"inactive": "#9da7b1", OK: "#777777", NEAR: "#e8b04e", OVER: "#bd5555"}
+INDEX_EVENTS = {OK: "index_cleared", NEAR: "index_near_threshold", OVER: "index_over_threshold"}
+INDEX_OUTLINE_COLOR = "#8a4f9e"  # distinct from hotspot red/orange and the blue contact boundary
+
 HEATMAP_COLORS = LinearSegmentedColormap.from_list(
     "relative_pressure", ["white", "green", "red"]
 )
+DEFAULT_SHAPE = (app_config.TOTAL_ROWS, app_config.TOTAL_COLS)  # config.py's own size, used by Serial/Simulated
 
 
 def _get_local_ip():
@@ -77,6 +95,11 @@ def _get_local_ip():
         sock.close()
 
 
+def _web_address():
+    """Where the web dashboard is reached: the mDNS name, with the plain IP as a fallback"""
+    return (f"http://{socket.gethostname()}.local:{WEB_PORT}", f"http://{_get_local_ip()}:{WEB_PORT}")
+
+
 class DesktopApp:
     """Owns the window, the active data source, and the current grid"""
 
@@ -88,12 +111,24 @@ class DesktopApp:
         self.source = None
         self.recorder = None
         self.web_server = None
+        self.mat_names = load_mat_names()  # chip id -> nickname
+        self._mats = {}                    # chip id -> (rows, cols), as last shown in the device list
+        self._mat_ids = {}                 # device-list label -> chip id
+        self._discovery = None             # MqttSource that only listens for mats' metadata
         self.calibration = Calibration()
         self.pressure_calibration = PressureCalibration.default()
         self.sensor_health = SensorHealth()
         self.temporal = TemporalAnalysis()
         self.hotspots = HotspotTracker()
         self.motion = MotionAnalyzer()
+        self.occupancy = OccupancyDetector()
+        self.indices = IndexMonitor()
+        self.index_history = {}      # summary index name -> recent (time, value) for its trend
+        self.index_chips = {}        # index name -> status-bar label
+        self.indices_window = None
+        self._live_indices = None    # live definitions kept aside while a recording plays
+        self._last_index_update = 0.0
+        self._last_web_publish = 0.0
         self.hotspot_window = None
         self.motion_window = None
         self._last_feature_draw = 0.0
@@ -130,12 +165,11 @@ class DesktopApp:
         self.selected_cell = None
         self.cell_history = deque(maxlen=HISTORY_MAX_FRAMES)
         self.cop_history = deque(maxlen=HISTORY_MAX_FRAMES)
-        self.roi = None
-        self.roi_corner = None
-        self.selecting_roi = False
+        self.roi = None  # boolean mask of the selected cells, or None
         self.roi_history = deque(maxlen=HISTORY_MAX_FRAMES)
         self.history_window = None
         self.analysis_window = None
+        self.roi_window = None
         self.calibration_windows = []
         self.diagnostics_window = None
         self.plot_options_window = None
@@ -145,7 +179,7 @@ class DesktopApp:
         self._last_temporal_draw = 0.0
         self.stats = None
         self.display_cop = (None, None)
-        self.interpolation_method = "None"
+        self.interpolation_method = "Linear"
         self.display_scale = DISPLAY_SCALE
         self.show_contours = False
         self.show_boundary = False
@@ -171,13 +205,23 @@ class DesktopApp:
         self._build_data_bar()
         self._build_options_bar()
         self.status_var = tk.StringVar(value="Not connected")
-        ttk.Label(self.root, textvariable=self.status_var, padding=4).pack(side=tk.BOTTOM, fill=tk.X)
+        status_bar = ttk.Frame(self.root)
+        status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        self.occupancy_label = tk.Label(status_bar, fg="white", padx=10)
+        self.occupancy_label.pack(side=tk.RIGHT, padx=4, pady=2)
+        self.index_chip_bar = ttk.Frame(status_bar)
+        self.index_chip_bar.pack(side=tk.RIGHT)
+        self._build_index_chips()
+        self._update_occupancy()
+        ttk.Label(status_bar, textvariable=self.status_var, padding=4).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._toggle_web_ui()  # Web UI defaults to on
         self._refresh_devices()
 
         self.content = ttk.Frame(self.root)
         self.content.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
         self._build_about_panel()
+        self._build_plot_area()
         self._build_plot()
         self._poll()
 
@@ -200,6 +244,8 @@ class DesktopApp:
         self.device_var = tk.StringVar()
         self.device_menu = ttk.Combobox(bar, textvariable=self.device_var, state="readonly", width=22)
         self.device_menu.pack(side=tk.LEFT, padx=(0, 8))
+        self.rename_button = ttk.Button(bar, text="Rename...", command=self._rename_mat)
+        self.rename_button.pack(side=tk.LEFT, padx=(0, 8))
 
         ttk.Button(bar, text="Connect", command=self._connect).pack(side=tk.LEFT, padx=(0, 12))
         ttk.Button(bar, text="Disconnect", command=self._disconnect).pack(side=tk.LEFT, padx=(0, 12))
@@ -269,13 +315,7 @@ class DesktopApp:
         data_menu.pack(side=tk.LEFT, padx=(0, 12))
         data_menu.bind("<<ComboboxSelected>>", lambda _event: self._change_data_mode())
 
-        ttk.Label(bar, text="Contact >").pack(side=tk.LEFT)
         self.threshold_var = tk.StringVar(value=str(self.contact_threshold_kpa))
-        threshold_entry = ttk.Entry(bar, textvariable=self.threshold_var, width=6)
-        threshold_entry.pack(side=tk.LEFT, padx=(2, 2))
-        threshold_entry.bind("<Return>", lambda _event: self._apply_contact_threshold())
-        threshold_entry.bind("<FocusOut>", lambda _event: self._apply_contact_threshold())
-        ttk.Label(bar, text="kPa").pack(side=tk.LEFT, padx=(0, 12))
 
         ttk.Label(bar, text="Ignore signal <=").pack(side=tk.LEFT)
         self.noise_threshold_var = tk.StringVar(value=str(self.signal_noise_threshold))
@@ -287,6 +327,7 @@ class DesktopApp:
         self.cop_var = self._checkbox(bar, "Show CoP", self._update_plot)
         ttk.Button(bar, text="Pressure calibration...", command=self._open_calibration).pack(side=tk.LEFT, padx=(0, 8))
         ttk.Button(bar, text="Plot options...", command=self._open_plot_options).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(bar, text="ROI...", command=self._open_roi).pack(side=tk.LEFT, padx=(0, 8))
         ttk.Button(bar, text="Analysis...", command=self._open_analysis).pack(side=tk.LEFT, padx=(0, 8))
         ttk.Button(bar, text="Diagnostics...", command=self._open_diagnostics).pack(side=tk.LEFT, padx=(0, 8))
         ttk.Button(bar, text="Temporal...", command=self._open_temporal).pack(side=tk.LEFT)
@@ -299,19 +340,19 @@ class DesktopApp:
         self.auto_scale_var = self._checkbox(bar, "Auto-scale", self._toggle_calibration)
         self.paused_var = self._checkbox(bar, "Pause", self._toggle_pause)
         self.numbers_var = self._checkbox(bar, "Show numbers", self._toggle_numbers)
-        self.auto_reconnect_var = self._checkbox(bar, "Auto-reconnect")
-        self.web_ui_var = self._checkbox(bar, "Web UI", self._toggle_web_ui)
-        self.share_live_var = self._checkbox(bar, "Share live data", self._toggle_share_live)
-        self.show_hotspots_var = self._checkbox(bar, "Show hotspots", self._toggle_hotspots)
+        self.auto_reconnect_var = self._checkbox(bar, "Auto-reconnect", default=True)
+        self.web_ui_var = self._checkbox(bar, "Web UI", self._toggle_web_ui, default=True)
+        self.show_hotspots_var = self._checkbox(bar, "Show hotspots", self._toggle_hotspots, default=True)
         ttk.Button(bar, text="Hotspots...", command=self._open_hotspots).pack(side=tk.LEFT, padx=4)
         ttk.Button(bar, text="Movement...", command=self._open_motion).pack(side=tk.LEFT, padx=4)
+        ttk.Button(bar, text="Indices...", command=self._open_indices).pack(side=tk.LEFT, padx=4)
         ttk.Button(bar, text="Engineering...", command=self._open_engineering).pack(side=tk.LEFT, padx=4)
         ttk.Button(bar, text="Help", command=self._open_help).pack(side=tk.LEFT, padx=4)
 
     @staticmethod
-    def _checkbox(parent, text, command=None):
+    def _checkbox(parent, text, command=None, default=False):
         """Add one checkbox to parent, return its BooleanVar"""
-        var = tk.BooleanVar(value=False)
+        var = tk.BooleanVar(value=default)
         kwargs = {"command": command} if command else {}
         ttk.Checkbutton(parent, text=text, variable=var, **kwargs).pack(side=tk.LEFT, padx=(0, 8))
         return var
@@ -342,13 +383,14 @@ class DesktopApp:
         ttk.Label(panel, textvariable=self.fps_var).pack(anchor="w", pady=(0, 8))
 
         self._info_line(panel, "ESP32", header=True)
-        self._info_line(panel, f"Grid: {TOTAL_ROWS} x {TOTAL_COLS}")
+        self.grid_info_var = tk.StringVar(value=f"Grid: {app_config.TOTAL_ROWS} x {app_config.TOTAL_COLS}")
+        ttk.Label(panel, textvariable=self.grid_info_var).pack(anchor="w")
         self._info_line(panel, f"Baud rate: {BAUD_RATE}")
         self._info_line(panel, f"Value range: {VALUE_MIN_DEFAULT}-{VALUE_MAX_DEFAULT}")
 
         self._info_line(panel, "App", header=True, top_pad=8)
-        self._info_line(panel, f"Host IP: {_get_local_ip()}")
-        self._info_line(panel, f"Web UI port: {WEB_PORT}")
+        self.web_address_var = tk.StringVar(value="Web UI:\n{}\nor {}".format(*_web_address()))
+        ttk.Label(panel, textvariable=self.web_address_var, wraplength=190).pack(anchor="w")
         self._info_line(panel, f"Stale after: {STALE_AFTER_S}s")
         self._info_line(panel, f"Reconnect every: {RECONNECT_INTERVAL_S}s")
         if self.cell_area_m2 is None:
@@ -365,13 +407,25 @@ class DesktopApp:
         """Repopulate the device dropdown, keeping the current selection if still valid"""
         source = self.source_var.get()
         previous = self.device_var.get()
+        self.rename_button.state(["!disabled" if source == "MQTT" else "disabled"])
 
         if source == "Serial":
             values = [port.device for port in list_ports()]
             default = values[0] if values else ""
         elif source == "MQTT":
-            values = ["(configured broker)"]
-            default = values[0]
+            if self._discovery is None:
+                try:
+                    discovery = MqttSource()  # no mat selected: only listens for mats' metadata
+                    discovery.start()
+                    self._discovery = discovery
+                except Exception as error:
+                    self.status_var.set(f"Could not look for mats: {error}")
+            selected = self._mat_ids.get(previous)
+            self._mat_ids = mat_labels(self._mats, self.mat_names)
+            values = list(self._mat_ids)
+            # keep the same mat selected even if it was just renamed
+            default = next((label for label, chip_id in self._mat_ids.items() if chip_id == selected),
+                           values[0] if values else "")
         else:
             values = [f"Synthetic: {name}" for name in SCENARIOS]
             if RECORDINGS_DIR.exists():
@@ -382,6 +436,45 @@ class DesktopApp:
         self.device_menu.configure(values=values)
         self.device_var.set(previous if previous in values else default)
 
+    def _sync_mats(self):
+        """Relist the MQTT devices when the broker has reported a new or changed mat"""
+        if self._discovery is not None and self._discovery.mats != self._mats:
+            self._mats = dict(self._discovery.mats)
+            self._publish_web(force=True)
+            if self.source_var.get() == "MQTT":
+                self._refresh_devices()
+
+    def _rename_mat(self):
+        chip_id = self._mat_ids.get(self.device_var.get())
+        if chip_id is None:
+            self.status_var.set("Select a mat to rename")
+            return
+        name = simpledialog.askstring(
+            "Rename mat", f"Name for mat {chip_id} (leave empty to show the chip ID):",
+            initialvalue=self.mat_names.get(chip_id, ""), parent=self.root)
+        if name is None:
+            return
+        if name.strip():
+            self.mat_names[chip_id] = name.strip()
+        else:
+            self.mat_names.pop(chip_id, None)
+        try:
+            save_mat_names(self.mat_names)
+        except OSError as error:
+            self.status_var.set(f"Could not save mat name: {error}")
+        self._refresh_devices()
+        self._publish_web(force=True)
+
+    def _build_plot_area(self):
+        """Holds the reference buttons directly above the (rebuilt) plot canvas"""
+        self.plot_area = ttk.Frame(self.content)
+        self.plot_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        bar = ttk.Frame(self.plot_area, padding=(0, 0, 0, 4))
+        bar.pack(side=tk.TOP, fill=tk.X)
+        ttk.Button(bar, text="Capture reference", command=self._capture_reference).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Checkbutton(bar, text="Show reference", variable=self.difference_var,
+                        command=self._toggle_difference).pack(side=tk.LEFT)
+
     def _build_plot(self):
         """Build the matplotlib figure for the currently selected plot type"""
         if hasattr(self, "canvas"):
@@ -390,7 +483,6 @@ class DesktopApp:
         self.cell_labels = None
         self.cop_marker = None
         self.selected_marker = None
-        self.roi_patch = None
         self.hotspot_labels = []
         self.figure = Figure(figsize=(6, 6))
         if self.plot_type_var.get() == "3D Surface":
@@ -398,7 +490,7 @@ class DesktopApp:
         else:
             self.axes = self.figure.add_subplot()
             self.image = self.axes.imshow(
-                np.zeros((TOTAL_ROWS, TOTAL_COLS)),
+                np.zeros((app_config.TOTAL_ROWS, app_config.TOTAL_COLS)),
                 cmap="coolwarm" if self.difference_var.get() else HEATMAP_COLORS,
                 vmin=VALUE_MIN_DEFAULT, vmax=VALUE_MAX_DEFAULT,
                 aspect="auto",
@@ -415,18 +507,56 @@ class DesktopApp:
             if self.numbers_var.get():
                 self.cell_labels = [
                     [self.axes.text(col, row, "0", ha="center", va="center", fontsize=6)
-                     for col in range(TOTAL_COLS)]
-                    for row in range(TOTAL_ROWS)
+                     for col in range(app_config.TOTAL_COLS)]
+                    for row in range(app_config.TOTAL_ROWS)
                 ]
 
-        self.canvas = FigureCanvasTkAgg(self.figure, master=self.content)
+        self.canvas = FigureCanvasTkAgg(self.figure, master=self.plot_area)
         self.canvas.mpl_connect("button_press_event", self._on_plot_click)
-        self.canvas.get_tk_widget().pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
         if self.frame is not None:
             self._update_plot()
 
     # ---- source lifecycle
+
+    def _apply_grid_shape(self, rows, cols):
+        """Switch the app to a mat's grid size; everything sized to the old grid starts over"""
+        if (rows, cols) == (app_config.TOTAL_ROWS, app_config.TOTAL_COLS):
+            return
+        if self.recorder is not None:
+            self._toggle_recording()  # a recording cannot span two grid sizes: save it at the old one
+        app_config.TOTAL_ROWS, app_config.TOTAL_COLS = rows, cols
+        self.calibration.baseline = None
+        try:
+            self.pressure_calibration.individual = IndividualCalibration.default()
+        except ValueError:  # the configured startup calibration file is for another grid size
+            self.pressure_calibration.individual = IndividualCalibration()
+        self.pressure_calibration.uniform = UniformCalibration()
+        self.pressure_calibration.use("individual")
+        for mode in MODES:
+            mode.reset()
+        self.temporal.reset_all()
+        self.hotspots.reset()
+        self.motion.reset()
+        self.occupancy.reset()
+        self._reset_indices()
+        self.sensor_health.reset()
+        self.frame = self.raw_grid = self.current_grid = self.pre_baseline_grid = None
+        self.reference_grid = self.comparison_grid = None
+        self.difference_var.set(False)
+        self.selected_cell = None
+        self.selected_cell_var.set("Cell: click the 2D plot")
+        self.roi = None
+        self.cell_history.clear()
+        self.cop_history.clear()
+        self.roi_history.clear()
+        self.grid_info_var.set(f"Grid: {rows} x {cols}")
+        self._publish_web(force=True)
+        self._update_stats()
+        self._build_plot()
+        if self.roi_window is not None and self.roi_window.window.winfo_exists():
+            self.roi_window.reset()
 
     def _connect(self):
         """Stop the current source and start the selected one"""
@@ -445,6 +575,8 @@ class DesktopApp:
         self.temporal.reset_all()
         self.hotspots.reset()
         self.motion.reset()
+        self.occupancy.reset()
+        self._reset_indices()
         self.session_state = None
         self.timeline = EventTimeline()
         self.playback_speed_label.pack_forget()
@@ -455,10 +587,14 @@ class DesktopApp:
         device = self.device_var.get()
 
         try:
+            if source_name != "MQTT":
+                self._apply_grid_shape(*DEFAULT_SHAPE)  # only MQTT mats report their own size
             if source_name == "Serial":
                 self.source = SerialSource(device)
             elif source_name == "MQTT":
-                self.source = MqttSource()
+                if device not in self._mat_ids:
+                    raise ValueError("no mat selected (none has reported to the broker yet)")
+                self.source = MqttSource(self._mat_ids[device])
             elif device.startswith("Synthetic:"):
                 self.source = SimulatedSource(scenario=device.split(":", 1)[1].strip())
             elif not device:
@@ -473,8 +609,8 @@ class DesktopApp:
                                     self.active_mode.label, self.mode_param_var.get(),
                                     self.contact_threshold_kpa, self.preset_name,
                                     self.experiment_info.copy())
-                self._current_analysis_settings = capture_settings(
-                    self.contact_threshold_kpa, self.temporal, self.hotspots, self.motion)
+                self._current_analysis_settings = self.current_settings()
+                self._live_indices = copy.deepcopy(self.indices.definitions)
                 self._replay_policy = self.replay_settings_var.get()
                 if self._replay_policy == "Re-analyze with current settings" and previous_analysis_settings:
                     self._current_analysis_settings = previous_analysis_settings
@@ -498,14 +634,18 @@ class DesktopApp:
             self.roi_history.clear()
             self.sensor_health.reset()
             self.source.start()
+            if source_name == "MQTT":
+                self._apply_grid_shape(*self.source.shape)  # start() only returns once the mat reported it
             self.last_frame_time = time.time()
             replay_label = f" | {self._replay_policy}" if getattr(self.source, "is_playback", False) else ""
             self.status_var.set(f"Connected via {source_name} ({device}){replay_label}")
+            self._publish_web(force=True)
         except Exception as error:
             self.source = None
             self._restore_live_state()
             self._applying_playback_event = False
             self.status_var.set(f"Could not connect: {error}")
+            self._publish_web(force=True)
 
     def _disconnect(self):
         self._close_calibration_windows()
@@ -519,6 +659,8 @@ class DesktopApp:
         self.raw_grid = None
         self.current_grid = None
         self.last_frame_time = None
+        self.occupancy.reset()
+        self._reset_indices()
         self.playback_speed_label.pack_forget()
         self.playback_speed_menu.pack_forget()
         self.replay_settings_menu.pack_forget()
@@ -526,6 +668,7 @@ class DesktopApp:
         self.status_var.set("Disconnected")
         self._update_stats()
         self._build_plot()
+        self._publish_web(force=True)
 
     def _close_calibration_windows(self):
         for editor in self.calibration_windows:
@@ -541,6 +684,9 @@ class DesktopApp:
          label, parameter, self.contact_threshold_kpa, self.preset_name,
          self.experiment_info) = self._live_state
         self._live_state = None
+        if self._live_indices is not None:
+            self._set_indices(self._live_indices)
+            self._live_indices = None
         self._playback_metadata = None
         self._recorded_state_events = []
         self._current_analysis_settings = None
@@ -573,9 +719,11 @@ class DesktopApp:
             for group, key in (("temporal", "temporal"), ("hotspots", "hotspots"),
                                ("movement", "movement")):
                 settings[group].update(metadata.get(key, {}))
+            settings["indices"] = metadata.get("indices", self._live_indices)  # older recording: keep yours
             self.preset_name = metadata.get("preset", "Recorded")
         self.experiment_info = metadata.get("experiment", {}).copy()
         self.contact_threshold_kpa = apply_settings(settings, self.temporal, self.hotspots, self.motion)
+        self._set_indices(settings.get("indices", self._live_indices))
         self.threshold_var.set(str(self.contact_threshold_kpa))
         label = (self._live_state[5] if self._replay_policy == "Re-analyze with current settings"
                  else metadata.get("processing_mode", MODES[0].label))
@@ -605,6 +753,9 @@ class DesktopApp:
                 threshold = apply_state_event(event, self.calibration,
                                               self.pressure_calibration, self.temporal,
                                               self.hotspots, self.motion)
+                recorded = (event.get("payload") or {}).get("settings", {})
+                if event["kind"] == "algorithm_settings_changed" and "indices" in recorded:
+                    self._set_indices(recorded["indices"])
                 if threshold is not None:
                     self.contact_threshold_kpa = threshold
                     self.threshold_var.set(str(threshold))
@@ -716,7 +867,7 @@ class DesktopApp:
 
     def _open_calibration(self):
         editor = CalibrationWindow(self.root, self.pressure_calibration,
-                                   lambda: self.raw_grid, self._refresh_calibration)
+                                   lambda: self.pre_baseline_grid, self._refresh_calibration)
         self.calibration_windows.append(editor)
 
     def _open_plot_options(self):
@@ -733,7 +884,7 @@ class DesktopApp:
         ttk.Label(panel, text="Interpolation:").grid(row=0, column=0, sticky="w")
         self.interpolation_var = tk.StringVar(value=self.interpolation_method)
         method_menu = ttk.Combobox(panel, textvariable=self.interpolation_var, state="readonly",
-                                   values=["None", "Nearest", "Linear"], width=12)
+                                   values=["None", "Linear"], width=12)
         method_menu.grid(row=0, column=1, sticky="w")
         method_menu.bind("<<ComboboxSelected>>", lambda _event: self._apply_plot_options())
         ttk.Label(panel, text="Display scale:").grid(row=1, column=0, sticky="w", pady=8)
@@ -757,10 +908,6 @@ class DesktopApp:
         self.boundary_var = tk.BooleanVar(value=self.show_boundary)
         ttk.Checkbutton(panel, text="Show contact boundary", variable=self.boundary_var,
                         command=self._apply_plot_options).grid(row=6, column=0, columnspan=2, sticky="w", pady=8)
-        ttk.Button(panel, text="Capture reference", command=self._capture_reference).grid(row=7, column=0, sticky="w")
-        ttk.Button(panel, text="Clear reference", command=self._clear_reference).grid(row=7, column=1, sticky="w")
-        ttk.Checkbutton(panel, text="Show difference", variable=self.difference_var,
-                        command=self._toggle_difference).grid(row=8, column=0, columnspan=2, sticky="w", pady=8)
 
     def _apply_plot_options(self):
         try:
@@ -798,13 +945,6 @@ class DesktopApp:
         self.difference_var.set(True)
         self._build_plot()
 
-    def _clear_reference(self):
-        self.reference_grid = None
-        self.comparison_grid = None
-        self.reference_mode = None
-        self.difference_var.set(False)
-        self._build_plot()
-
     def _toggle_difference(self):
         if self.difference_var.get() and (self.reference_grid is None or
                                           self.reference_mode != DATA_MODES[self.data_mode_var.get()]):
@@ -812,6 +952,12 @@ class DesktopApp:
             self.status_var.set("Capture a reference in the selected data mode first")
         else:
             self._build_plot()
+
+    def _open_roi(self):
+        if self.roi_window is not None and self.roi_window.window.winfo_exists():
+            self.roi_window.window.lift()
+        else:
+            self.roi_window = RoiWindow(self.root, self)
 
     def _open_analysis(self):
         if self.analysis_window is not None and self.analysis_window.window.winfo_exists():
@@ -845,6 +991,12 @@ class DesktopApp:
         else:
             self.motion_window = MotionWindow(self.root, self)
 
+    def _open_indices(self):
+        if self.indices_window is not None and self.indices_window.window.winfo_exists():
+            self.indices_window.window.lift()
+        else:
+            self.indices_window = IndicesWindow(self.root, self)
+
     def _open_annotation(self, initial_type="Note"):
         AnnotationWindow(self.root, self, initial_type)
 
@@ -861,10 +1013,14 @@ class DesktopApp:
             self.help_window = HelpWindow(self.root)
 
     def current_settings(self):
-        return capture_settings(self.contact_threshold_kpa, self.temporal,
-                                self.hotspots, self.motion)
+        settings = capture_settings(self.contact_threshold_kpa, self.temporal,
+                                    self.hotspots, self.motion)
+        settings["indices"] = copy.deepcopy(self.indices.definitions)
+        return settings
 
     def apply_engineering_settings(self, settings, preset_name=None):
+        if "indices" in settings:  # first: an invalid set raises before anything is applied
+            self._set_indices(settings["indices"])
         self.contact_threshold_kpa = apply_settings(
             settings, self.temporal, self.hotspots, self.motion)
         self.threshold_var.set(str(self.contact_threshold_kpa))
@@ -882,18 +1038,9 @@ class DesktopApp:
         payload = {"type": annotation_type, "before_note": before_note,
                    "after_note": after_note}
         if annotation_type == "Known hotspot" and self.roi is not None:
-            payload["roi"] = list(self.roi)
+            payload["roi"] = mask_to_cells(self.roi)
             payload["comparison"] = compare_hotspot_roi(self.roi, self.hotspots.active)
         return self.add_event("annotation", note, payload)
-
-    def show_reposition_difference(self, record):
-        self.plot_type_var.set("2D Heatmap")
-        self.data_mode_var.set("Calibrated pressure")
-        self.reference_grid = record["before"]["grid"].copy()
-        self.comparison_grid = record["after"]["grid"].copy()
-        self.reference_mode = "pressure"
-        self.difference_var.set(True)
-        self._build_plot()
 
     def add_event(self, kind, note="", payload=None):
         playback = self.source is not None and getattr(self.source, "is_playback", False)
@@ -925,22 +1072,21 @@ class DesktopApp:
             return self.frame["baseline_subtracted"], "relative sensor value"
         return grid, "kPa" if key == "pressure" else "relative sensor value"
 
-    def _begin_roi_selection(self):
-        if self.plot_type_var.get() != "2D Heatmap":
-            self.plot_type_var.set("2D Heatmap")
-            self._build_plot()
-        self.selecting_roi = True
-        self.roi_corner = None
-        self.status_var.set("Select the first ROI corner on the 2D heatmap")
-
-    def _clear_roi(self):
-        self.roi = None
+    def set_roi(self, mask):
+        """Make a boolean cell mask the live ROI; None or an empty mask clears it"""
+        self.roi = mask.copy() if mask is not None and mask.any() else None
         self.temporal.clear_roi()
-        self.roi_corner = None
-        self.selecting_roi = False
         self.roi_history.clear()
+        self._add_roi_history_sample()
         self._update_plot()
         self._refresh_analysis()
+
+    def _outline_cells(self, mask, **style):
+        """Draw a line along the cell edges around the selected cells of a mask"""
+        fine = np.kron(np.pad(mask, 1).astype(float), np.ones((8, 8)))  # padded: closes at the mat edge
+        y = (np.arange(fine.shape[0]) + 0.5) / 8 - 1.5
+        x = (np.arange(fine.shape[1]) + 0.5) / 8 - 1.5
+        self.axes.contour(x, y, fine, levels=[0.5], **style)
 
     def _refresh_analysis(self):
         if self.analysis_window is not None and self.analysis_window.window.winfo_exists():
@@ -967,6 +1113,11 @@ class DesktopApp:
         if not np.all(np.isfinite(self.pre_baseline_grid)):
             self.status_var.set("Cannot capture tare while a sensor value is missing or invalid")
             return
+        try:
+            self.pressure_calibration.capture_tare(self.pre_baseline_grid)  # all-or-nothing
+        except ValueError as error:
+            self.status_var.set(str(error))
+            return
         self.calibration.capture_baseline(self.pre_baseline_grid)
         self.temporal.invalidate()
         self.hotspots.invalidate()
@@ -976,7 +1127,7 @@ class DesktopApp:
         self.frame["baseline_subtracted"] = self.calibration.apply_baseline(self.pre_baseline_grid)
         self.frame["display"] = self.frame["baseline_subtracted"].copy()
         self.current_grid = self.frame["display"]
-        self._refresh_calibration()
+        self._refresh_calibration("calibration_changed")  # offsets changed too; keeps replay in step
         self.status_var.set("Tare captured: current reading set as zero")
 
     def _view_baseline(self):
@@ -1058,6 +1209,7 @@ class DesktopApp:
                 "validation_match_window_s": self.validation_match_window_s,
                 "session_initial": self.session_state,
                 "recording_initial": self._recording_initial_state(),
+                "indices": copy.deepcopy(self.indices.definitions),
             }
             self.recorder = Recorder(name, source=source_name, metadata=metadata)
             self.add_event("recording_started")
@@ -1082,18 +1234,36 @@ class DesktopApp:
         if self.web_ui_var.get():
             self.web_server = web.WebServer()
             self.web_server.start()
-            self.status_var.set(f"Web UI running at http://localhost:{web.WEB_PORT}")
+            self.status_var.set(f"Web UI running at {_web_address()[0]}")
         elif self.web_server is not None:
             self.web_server.stop()
             self.web_server = None
 
-    def _toggle_share_live(self):
-        web.set_sharing(self.share_live_var.get())
+    def _publish_web(self, force=False):
+        """Send the known mats and a snapshot of the connected one to the web dashboard"""
+        now = time.time()
+        if not force and now - self._last_web_publish < 1.0:
+            return
+        self._last_web_publish = now
+        mats = [{"id": chip_id, "name": self.mat_names.get(chip_id) or chip_id, "rows": rows, "cols": cols}
+                for chip_id, (rows, cols) in sorted(self._mats.items())]
+        live_id = None
+        if self.source is not None:
+            live_id = getattr(self.source, "chip_id", None)
+            if live_id is None:  # Serial, Simulated or a recording: one entry of its own
+                live_id = "local"
+                mats.append({"id": live_id, "name": f"{self.source_var.get()} ({self.device_var.get()})",
+                             "rows": app_config.TOTAL_ROWS, "cols": app_config.TOTAL_COLS})
+        snapshot = None
+        if live_id is not None and self.frame is not None:
+            snapshot = web.build_snapshot(self.frame, self.hotspots.active, self.occupancy.occupied, self.indices)
+        web.update(mats, live_id, snapshot)
 
     # ---- per-frame update
 
     def _poll(self):
         """Check for a new frame and update everything, then reschedule"""
+        self._sync_mats()
         if self.source is not None:
             quality = self.source.quality.snapshot()
             if quality["malformed"] > self._last_malformed:
@@ -1130,6 +1300,11 @@ class DesktopApp:
                     self.hotspot_window.refresh()
                 if self.motion_window is not None and self.motion_window.window.winfo_exists():
                     self.motion_window.refresh()
+                if self.indices_window is not None and self.indices_window.window.winfo_exists():
+                    self.indices_window.refresh()
+                if self.roi_window is not None and self.roi_window.window.winfo_exists():
+                    self.roi_window.refresh()
+        self._update_occupancy()
         self._update_fps()
         self.root.after(POLL_INTERVAL_MS, self._poll)
 
@@ -1140,6 +1315,7 @@ class DesktopApp:
             self.cop_history.clear()
             self.roi_history.clear()
             self.sensor_health.reset()
+            self._reset_indices()
             if self._playback_metadata is not None:
                 self._reset_playback_state()
             else:
@@ -1169,6 +1345,8 @@ class DesktopApp:
                                            self.hotspots.active, self.temporal)
         for kind, payload in motion_events:
             self.add_event(kind, payload=payload)
+        self.occupancy.update(frame["pressure"], self.frame_timestamp, self.contact_threshold_kpa)
+        self._update_indices()
         if self.session_state is None:
             self.session_state = initial_session_state(
                 self.frame_timestamp, self.source_var.get(), self.raw_grid,
@@ -1191,7 +1369,7 @@ class DesktopApp:
             self.recorder.add_frame(self.raw_grid, timestamp=self.frame_timestamp)
         if self._playback_metadata is not None:
             self._playback_frame_index += 1
-        web.update_grid(self.current_grid)
+        self._publish_web()
 
         # drawing is expensive (esp. with numbers on) - cap the rate
         now = time.time()
@@ -1201,6 +1379,52 @@ class DesktopApp:
         if now - self._last_analysis_draw >= 0.5:
             self._last_analysis_draw = now
             self._refresh_analysis()
+
+    def _update_occupancy(self):
+        text, color = OCCUPANCY_LABELS[self.occupancy.occupied]
+        self.occupancy_label.configure(text=text, bg=color)
+
+    def _build_index_chips(self):
+        for chip in self.index_chip_bar.winfo_children():
+            chip.destroy()
+        self.index_chips = {}
+        for definition in self.indices.definitions:
+            chip = tk.Label(self.index_chip_bar, text=definition["name"], fg="white", padx=8)
+            chip.pack(side=tk.LEFT, padx=2, pady=2)
+            self.index_chips[definition["name"]] = chip
+        self._update_index_chips()
+
+    def _update_index_chips(self):
+        for name, chip in self.index_chips.items():
+            chip.configure(bg=INDEX_CHIP_COLORS[self.indices.states[name]])
+
+    def _set_indices(self, definitions):
+        """Replace the index definitions (raises ValueError and changes nothing if invalid)"""
+        self.indices.set_definitions(definitions)
+        self.index_history = {}
+        self._build_index_chips()
+
+    def _update_indices(self, force=False):
+        now = time.time()
+        if self.frame is None or (not force and now - self._last_index_update < INDEX_UPDATE_INTERVAL_S):
+            return
+        self._last_index_update = now
+        context = Context(self.frame["pressure"], self.frame_timestamp, self.contact_threshold_kpa,
+                          self.temporal, self.hotspots, self.motion, self.roi)
+        for name, old, new in self.indices.update(context, self.frame_timestamp, self.occupancy.occupied):
+            self.add_event(INDEX_EVENTS[new], name, {
+                "index": name, "value": self.indices.compared(name), "previous_state": old})
+        for definition in self.indices.definitions:
+            value = self.indices.values[definition["name"]]
+            if definition["layer"] == "summary" and value is not None:
+                self.index_history.setdefault(
+                    definition["name"], deque(maxlen=HISTORY_MAX_FRAMES)).append((self.frame_timestamp, value))
+        self._update_index_chips()
+
+    def _reset_indices(self):
+        self.indices.reset()
+        self.index_history = {}
+        self._update_index_chips()
 
     def _update_fps(self):
         now = time.time()
@@ -1228,6 +1452,8 @@ class DesktopApp:
         if not self._source_was_stale:
             self.add_event("source_disconnected")
             self._source_was_stale = True
+            self.occupancy.reset()
+            self._reset_indices()
             self.temporal.invalidate()
             self.hotspots.invalidate()
             self.motion.invalidate()
@@ -1243,7 +1469,7 @@ class DesktopApp:
         grid = self.frame[key]
         pressure_unavailable = grid is None
         if pressure_unavailable:
-            grid = np.zeros((TOTAL_ROWS, TOTAL_COLS))
+            grid = np.zeros((app_config.TOTAL_ROWS, app_config.TOTAL_COLS))
         elif key != "pressure":
             grid = np.where(np.isfinite(grid) & (grid > self.signal_noise_threshold), grid, 0.0)
         finite_values = grid[np.isfinite(grid)]
@@ -1271,8 +1497,8 @@ class DesktopApp:
 
         if self.plot_type_var.get() == "3D Surface":
             self.axes.clear()
-            cols, rows = np.meshgrid(np.linspace(0, TOTAL_COLS - 1, plot_grid.shape[1]),
-                                     np.linspace(0, TOTAL_ROWS - 1, plot_grid.shape[0]))
+            cols, rows = np.meshgrid(np.linspace(0, app_config.TOTAL_COLS - 1, plot_grid.shape[1]),
+                                     np.linspace(0, app_config.TOTAL_ROWS - 1, plot_grid.shape[0]))
             self.axes.plot_surface(
                 cols, rows, -plot_grid,
                 cmap="coolwarm_r" if difference else HEATMAP_COLORS.reversed(),
@@ -1284,41 +1510,41 @@ class DesktopApp:
             for collection in list(self.axes.collections):
                 collection.remove()
             self.image.set_data(plot_grid)
-            self.image.set_extent((-0.5, TOTAL_COLS - 0.5, TOTAL_ROWS - 0.5, -0.5))
+            self.image.set_extent((-0.5, app_config.TOTAL_COLS - 0.5, app_config.TOTAL_ROWS - 0.5, -0.5))
             self.image.set_clim(vmin, vmax)
             self.image.set_cmap("coolwarm" if difference else HEATMAP_COLORS)
-            self.axes.set_xlim(-0.5, TOTAL_COLS - 0.5)
-            self.axes.set_ylim(TOTAL_ROWS - 0.5, -0.5)
+            self.axes.set_xlim(-0.5, app_config.TOTAL_COLS - 0.5)
+            self.axes.set_ylim(app_config.TOTAL_ROWS - 0.5, -0.5)
             if self.show_contours and not pressure_unavailable and not difference:
                 configured = self.pressure_contour_levels if key == "pressure" else self.relative_contour_levels
                 levels = ([level for level in configured if finite_values.min() < level < finite_values.max()]
                           if finite_values.size else [])
                 if levels:
-                    x = np.linspace(0, TOTAL_COLS - 1, plot_grid.shape[1])
-                    y = np.linspace(0, TOTAL_ROWS - 1, plot_grid.shape[0])
+                    x = np.linspace(0, app_config.TOTAL_COLS - 1, plot_grid.shape[1])
+                    y = np.linspace(0, app_config.TOTAL_ROWS - 1, plot_grid.shape[0])
                     self.axes.contour(x, y, plot_grid, levels=levels, colors="#333333",
                                       linewidths=0.6, alpha=0.6)
             if (self.show_hotspot_threshold and key == "pressure" and not difference and
                     finite_values.size and finite_values.min() < self.hotspots.activate_kpa < finite_values.max()):
-                x = np.linspace(0, TOTAL_COLS - 1, plot_grid.shape[1])
-                y = np.linspace(0, TOTAL_ROWS - 1, plot_grid.shape[0])
+                x = np.linspace(0, app_config.TOTAL_COLS - 1, plot_grid.shape[1])
+                y = np.linspace(0, app_config.TOTAL_ROWS - 1, plot_grid.shape[0])
                 self.axes.contour(x, y, plot_grid, levels=[self.hotspots.activate_kpa],
                                   colors="purple", linewidths=0.8, linestyles="dashed")
             if self.show_boundary and self.frame["pressure"] is not None:
                 mask = contact_mask(self.frame["pressure"], self.contact_threshold_kpa)
                 if mask.any() and not mask.all():
-                    self.axes.contour(np.arange(TOTAL_COLS), np.arange(TOTAL_ROWS), mask.astype(float),
+                    self.axes.contour(np.arange(app_config.TOTAL_COLS), np.arange(app_config.TOTAL_ROWS), mask.astype(float),
                                       levels=[0.5], colors="blue", linewidths=0.8, alpha=0.6)
             for label in self.hotspot_labels:
                 label.remove()
             self.hotspot_labels = []
             if self.show_hotspots_var.get() and self.hotspots.data_valid and not difference and key == "pressure":
                 for track in self.hotspots.active:
-                    mask = np.zeros((TOTAL_ROWS, TOTAL_COLS), dtype=float)
+                    mask = np.zeros((app_config.TOTAL_ROWS, app_config.TOTAL_COLS), dtype=float)
                     for row, col in track["cells"]:
                         mask[row, col] = 1
                     if not mask.all():
-                        self.axes.contour(np.arange(TOTAL_COLS), np.arange(TOTAL_ROWS), mask,
+                        self.axes.contour(np.arange(app_config.TOTAL_COLS), np.arange(app_config.TOTAL_ROWS), mask,
                                           levels=[0.5], colors="red" if track["persistent"] else "orange",
                                           linewidths=1.3)
                     row, col = track["centroid"]
@@ -1326,14 +1552,15 @@ class DesktopApp:
                                            color="black", fontsize=8, ha="center", va="center",
                                            bbox={"facecolor": "white", "alpha": 0.65, "edgecolor": "none"})
                     self.hotspot_labels.append(label)
-            if self.roi_patch is not None:
-                self.roi_patch.remove()
-                self.roi_patch = None
+            if not difference:
+                for name, state in self.indices.states.items():
+                    mask = self.indices.over_mask(name) if state == OVER else None
+                    if mask is not None and mask.any() and not mask.all():
+                        self.axes.contour(np.arange(app_config.TOTAL_COLS), np.arange(app_config.TOTAL_ROWS),
+                                          mask.astype(float), levels=[0.5], colors=INDEX_OUTLINE_COLOR,
+                                          linewidths=1.3, linestyles="dotted")
             if self.roi is not None:
-                row0, row1, col0, col1 = self.roi
-                self.roi_patch = Rectangle((col0 - 0.5, row0 - 0.5), col1 - col0 + 1,
-                                           row1 - row0 + 1, fill=False, edgecolor="blue", linewidth=1.5)
-                self.axes.add_patch(self.roi_patch)
+                self._outline_cells(self.roi, colors="blue", linewidths=1.5)
             if self.selected_cell is not None:
                 self.selected_marker.set_data([self.selected_cell[1]], [self.selected_cell[0]])
             if self.cop_var.get() and self.display_cop[0] is not None:
@@ -1341,8 +1568,8 @@ class DesktopApp:
             else:
                 self.cop_marker.set_data([], [])
             if self.cell_labels is not None:
-                for row in range(TOTAL_ROWS):
-                    for col in range(TOTAL_COLS):
+                for row in range(app_config.TOTAL_ROWS):
+                    for col in range(app_config.TOTAL_COLS):
                         value = grid[row, col]
                         self.cell_labels[row][col].set_text(f"{value:.1f}" if key == "pressure" else f"{value:.0f}")
         self.canvas.draw_idle()
@@ -1353,7 +1580,7 @@ class DesktopApp:
         else:
             prefix = ""
         if pressure_unavailable:
-            status = f"Pressure calibration incomplete ({self.pressure_calibration.calibrated_count}/{TOTAL_ROWS * TOTAL_COLS} cells)"
+            status = f"Pressure calibration incomplete ({self.pressure_calibration.calibrated_count}/{app_config.TOTAL_ROWS * app_config.TOTAL_COLS} cells)"
         else:
             unit = " kPa" if key == "pressure" else ""
             valid = grid[np.isfinite(grid)]
@@ -1377,7 +1604,7 @@ class DesktopApp:
 
         if self.frame is None or self.frame["pressure"] is None:
             count = self.pressure_calibration.calibrated_count
-            self.pressure_status_var.set(f"Calibrate {TOTAL_ROWS * TOTAL_COLS - count} more cells for pressure statistics")
+            self.pressure_status_var.set(f"Calibrate {app_config.TOTAL_ROWS * app_config.TOTAL_COLS - count} more cells for pressure statistics")
             self.peak_var.set("Peak: -")
             self.mean_var.set("Mean contact: -")
             self.area_var.set("Contact area: -")
@@ -1410,22 +1637,7 @@ class DesktopApp:
         if event.xdata is None or event.ydata is None:
             return
         row, col = round(event.ydata), round(event.xdata)
-        if not (0 <= row < TOTAL_ROWS and 0 <= col < TOTAL_COLS):
-            return
-        if self.selecting_roi:
-            if self.roi_corner is None:
-                self.roi_corner = (row, col)
-                self.status_var.set("Select the opposite ROI corner")
-            else:
-                first_row, first_col = self.roi_corner
-                self.roi = (min(first_row, row), max(first_row, row),
-                            min(first_col, col), max(first_col, col))
-                self.roi_corner = None
-                self.selecting_roi = False
-                self.roi_history.clear()
-                self._add_roi_history_sample()
-                self._refresh_analysis()
-                self._update_plot()
+        if not (0 <= row < app_config.TOTAL_ROWS and 0 <= col < app_config.TOTAL_COLS):
             return
         self._select_cell(row, col)
 
@@ -1458,16 +1670,17 @@ class DesktopApp:
         if self.roi is None or self.frame is None:
             return
         grid, _unit = self._analysis_grid()
-        row0, row1, col0, col1 = self.roi
-        values = grid[row0:row1 + 1, col0:col1 + 1]
+        values = grid[self.roi]
         valid = values[np.isfinite(values)]
         if valid.size:
+            pressure = self.frame["pressure"]
+            temporal = self.temporal.roi(self.roi)
             self.roi_history.append({"time": self.frame_timestamp,
                                      "mean": float(valid.mean()), "peak": float(valid.max()),
-                                     "pressure_mean": None if self.frame["pressure"] is None else float(np.nanmean(self.frame["pressure"][row0:row1 + 1, col0:col1 + 1])),
-                                     "exposure_mean": self.temporal.roi(self.roi)["mean_exposure"],
-                                     "burden_mean": self.temporal.roi(self.roi)["mean_burden"],
-                                     "relieved_fraction": self.temporal.roi(self.roi)["relieved_fraction"]})
+                                     "pressure_mean": None if pressure is None else float(np.nanmean(pressure[self.roi])),
+                                     "exposure_mean": temporal["mean_exposure"],
+                                     "burden_mean": temporal["mean_burden"],
+                                     "relieved_fraction": temporal["relieved_fraction"]})
 
     def _update_selected_details(self):
         if self.history_window is None or not self.history_window.winfo_exists():
@@ -1541,6 +1754,9 @@ class DesktopApp:
             self.recorder.save()
         if self.source is not None:
             self.source.stop()
+        if self._discovery is not None:
+            self._discovery.stop()
+        web.update([])
         if self.web_server is not None:
             self.web_server.stop()
         self.root.destroy()

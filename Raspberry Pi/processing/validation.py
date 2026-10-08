@@ -2,6 +2,10 @@
 
 import math
 
+import numpy as np
+
+from processing.roi import roi_centre
+
 
 def reposition_validation(events, detections, match_window_s):
     annotations = [event for event in events if event.get("kind") == "annotation" and
@@ -35,10 +39,8 @@ def reposition_validation(events, detections, match_window_s):
 
 
 def compare_hotspot_roi(roi, tracks):
-    row0, row1, col0, col1 = roi
-    expected = {(row, col) for row in range(row0, row1 + 1)
-                for col in range(col0, col1 + 1)}
-    center = ((row0 + row1) / 2, (col0 + col1) / 2)
+    expected = {(int(row), int(col)) for row, col in np.argwhere(roi)}
+    center = roi_centre(roi)
     choices = []
     for track in tracks:
         overlap = len(expected & track["cells"]) / len(expected)

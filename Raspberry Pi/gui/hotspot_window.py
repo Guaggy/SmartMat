@@ -10,6 +10,7 @@ class HotspotWindow:
         self.window = tk.Toplevel(parent)
         self.window.title("Hotspots")
         self.window.geometry("850x420")
+        ttk.Label(self.window, text='Lists areas of high pressure being tracked, and how long each has lasted.', wraplength=760, padding=(8, 6)).pack(side=tk.TOP, fill=tk.X)
         columns = ("id", "state", "peak", "mean", "cells", "area", "observed", "exposure", "burden")
         self.list = ttk.Treeview(self.window, columns=columns, show="headings", height=10)
         for column, width in (("id", 45), ("state", 85), ("peak", 80), ("mean", 80),

@@ -4,11 +4,17 @@ import os
 
 import numpy as np
 
-from config import TOTAL_ROWS, TOTAL_COLS, CELL_WIDTH_MM, CELL_HEIGHT_MM
+import config
+from config import CELL_WIDTH_MM, CELL_HEIGHT_MM
 from processing.recording import RECORDINGS_DIR
 from processing.validation import reposition_validation
 
 SUMMARY_FORMAT = "smartmat_analysis_summary_v1"
+
+
+def health_warning_count(states):
+    """Cells in Saturated..Invalid (3-6); Noisy/Drifting have their own diagnostics views"""
+    return int(np.count_nonzero((states >= 3) & (states <= 6)))
 
 
 def readiness(app):
@@ -21,7 +27,7 @@ def readiness(app):
         warnings.append("No recent valid frame")
     if quality is not None and quality["valid"] >= 10 and quality["rate_hz"] < 5:
         warnings.append("Recent source rate below 5 frames/s")
-    if app.raw_grid is not None and app.raw_grid.shape != (TOTAL_ROWS, TOTAL_COLS):
+    if app.raw_grid is not None and app.raw_grid.shape != (config.TOTAL_ROWS, config.TOTAL_COLS):
         warnings.append("Grid dimensions differ from configuration")
     if not app.pressure_calibration.is_complete:
         warnings.append("Pressure calibration incomplete")
@@ -31,7 +37,7 @@ def readiness(app):
         warnings.append("Physical cell dimensions not configured")
     if not RECORDINGS_DIR.exists() or not os.access(RECORDINGS_DIR, os.W_OK):
         warnings.append("Recording directory may not be writable")
-    if np.count_nonzero((app.sensor_health.states >= 1) & (app.sensor_health.states <= 6)):
+    if health_warning_count(app.sensor_health.states):
         warnings.append("Sensor-health warnings present")
     return warnings
 
@@ -43,8 +49,7 @@ def session_summary(app, match_window_s):
                           "longest_arrival_gap_s": 0, "average_rate_hz": 0}
     annotations = [event for event in app.timeline.events if event.get("kind") == "annotation"]
     validation = reposition_validation(annotations, list(app.motion.repositions), match_window_s)
-    health_warnings = int(np.count_nonzero((app.sensor_health.states >= 1) &
-                                           (app.sensor_health.states <= 6)))
+    health_warnings = health_warning_count(app.sensor_health.states)
     observed_duration = None
     if app.session_state is not None and app.frame_timestamp is not None:
         observed_duration = max(0.0, app.frame_timestamp - app.session_state["started_at"])
@@ -57,7 +62,7 @@ def session_summary(app, match_window_s):
         "longest_arrival_gap_s": quality["longest_arrival_gap_s"],
         "average_arrival_fps": quality["average_rate_hz"],
         "calibrated_cells": app.pressure_calibration.calibrated_count,
-        "calibrated_percent": 100 * app.pressure_calibration.calibrated_count / (TOTAL_ROWS * TOTAL_COLS),
+        "calibrated_percent": 100 * app.pressure_calibration.calibrated_count / (config.TOTAL_ROWS * config.TOTAL_COLS),
         "baseline_present": app.calibration.baseline is not None,
         "sensor_health_warnings": health_warnings,
         "unknown_temporal_cells": int(np.count_nonzero(app.temporal.state == 0)),

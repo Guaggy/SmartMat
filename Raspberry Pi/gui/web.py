@@ -1,127 +1,89 @@
-"""Local web server, off by default and toggled from the desktop app.
-Serves a live heatmap page, and (once "sharing" is on) a /data endpoint
-with the current grid - what the public website's live mode pulls from.
+"""Local read-only web dashboard, toggled from the desktop app.
+
+The desktop app is the only producer: it calls update() with the mats it knows about and a
+snapshot of the one it is connected to. A browser on the same network picks a mat and gets a
+quick glance: heatmap, hotspots, patient state and index values. Nothing here changes the app.
 """
 
-import math
 import threading
+import time
 
+import numpy as np
 from flask import Flask, jsonify
 from werkzeug.serving import make_server
 
-from config import WEB_PORT, VALUE_MAX_DEFAULT, TOTAL_ROWS, TOTAL_COLS
+from config import PRESSURE_DISPLAY_MAX_KPA, STALE_AFTER_S, VALUE_MAX_DEFAULT, WEB_PORT
 
 app = Flask(__name__)
 
 _lock = threading.Lock()
-_grid = None
-_sharing = False
+_mats = []        # [{"id", "name", "rows", "cols"}] - every mat the desktop app knows about
+_live_id = None   # the mat the desktop app is connected to
+_snapshot = None  # latest snapshot of the live mat
+_snapshot_time = None
 
 
-def update_grid(grid):
-    """Called by the GUI on every new frame, so /data has something to serve"""
-    global _grid
+def update(mats, live_id=None, snapshot=None):
+    """Called by the desktop app: the known mats, which one is live, and its newest snapshot"""
+    global _mats, _live_id, _snapshot, _snapshot_time
     with _lock:
-        _grid = grid
+        if live_id != _live_id:
+            _snapshot = _snapshot_time = None  # a snapshot never outlives its mat being live
+        _mats = [dict(mat) for mat in mats]
+        _live_id = live_id
+        if live_id is not None and snapshot is not None:
+            _snapshot, _snapshot_time = snapshot, time.monotonic()
 
 
-def set_sharing(sharing):
-    """Turn the /data endpoint's live output on or off"""
-    global _sharing
-    with _lock:
-        _sharing = sharing
-
-
-# TEMPORARY page - just renders /data so there's something to look at while
-# testing. Replace with the real public-facing page later.
-_INDEX_PAGE = """<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>SmartMat (temporary)</title>
-  <style>
-    body {
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      height: 100vh; margin: 0; background: #111; font-family: sans-serif; color: #ccc;
+def build_snapshot(frame, hotspot_tracks, occupied, monitor):
+    """JSON-ready glance at one mat, from the desktop app's current frame and trackers"""
+    pressure = frame["pressure"]
+    if pressure is not None:
+        grid, unit, scale_max = pressure, "kPa", PRESSURE_DISPLAY_MAX_KPA
+    else:  # not calibrated: show the tared signal, and say so
+        grid, unit, scale_max = frame["baseline_subtracted"], "relative", VALUE_MAX_DEFAULT
+    indices = []
+    for definition in monitor.definitions:
+        value = monitor.compared(definition["name"])
+        indices.append({"name": definition["name"], "layer": definition["layer"],
+                        "value": None if value is None else round(value, 3),
+                        "threshold": definition["threshold"],
+                        "near": definition["near_fraction"] * definition["threshold"],
+                        "state": monitor.states[definition["name"]]})
+    return {
+        "unit": unit, "scale_max": float(scale_max),
+        "grid": [[round(float(value), 2) if np.isfinite(value) else None for value in row] for row in grid],
+        "occupied": occupied,
+        "hotspots": [{"id": track["id"], "peak_kpa": round(track["peak_kpa"], 1),
+                      "cells": sorted([int(row), int(col)] for row, col in track["cells"]),
+                      "active_s": round(track["active_s"], 1), "persistent": bool(track["persistent"])}
+                     for track in hotspot_tracks],
+        "indices": indices,
     }
-    canvas { background: #000; border-radius: 6px; }
-    p { margin-top: 12px; }
-  </style>
-</head>
-<body>
-  <canvas id="heatmap" width="450" height="480"></canvas>
-  <p id="status">Waiting for data...</p>
-  <script>
-    var ROWS = __ROWS__;
-    var COLS = __COLS__;
-    var canvas = document.getElementById("heatmap");
-    var ctx = canvas.getContext("2d");
-    var statusEl = document.getElementById("status");
-    var cellW = canvas.width / COLS;
-    var cellH = canvas.height / ROWS;
-
-    function colorFor(v) {
-      v = Math.max(0, Math.min(1, v));
-      if (v < 0.5) {
-        var f = v / 0.5;
-        return "rgb(0," + Math.round(163 * f) + ",0)";
-      }
-      var f2 = (v - 0.5) / 0.5;
-      var r = Math.round(12 + (208 - 12) * f2);
-      var g = Math.round(163 + (59 - 163) * f2);
-      return "rgb(" + r + "," + g + "," + Math.round(59 * f2) + ")";
-    }
-
-    function refresh() {
-      fetch("/data", { cache: "no-store" })
-        .then(function (response) { return response.json(); })
-        .then(function (data) {
-          if (data.status !== "live") {
-            statusEl.textContent = "Offline - no live data being shared";
-            return;
-          }
-          statusEl.textContent = "Live";
-          ctx.fillStyle = "#000";
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          for (var row = 0; row < ROWS; row++) {
-            for (var col = 0; col < COLS; col++) {
-              ctx.fillStyle = colorFor(data.grid[row * COLS + col]);
-              ctx.fillRect(col * cellW + 1, row * cellH + 1, cellW - 2, cellH - 2);
-            }
-          }
-        })
-        .catch(function () { statusEl.textContent = "Could not reach /data"; });
-    }
-    setInterval(refresh, 300);
-    refresh();
-  </script>
-</body>
-</html>
-"""
 
 
 @app.route("/")
 def index():
-    return _INDEX_PAGE.replace("__ROWS__", str(TOTAL_ROWS)).replace("__COLS__", str(TOTAL_COLS))
+    return _PAGE
 
 
-@app.route("/data")
-def data():
-    """The live grid (flattened, normalized 0-1), or an offline status - never fake data"""
+@app.route("/api/mats")
+def list_mats():
     with _lock:
-        sharing, grid = _sharing, _grid
-    if not sharing or grid is None:
-        return jsonify({"status": "offline"})
-    normalized = [float(value) / VALUE_MAX_DEFAULT if math.isfinite(value) else 0.0
-                  for value in grid.flatten()]
-    return jsonify({"status": "live", "grid": normalized})
+        return jsonify({"mats": [dict(mat, live=mat["id"] == _live_id) for mat in _mats]})
 
 
-@app.after_request
-def add_cors_headers(response):
-    """Allow the public website (a different origin) to read /data"""
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    return response
+@app.route("/api/mats/<mat_id>")
+def one_mat(mat_id):
+    with _lock:
+        mat = next((mat for mat in _mats if mat["id"] == mat_id), None)
+        if mat is None:
+            return jsonify({"error": "unknown mat"}), 404
+        live = mat_id == _live_id
+        snapshot = _snapshot if live else None
+        age = None if snapshot is None else time.monotonic() - _snapshot_time
+    return jsonify(dict(mat, live=live, snapshot=snapshot, age_s=age,
+                        stale=age is not None and age > STALE_AFTER_S))
 
 
 class WebServer:
@@ -141,3 +103,144 @@ class WebServer:
             self._server.shutdown()
             self._thread.join(timeout=1)
             self._server = None
+
+
+# One static page; everything shown comes from the two /api addresses and is written with
+# textContent (mat nicknames are typed in by users).
+_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SmartMat</title>
+  <style>
+    body { margin: 0; padding: 16px; background: #15171a; color: #d4d7db; font-family: system-ui, sans-serif; }
+    main { max-width: 760px; margin: 0 auto; }
+    h1 { font-size: 1.2rem; margin: 0 0 12px; }
+    h2 { font-size: 0.95rem; margin: 18px 0 6px; color: #9da7b1; font-weight: 600; }
+    select { font-size: 1rem; padding: 6px 8px; background: #23272c; color: inherit; border: 1px solid #3a4047; border-radius: 6px; }
+    canvas { width: 100%; max-width: 480px; background: #000; border-radius: 6px; display: block; margin-top: 12px; }
+    .chip { display: inline-block; padding: 3px 10px; border-radius: 12px; color: #fff; font-size: 0.9rem; margin: 2px 6px 2px 0; }
+    .ok { background: #777777; } .near { background: #b8862f; } .over { background: #bd5555; }
+    .inactive, .unknown { background: #5a626b; } .present { background: #5b9d61; }
+    ul { list-style: none; padding: 0; margin: 0; } li { padding: 3px 0; }
+    #freshness.stale { color: #e8b04e; font-weight: 600; }
+    footer { margin-top: 24px; font-size: 0.8rem; color: #808891; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>SmartMat</h1>
+  <label for="mat">Mat: </label><select id="mat"></select>
+  <p id="info"></p>
+  <div id="live" hidden>
+    <span id="patient" class="chip unknown"></span><span id="freshness"></span>
+    <canvas id="heatmap" width="480" height="512"></canvas>
+    <p id="unit"></p>
+    <h2>Active hotspots</h2><ul id="hotspots"></ul>
+    <h2>Indices</h2><ul id="indices"></ul>
+  </div>
+  <footer>Read-only view of the SmartMat desktop app. An engineering aid, not a medical device:
+    indices are user-defined and not validated.</footer>
+</main>
+<script>
+  var select = document.getElementById("mat");
+  var canvas = document.getElementById("heatmap");
+  var ctx = canvas.getContext("2d");
+
+  function byId(id) { return document.getElementById(id); }
+
+  function colorFor(v) {            // white -> green -> red, like the desktop heatmap
+    v = Math.max(0, Math.min(1, v));
+    if (v < 0.5) { var f = v / 0.5; return "rgb(" + Math.round(255 * (1 - f)) + "," + Math.round(255 - 127 * f) + "," + Math.round(255 * (1 - f)) + ")"; }
+    var g = (v - 0.5) / 0.5; return "rgb(" + Math.round(255 * g) + "," + Math.round(128 * (1 - g)) + ",0)";
+  }
+
+  function fillList(id, lines, empty) {
+    var list = byId(id);
+    list.textContent = "";
+    (lines.length ? lines : [{ text: empty }]).forEach(function (line) {
+      var item = document.createElement("li");
+      if (line.state) {
+        var chip = document.createElement("span");
+        chip.className = "chip " + line.state;
+        chip.textContent = line.state;
+        item.appendChild(chip);
+      }
+      item.appendChild(document.createTextNode(line.text));
+      list.appendChild(item);
+    });
+  }
+
+  function drawGrid(mat, snap) {
+    var cellW = canvas.width / mat.cols, cellH = canvas.height / mat.rows;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    snap.grid.forEach(function (row, r) {
+      row.forEach(function (value, c) {
+        ctx.fillStyle = value === null ? "#333" : colorFor(value / snap.scale_max);
+        ctx.fillRect(c * cellW + 1, r * cellH + 1, cellW - 2, cellH - 2);
+      });
+    });
+    ctx.lineWidth = 3;
+    snap.hotspots.forEach(function (spot) {
+      ctx.strokeStyle = spot.persistent ? "#ff3b3b" : "#ffa726";
+      spot.cells.forEach(function (cell) { ctx.strokeRect(cell[1] * cellW + 1, cell[0] * cellH + 1, cellW - 2, cellH - 2); });
+    });
+  }
+
+  function show(mat) {
+    var snap = mat.snapshot;
+    byId("live").hidden = !snap;
+    if (!mat.live) { byId("info").textContent = mat.name + " (" + mat.id + ", " + mat.rows + " x " + mat.cols + "): not open in the desktop app."; return; }
+    if (!snap) { byId("info").textContent = mat.name + ": connected, waiting for data."; return; }
+    byId("info").textContent = mat.name + " (" + mat.rows + " x " + mat.cols + ")";
+    var patient = byId("patient");
+    patient.textContent = snap.occupied === true ? "Patient detected" : snap.occupied === false ? "No patient" : "Patient: unknown";
+    patient.className = "chip " + (snap.occupied === true ? "present" : "unknown");
+    var fresh = byId("freshness");
+    fresh.textContent = mat.stale ? "No new data for " + Math.round(mat.age_s) + " s - this picture is old" : "updated " + Math.round(mat.age_s) + " s ago";
+    fresh.className = mat.stale ? "stale" : "";
+    byId("unit").textContent = snap.unit === "kPa" ? "Pressure in kPa, full colour at " + snap.scale_max + " kPa." : "Not calibrated: relative sensor signal, not pressure.";
+    drawGrid(mat, snap);
+    fillList("hotspots", snap.hotspots.map(function (spot) {
+      return { text: "#" + spot.id + ": peak " + spot.peak_kpa + " kPa, active " + Math.round(spot.active_s) + " s" + (spot.persistent ? " (persistent)" : "") };
+    }), "None");
+    fillList("indices", snap.indices.map(function (item) {
+      return { state: item.state, text: item.name + ": " + (item.value === null ? "-" : item.value.toFixed(2)) + " (threshold " + item.threshold + ")" };
+    }), "None defined");
+  }
+
+  function refreshMats() {
+    return fetch("/api/mats", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (data) {
+      var chosen = select.value;
+      select.textContent = "";
+      data.mats.forEach(function (mat) {
+        var option = document.createElement("option");
+        option.value = mat.id;
+        option.textContent = mat.name + (mat.live ? " (live)" : "");
+        select.appendChild(option);
+      });
+      var live = data.mats.filter(function (mat) { return mat.live; })[0];
+      var ids = data.mats.map(function (mat) { return mat.id; });
+      select.value = ids.indexOf(chosen) >= 0 ? chosen : (live ? live.id : (ids[0] || ""));
+      if (!ids.length) { byId("live").hidden = true; byId("info").textContent = "No mats known yet. Connect a source in the desktop app."; }
+    });
+  }
+
+  function refresh() {
+    refreshMats().then(function () {
+      if (!select.value) { return; }
+      return fetch("/api/mats/" + encodeURIComponent(select.value), { cache: "no-store" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (mat) { if (mat) { show(mat); } });
+    }).catch(function () { byId("live").hidden = true; byId("info").textContent = "Cannot reach the SmartMat desktop app."; });
+  }
+
+  select.addEventListener("change", refresh);
+  setInterval(refresh, 1000);
+  refresh();
+</script>
+</body>
+</html>
+"""

@@ -7,6 +7,7 @@ from tkinter import filedialog, ttk
 
 from processing.session_summary import session_summary
 from processing.reanalysis import compare_recording
+from gui.index_editor import IndexEditor
 from processing.settings import builtin_preset, load_preset, save_preset, validate_settings
 
 FIELDS = {
@@ -65,18 +66,25 @@ class EngineeringWindow:
         self.window = tk.Toplevel(parent)
         self.window.title("Engineering tools")
         self.window.geometry("850x680")
+        ttk.Label(self.window, text="Advanced tuning - most users won't need this tab. Adjusts detection settings and exports data for testing.", wraplength=760, padding=(8, 6)).pack(side=tk.TOP, fill=tk.X)
         tabs = ttk.Notebook(self.window)
         tabs.pack(fill=tk.BOTH, expand=True)
         settings_tab = ttk.Frame(tabs, padding=8)
+        indices_tab = ttk.Frame(tabs, padding=8)
         validation_tab = ttk.Frame(tabs, padding=8)
         session_tab = ttk.Frame(tabs, padding=8)
         debug_tab = ttk.Frame(tabs, padding=8)
         experiment_tab = ttk.Frame(tabs, padding=8)
-        for tab, label in ((settings_tab, "Thresholds & presets"),
+        for tab, label in ((settings_tab, "Thresholds & presets"), (indices_tab, "Indices"),
                            (validation_tab, "Validation"), (session_tab, "Session & export"),
                            (debug_tab, "Algorithm debug"), (experiment_tab, "Experiment info")):
             tabs.add(tab, text=label)
         self._build_settings(settings_tab)
+        ttk.Label(indices_tab, wraplength=800, text=(
+            "Combine signals into your own indices. Each term is divided by its reference, so 1.0 means "
+            "\"at the reference\"; the index is the weighted average of its terms. Use Apply values on the "
+            "Thresholds & presets tab to put changes into effect.")).pack(fill=tk.X, pady=(0, 8))
+        self.index_editor = IndexEditor(indices_tab, self.app.indices.definitions)
         self._build_validation(validation_tab)
         self._build_session(session_tab)
         self._build_debug(debug_tab)
@@ -123,11 +131,14 @@ class EngineeringWindow:
                 settings[section][key] = variable.get()
             else:
                 settings[key] = variable.get()
+        settings["indices"] = self.index_editor.get_definitions()
         return validate_settings(settings)
 
     def _show_settings(self, settings):
         for (section, key), variable in self.variables.items():
             variable.set(str(settings[section][key] if section else settings[key]))
+        if "indices" in settings:
+            self.index_editor.set_definitions(settings["indices"])
 
     def _apply(self):
         try:

@@ -7,11 +7,8 @@ import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
-from processing.analysis import load_distribution, pressure_distribution, roi_statistics
+from processing.analysis import load_distribution, pressure_distribution
 
-
-def _number(value, suffix=""):
-    return "-" if value is None else f"{value:.2f}{suffix}"
 
 
 class AnalysisWindow:
@@ -20,27 +17,15 @@ class AnalysisWindow:
         self.window = tk.Toplevel(parent)
         self.window.title("SMARTMAT analysis")
         self.window.geometry("950x700")
-
-        bar = ttk.Frame(self.window, padding=8)
-        bar.pack(fill=tk.X)
-        ttk.Button(bar, text="Select ROI: two corners", command=app._begin_roi_selection).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(bar, text="Clear ROI", command=app._clear_roi).pack(side=tk.LEFT)
+        ttk.Label(self.window, text='How pressure is spread over the whole mat, and its left/right and upper/lower balance. Regions are in the ROI window.', wraplength=760, padding=(8, 6)).pack(side=tk.TOP, fill=tk.X)
 
         self.tabs = ttk.Notebook(self.window)
         self.tabs.pack(fill=tk.BOTH, expand=True)
-        roi_tab = ttk.Frame(self.tabs)
         distribution_tab = ttk.Frame(self.tabs)
         load_tab = ttk.Frame(self.tabs)
-        self.tabs.add(roi_tab, text="ROI")
         self.tabs.add(distribution_tab, text="Distribution")
         self.tabs.add(load_tab, text="Load and symmetry")
         self.tabs.bind("<<NotebookTabChanged>>", lambda _event: self.refresh())
-
-        self.roi_text = tk.StringVar()
-        ttk.Label(roi_tab, textvariable=self.roi_text, padding=8, wraplength=900).pack(fill=tk.X)
-        self.roi_figure = Figure(figsize=(8, 4))
-        self.roi_canvas = FigureCanvasTkAgg(self.roi_figure, master=roi_tab)
-        self.roi_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
         self.distribution_text = tk.StringVar()
         ttk.Label(distribution_tab, textvariable=self.distribution_text, padding=8).pack(fill=tk.X)
@@ -55,46 +40,10 @@ class AnalysisWindow:
     def refresh(self):
         if not self.window.winfo_exists():
             return
-        tab = self.tabs.index("current")
-        if tab == 0:
-            self._refresh_roi()
-        elif tab == 1:
+        if self.tabs.index("current") == 0:
             self._refresh_distribution()
         else:
             self._refresh_load()
-
-    def _refresh_roi(self):
-        self.roi_figure.clear()
-        axes = self.roi_figure.add_subplot()
-        if self.app.roi is None or self.app.frame is None:
-            self.roi_text.set("Choose two cells on the 2D heatmap to select a rectangular ROI.")
-        else:
-            grid, unit = self.app._analysis_grid()
-            stats = roi_statistics(grid, self.app.roi, unit, self.app.contact_threshold_kpa,
-                                   self.app.cell_area_m2)
-            row0, row1, col0, col1 = self.app.roi
-            area = _number(stats["area_m2"] * 10_000, " cm²") if stats["area_m2"] is not None else "not configured"
-            contact = str(stats["contact_cells"]) if stats["contact_cells"] is not None else "requires kPa"
-            contact_area = _number(stats["contact_area_m2"] * 10_000, " cm²") if stats["contact_area_m2"] is not None else "-"
-            center = (f"x={stats['center_x']:.1f}, y={stats['center_y']:.1f}"
-                      if stats["center_x"] is not None else "-")
-            self.roi_text.set(
-                f"Rows {row0}-{row1}, cols {col0}-{col1} | {stats['sensors']} sensors | ROI area {area}\n"
-                f"Mean {_number(stats['mean'], ' ' + unit)} | peak {_number(stats['peak'], ' ' + unit)} | "
-                f"min {_number(stats['minimum'], ' ' + unit)} | std {_number(stats['std'], ' ' + unit)}\n"
-                f"Force {_number(stats['force_n'], ' N')} | contact {contact} cells ({contact_area}) | "
-                f"{'CoP' if unit == 'kPa' else 'Signal center'} {center}"
-            )
-            if self.app.roi_history:
-                start = self.app.roi_history[0]["time"]
-                times = [item["time"] - start for item in self.app.roi_history]
-                axes.plot(times, [item["mean"] for item in self.app.roi_history], label="Mean")
-                axes.plot(times, [item["peak"] for item in self.app.roi_history], label="Peak")
-                axes.legend()
-            axes.set_ylabel(unit)
-        axes.set_xlabel("Time since ROI selection (s)")
-        self.roi_figure.tight_layout()
-        self.roi_canvas.draw_idle()
 
     def _refresh_distribution(self):
         self.distribution_figure.clear()

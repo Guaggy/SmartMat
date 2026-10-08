@@ -4,6 +4,7 @@ import unittest
 
 import numpy as np
 
+from processing.roi import rectangle_mask
 from processing.analysis import load_distribution, pressure_distribution, roi_statistics
 from processing.display import interpolate_grid
 from processing.sensor_health import SensorHealth
@@ -22,7 +23,7 @@ class Phase3ProcessingTests(unittest.TestCase):
     def test_roi_distribution_and_symmetry_use_real_cells(self):
         pressure = np.zeros((16, 15))
         pressure[1, 1:4] = [10, 20, 30]
-        roi = roi_statistics(pressure, (1, 2, 1, 3), "kPa", 5, 0.0001)
+        roi = roi_statistics(pressure, rectangle_mask(pressure.shape, (1, 1), (2, 3)), "kPa", 5, 0.0001)
         self.assertEqual(roi["sensors"], 6)
         self.assertEqual(roi["contact_cells"], 3)
         self.assertAlmostEqual(roi["force_n"], 6)

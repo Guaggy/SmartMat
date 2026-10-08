@@ -8,7 +8,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.colors import ListedColormap
 from matplotlib.figure import Figure
 
-from config import TOTAL_ROWS, TOTAL_COLS
+import config
 from processing.sensor_health import HEALTH_STATES
 
 HEALTH_COLORS = ListedColormap([
@@ -30,6 +30,7 @@ class DiagnosticsWindow:
         self.window = tk.Toplevel(parent)
         self.window.title("Sensor diagnostics")
         self.window.geometry("760x650")
+        ttk.Label(self.window, text='Checks that the mat itself is working properly: shows which sensors look faulty, stuck or drifting.', wraplength=760, padding=(8, 6)).pack(side=tk.TOP, fill=tk.X)
 
         bar = ttk.Frame(self.window, padding=8)
         bar.pack(fill=tk.X)
@@ -58,7 +59,7 @@ class DiagnosticsWindow:
         if event.inaxes != self.axes or event.xdata is None or event.ydata is None:
             return
         row, col = round(event.ydata), round(event.xdata)
-        if 0 <= row < TOTAL_ROWS and 0 <= col < TOTAL_COLS:
+        if 0 <= row < config.TOTAL_ROWS and 0 <= col < config.TOTAL_COLS:
             self.on_select(row, col)
             self.refresh()
 

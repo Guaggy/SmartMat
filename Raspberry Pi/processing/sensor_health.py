@@ -4,8 +4,9 @@ from collections import deque
 
 import numpy as np
 
+import config
 from config import (
-    TOTAL_ROWS, TOTAL_COLS, VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT,
+    VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT,
     HEALTH_WINDOW_FRAMES, HEALTH_UNLOADED_MAX, HEALTH_UNLOADED_DELTA,
     HEALTH_NOISE_STD, HEALTH_DRIFT_DELTA, HEALTH_DRIFT_MIN_S,
     HEALTH_SATURATION_MARGIN, HEALTH_SATURATION_FRAMES,
@@ -34,7 +35,7 @@ class SensorHealth:
 
     def reset(self):
         self.history.clear()
-        shape = (TOTAL_ROWS, TOTAL_COLS)
+        shape = (config.TOTAL_ROWS, config.TOTAL_COLS)
         self.current = np.full(shape, np.nan)
         self.mean = np.full(shape, np.nan)
         self.variance = np.full(shape, np.nan)
@@ -52,7 +53,7 @@ class SensorHealth:
 
     def update(self, raw, timestamp, baseline=None, pressure=None,
                contact_threshold_kpa=0, pressure_calibration=None):
-        if raw.shape != (TOTAL_ROWS, TOTAL_COLS):
+        if raw.shape != (config.TOTAL_ROWS, config.TOTAL_COLS):
             raise ValueError("Sensor health grid size does not match configuration")
         self.current = raw.copy()
         finite = np.isfinite(raw)
@@ -94,8 +95,8 @@ class SensorHealth:
 
         if pressure_calibration is not None:
             self.calibrated = np.asarray([
-                [pressure_calibration.is_calibrated(row, col) for col in range(TOTAL_COLS)]
-                for row in range(TOTAL_ROWS)
+                [pressure_calibration.is_calibrated(row, col) for col in range(config.TOTAL_COLS)]
+                for row in range(config.TOTAL_ROWS)
             ])
         self.states = np.where(self.calibrated, 0, 7)
         self.states = np.where((unloaded_count >= 20) & (self.noise > HEALTH_NOISE_STD), 1, self.states)

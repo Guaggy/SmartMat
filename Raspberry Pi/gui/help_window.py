@@ -36,7 +36,8 @@ Baseline subtracted — values relative to the current tare.
 Calibrated pressure — values converted to kPa using sensor calibration."""),
     ("Main Tools", """Pressure calibration — create, load, and save sensor calibration.
 Diagnostics — inspect noise, drift, saturation, calibration, and sensor health.
-Analysis — ROI, distributions, load balance, and symmetry.
+Analysis — distributions, load balance, and symmetry.
+ROI — pick a region (box, polygon or paint) and see its pressure, balance and history.
 Temporal — pressure-time exposure, burden, and relief.
 Hotspots — connected regions of elevated pressure.
 Movement — pressure redistribution and reposition detection.

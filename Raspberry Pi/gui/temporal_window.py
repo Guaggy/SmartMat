@@ -20,6 +20,7 @@ class TemporalWindow:
         self.window = tk.Toplevel(parent)
         self.window.title("Temporal analysis")
         self.window.geometry("850x760")
+        ttk.Label(self.window, text='Shows how long each area of the body has been under pressure, and how long since it last got relief.', wraplength=760, padding=(8, 6)).pack(side=tk.TOP, fill=tk.X)
         controls = ttk.Frame(self.window, padding=8)
         controls.pack(fill=tk.X)
         ttk.Label(controls, text="Map:").pack(side=tk.LEFT)
@@ -67,7 +68,6 @@ class TemporalWindow:
         self.axes = self.figure.add_subplot()
         self.canvas = FigureCanvasTkAgg(self.figure, master=self.window)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-        self.canvas.mpl_connect("button_press_event", self._select_cell)
         self.summary_var = tk.StringVar()
         ttk.Label(self.window, textvariable=self.summary_var, wraplength=820, padding=7).pack(fill=tk.X)
 
@@ -137,13 +137,6 @@ class TemporalWindow:
 
     def _marker(self):
         self.app._open_annotation()
-
-    def _select_cell(self, event):
-        if event.inaxes == self.axes and event.xdata is not None and event.ydata is not None:
-            row, col = round(event.ydata), round(event.xdata)
-            if 0 <= row < self.app.temporal.exposure.shape[0] and 0 <= col < self.app.temporal.exposure.shape[1]:
-                self.app._select_cell(row, col)
-                self.refresh()
 
     def refresh(self):
         if not self.window.winfo_exists():

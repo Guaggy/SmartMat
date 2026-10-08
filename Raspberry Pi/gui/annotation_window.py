@@ -40,15 +40,15 @@ class AnnotationWindow:
 
     def _update_roi_note(self):
         if self.type_var.get() == "Known hotspot":
-            self.roi_var.set("Uses the currently selected ROI on the main heatmap" if self.app.roi is not None
-                             else "Select an ROI on the main heatmap first")
+            self.roi_var.set("Uses the ROI currently applied in the ROI window" if self.app.roi is not None
+                             else "Apply an ROI in the ROI window first")
         else:
             self.roi_var.set("Before/after notes are optional; useful for a known reposition")
 
     def _save(self):
         kind = self.type_var.get()
         if kind == "Known hotspot" and self.app.roi is None:
-            self.roi_var.set("Select an ROI on the main heatmap first")
+            self.roi_var.set("Apply an ROI in the ROI window first")
             return
         self.app.add_annotation(kind, self.note_var.get(), self.before_var.get(), self.after_var.get())
         self.window.destroy()

@@ -5,8 +5,9 @@ import math
 
 import numpy as np
 
+import config
 from config import (
-    TOTAL_ROWS, TOTAL_COLS, TEMPORAL_MAX_GAP_S, TEMPORAL_BUCKET_S,
+    TEMPORAL_MAX_GAP_S, TEMPORAL_BUCKET_S,
     EXPOSURE_THRESHOLD_KPA, EXPOSURE_MODE, BURDEN_LOAD_THRESHOLD_KPA,
     BURDEN_ACCUMULATION_RATE, BURDEN_RECOVERY_TIME_S,
     RELIEF_PARTIAL_RATIO, RELIEF_FULL_RATIO, RELIEF_MIN_DURATION_S,
@@ -43,7 +44,7 @@ class TemporalAnalysis:
         )}
 
     def reset_all(self):
-        shape = (TOTAL_ROWS, TOTAL_COLS)
+        shape = (config.TOTAL_ROWS, config.TOTAL_COLS)
         self.exposure = np.zeros(shape)
         self.burden = np.zeros(shape)
         self.state = np.zeros(shape, dtype=np.uint8)
@@ -62,7 +63,7 @@ class TemporalAnalysis:
         self._buckets = deque(maxlen=max(1, math.ceil(3600 / self.bucket_s)))
         self.mat_full_relief = False
         self.last_event = None
-        self._roi_bounds = None
+        self._roi_mask = None
         self._roi_last_relief = None
 
     def reset_exposure(self):
@@ -74,7 +75,7 @@ class TemporalAnalysis:
         self.burden.fill(0)
 
     def clear_roi(self):
-        self._roi_bounds = None
+        self._roi_mask = None
         self._roi_last_relief = None
 
     def invalidate(self):
@@ -143,9 +144,8 @@ class TemporalAnalysis:
         if full != self.mat_full_relief:
             self.last_event = "full_relief_started" if full else "full_relief_ended"
             self.mat_full_relief = full
-        if self._roi_bounds is not None:
-            row0, row1, col0, col1 = self._roi_bounds
-            area = self.state[row0:row1 + 1, col0:col1 + 1]
+        if self._roi_mask is not None:
+            area = self.state[self._roi_mask]
             if np.count_nonzero(area == FULL) >= area.size * self.roi_relief_fraction:
                 self._roi_last_relief = timestamp
         self.loaded_s[valid & (previous_state == LOADED)] += dt
@@ -218,12 +218,12 @@ class TemporalAnalysis:
             "relief_percent": float(self.relief_percent()[row, col]),
         }
 
-    def roi(self, bounds):
-        if bounds != self._roi_bounds:
-            self._roi_bounds = bounds
+    def roi(self, mask):
+        """Temporal statistics over the cells of a boolean ROI mask"""
+        if self._roi_mask is None or not np.array_equal(mask, self._roi_mask):
+            self._roi_mask = mask.copy()
             self._roi_last_relief = None
-        row0, row1, col0, col1 = bounds
-        area = np.s_[row0:row1 + 1, col0:col1 + 1]
+        area = mask
         states = self.state[area]
         count = states.size
         return {

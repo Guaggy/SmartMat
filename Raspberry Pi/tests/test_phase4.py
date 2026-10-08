@@ -7,8 +7,9 @@ import unittest
 
 import numpy as np
 
-from config import TOTAL_ROWS, TOTAL_COLS
+import config
 from general import parse_frame_text_with_reason
+from processing.roi import rectangle_mask
 from processing.source_quality import SourceQuality
 from processing.recording import RECORDINGS_DIR, Recorder, load_session, load_session_details
 from processing.temporal import FULL, LOADED, PARTIAL, UNKNOWN, TemporalAnalysis
@@ -16,7 +17,7 @@ from sources.simulated_source import SimulatedSource
 
 
 def pressure(value):
-    return np.full((TOTAL_ROWS, TOTAL_COLS), value, dtype=float)
+    return np.full((config.TOTAL_ROWS, config.TOTAL_COLS), value, dtype=float)
 
 
 class TemporalTests(unittest.TestCase):
@@ -100,7 +101,7 @@ class TemporalTests(unittest.TestCase):
         session = self.analysis.exposure[0, 0]
         recent = self.analysis.rolling(1)[0][0, 0]
         self.assertGreater(session, recent)
-        self.assertAlmostEqual(self.analysis.roi((0, 1, 0, 1))["mean_exposure"], session)
+        self.assertAlmostEqual(self.analysis.roi(rectangle_mask((config.TOTAL_ROWS, config.TOTAL_COLS), (0, 0), (1, 1)))["mean_exposure"], session)
         self.analysis.reset_exposure()
         self.assertEqual(self.analysis.exposure[0, 0], 0)
         self.assertGreater(self.analysis.rolling(1)[2][0, 0], 0)
@@ -145,7 +146,7 @@ class TemporalTests(unittest.TestCase):
 class QualityTests(unittest.TestCase):
     def test_rejection_reasons_and_counters(self):
         self.assertEqual(parse_frame_text_with_reason("1,2")[1], "grid_size")
-        self.assertEqual(parse_frame_text_with_reason(",".join(["2000"] * (TOTAL_ROWS * TOTAL_COLS)))[1], "out_of_range")
+        self.assertEqual(parse_frame_text_with_reason(",".join(["2000"] * (config.TOTAL_ROWS * config.TOTAL_COLS)))[1], "out_of_range")
         quality = SourceQuality()
         quality.packet("grid_size", timestamp=False)
         quality.packet("out_of_range", timestamp=False)

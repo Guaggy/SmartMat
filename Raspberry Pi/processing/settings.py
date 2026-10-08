@@ -6,6 +6,7 @@ from pathlib import Path
 
 from config import CONTACT_THRESHOLD_KPA
 from processing.hotspots import HotspotTracker
+from processing.indices import validate_indices
 from processing.motion import MotionAnalyzer
 from processing.temporal import TemporalAnalysis
 
@@ -99,6 +100,8 @@ def validate_settings(settings):
             0 < t["roi_relief_fraction"] <= 1 and t["burden_recovery_time_s"] > 0 and
             t["max_gap_s"] > 0 and t["bucket_s"] > 0):
         raise ValueError("Temporal thresholds are invalid")
+    if "indices" in settings:  # absent = leave the current indices alone (older presets)
+        result["indices"] = validate_indices(settings["indices"])
     return result
 
 

@@ -2,13 +2,15 @@
 pushed to git) and fill in your own values below.
 """
 
+# NOTE: always read the grid size as config.TOTAL_ROWS / config.TOTAL_COLS. A
+# `from config import TOTAL_ROWS` copy goes stale when an MQTT mat of another size connects.
+
 broker_host = "192.168.1.50"  # static/reserved IP of the Raspberry Pi's Mosquitto broker
 broker_port = 1883
 mqtt_username = "your-mqtt-username"
 mqtt_password = "your-mqtt-password"
-mqtt_topic = "smartmat/frame"
 
-# These must match src/main.cpp on the ESP32
+# Grid size for Serial/Simulated (Serial: must match src/main.cpp). An MQTT mat reports its own.
 TOTAL_ROWS = 16
 TOTAL_COLS = 15
 BAUD_RATE = 115200
@@ -75,11 +77,20 @@ REPOSITION_MIN_CHANGE = 0.25
 REPOSITION_MIN_CONTACT_CELLS = 2
 REPOSITION_COOLDOWN_S = 60.0
 
+# "Patient detected" indicator: this many cells above CONTACT_THRESHOLD_KPA, held this long.
+OCCUPANCY_MIN_CELLS = 4
+OCCUPANCY_ENTER_S = 2.0   # load must last this long before "Patient detected"
+OCCUPANCY_EXIT_S = 5.0    # mat must stay empty this long before "No patient"
+
+# Custom indices (Engineering window > Indices): warning hold time and evaluation rate.
+INDEX_WARNING_HOLD_S = 5.0     # a new OK/near/over state must last this long before it shows
+INDEX_UPDATE_INTERVAL_S = 1.0  # indices move slowly; no need to evaluate them every frame
+
 # Maximum timing error accepted when pairing manual and automatic repositions.
 VALIDATION_MATCH_WINDOW_S = 15.0
 
 # Plot-only interpolation; statistics always use the original sensor grid.
-DISPLAY_SCALE = 4
+DISPLAY_SCALE = 2
 PRESSURE_CONTOUR_LEVELS_KPA = (5, 10, 20, 40)
 RELATIVE_CONTOUR_LEVELS = (100, 250, 500, 750)
 

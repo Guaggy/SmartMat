@@ -2,19 +2,22 @@
 
 import numpy as np
 
+from processing.roi import roi_centre
 from processing.statistics import contact_mask
 
 
 def roi_statistics(grid, roi, unit, threshold_kpa=0, cell_area_m2=None):
-    row0, row1, col0, col1 = roi
-    values = grid[row0:row1 + 1, col0:col1 + 1]
+    """Statistics over the cells of a boolean ROI mask"""
+    values = grid[roi]
+    cell_rows, cell_cols = np.nonzero(roi)
     valid = np.isfinite(values)
     usable = values[valid]
     sensors = values.size
     result = {"sensors": sensors, "unit": unit, "area_m2": None,
               "mean": None, "peak": None, "minimum": None, "std": None,
               "force_n": None, "contact_cells": None, "contact_area_m2": None,
-              "center_x": None, "center_y": None}
+              "center_x": None, "center_y": None,
+              "centre_offset_x": None, "centre_offset_y": None}
     if cell_area_m2 is not None:
         result["area_m2"] = sensors * cell_area_m2
     if not usable.size:
@@ -32,11 +35,13 @@ def roi_statistics(grid, roi, unit, threshold_kpa=0, cell_area_m2=None):
     else:
         mask = valid & (values > 0)
 
-    rows, cols = np.nonzero(mask)
-    if len(rows):
+    if mask.any():
         weights = values[mask]
-        result["center_x"] = float(col0 + np.dot(cols, weights) / weights.sum())
-        result["center_y"] = float(row0 + np.dot(rows, weights) / weights.sum())
+        result["center_x"] = float(np.dot(cell_cols[mask], weights) / weights.sum())
+        result["center_y"] = float(np.dot(cell_rows[mask], weights) / weights.sum())
+        centre_row, centre_col = roi_centre(roi)
+        result["centre_offset_x"] = result["center_x"] - centre_col
+        result["centre_offset_y"] = result["center_y"] - centre_row
     return result
 
 

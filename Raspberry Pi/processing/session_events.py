@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from config import TOTAL_ROWS, TOTAL_COLS
+import config
 from processing.settings import apply_settings
 
 STATE_EVENTS = {
@@ -27,7 +27,7 @@ def apply_state_event(event, calibration, pressure_calibration, temporal,
     payload = event.get("payload")
     if kind == "tare_captured":
         baseline = np.asarray(payload["baseline"], dtype=float)
-        if baseline.shape != (TOTAL_ROWS, TOTAL_COLS):
+        if baseline.shape != (config.TOTAL_ROWS, config.TOTAL_COLS):
             raise ValueError("Recorded tare grid has the wrong size")
         calibration.baseline = baseline.copy()
     elif kind == "baseline_cleared":

@@ -40,8 +40,7 @@ const float smoothing_strength = 0.7f;  // 0 = no smoothing, near 1 = smoother b
 const uint32_t frame_interval_ms = 100; // 10 fps
 
 // Wifi and MQTT
-const char* mqtt_topic = "smartmat/frame";
-const char* mqtt_client_name = "smartmat-esp32";
+const char* mqtt_topic_prefix = "smartmat"; // topics: smartmat/<chip_id>/frame and .../meta
 const uint32_t reconnect_retry_interval_ms = 5000;
 const uint16_t mqtt_packet_buffer_size = 1500;  // 240-value frame is ~1.2 KB --> this leaves headroom
 
@@ -49,6 +48,10 @@ const uint16_t mqtt_packet_buffer_size = 1500;  // 240-value frame is ~1.2 KB --
 float filtered_grid[grid_rows][grid_cols] = {};
 bool filter_has_started = false; // Dont apply filter on first full scan
 char frame_text[mqtt_packet_buffer_size - 100];  // reserve space for text to send over MQTT/Serial
+char chip_id[13];     // 12 hex digits, also used as MQTT client id (must be unique per board)
+char frame_topic[40];
+char meta_topic[40];
+char meta_text[24];   // "<chip_id>,<rows>,<cols>"
 
 // Start Wifi and MQTT
 WiFiClient wifi_client;
@@ -162,6 +165,17 @@ void build_frame_text() {
   }
 }
 
+// Chip id --> MQTT client id, topics and the meta message that tells the Pi our grid size
+void build_identity() {
+  const uint64_t mac = ESP.getEfuseMac();
+  snprintf(chip_id, sizeof(chip_id), "%04x%08x",
+           static_cast<unsigned>(mac >> 32) & 0xFFFFU, static_cast<unsigned>(mac & 0xFFFFFFFFU));
+  snprintf(frame_topic, sizeof(frame_topic), "%s/%s/frame", mqtt_topic_prefix, chip_id);
+  snprintf(meta_topic, sizeof(meta_topic), "%s/%s/meta", mqtt_topic_prefix, chip_id);
+  snprintf(meta_text, sizeof(meta_text), "%s,%u,%u", chip_id,
+           static_cast<unsigned>(grid_rows), static_cast<unsigned>(grid_cols));
+}
+
 // Check if wifi is connected
 bool wifi_is_connected() {
   return WiFi.status() == WL_CONNECTED;
@@ -195,8 +209,12 @@ void maintain_mqtt() {
     return;
   }
   last_mqtt_attempt_ms = now;
-  mqtt_client.connect(mqtt_client_name, mqtt_username, mqtt_password);
-  if (serial_debug) Serial.println("MQTT not connected, will try again ...");
+  if (mqtt_client.connect(chip_id, mqtt_username, mqtt_password)) {
+    mqtt_client.publish(meta_topic, meta_text, true); // retained: a Pi that subscribes later still gets it
+    if (serial_debug) Serial.printf("MQTT connected as %s\n", chip_id);
+  } else if (serial_debug) {
+    Serial.println("MQTT not connected, will try again ...");
+  }
 }
 
 // Build latest frame and send over MQTT
@@ -204,7 +222,7 @@ void send_frame() {
   build_frame_text();
 
   if (mqtt_client.connected()) {
-    mqtt_client.publish(mqtt_topic, frame_text, true);
+    mqtt_client.publish(frame_topic, frame_text, true);
     if (serial_debug) Serial.println("MQTT frame sent");
   }
 
@@ -234,6 +252,8 @@ void setup() {
   Serial.begin(115200);
   delay(500);
   Serial.println("Smartmat Resistive V1");
+  build_identity();
+  Serial.printf("Chip id: %s\n", chip_id);
 
   // Start with muxes off
   configure_output_pin(mux_a_enable_pin, HIGH);

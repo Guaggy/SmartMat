@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
-from config import TOTAL_ROWS, TOTAL_COLS
+import config
 
 RECORDINGS_DIR = Path(__file__).resolve().parent.parent / "recordings"
 
@@ -51,7 +51,7 @@ class Recorder:
             "name": self.name,
             "started_at": self.started_at,
             "source": self.source,
-            "grid_shape": [TOTAL_ROWS, TOTAL_COLS],
+            "grid_shape": [config.TOTAL_ROWS, config.TOTAL_COLS],
             "units": "relative sensor value",
             "metadata": self.metadata,
             "events": self.events,
@@ -89,7 +89,7 @@ def load_session(path, with_timestamps=False, with_details=False):
             raise ValueError("Unsupported recording format")
         if session.get("format") == "smartmat_raw_v1":
             raw_format = True
-            if session.get("grid_shape") != [TOTAL_ROWS, TOTAL_COLS]:
+            if session.get("grid_shape") != [config.TOTAL_ROWS, config.TOTAL_COLS]:
                 raise ValueError("Recording grid size does not match configuration")
             grids = [frame["raw"] for frame in session["frames"]]
             times = [frame.get("timestamp") for frame in session["frames"]]
@@ -108,9 +108,9 @@ def load_session(path, with_timestamps=False, with_details=False):
     frames = []
     for grid in grids:
         values = np.asarray(grid, dtype=float)
-        if values.size != TOTAL_ROWS * TOTAL_COLS or (not raw_format and not np.all(np.isfinite(values))):
+        if values.size != config.TOTAL_ROWS * config.TOTAL_COLS or (not raw_format and not np.all(np.isfinite(values))):
             raise ValueError("Recording contains an invalid frame")
-        frames.append(values.reshape(TOTAL_ROWS, TOTAL_COLS))
+        frames.append(values.reshape(config.TOTAL_ROWS, config.TOTAL_COLS))
     if with_details:
         return frames, timestamps, metadata, events
     return (frames, timestamps) if with_timestamps else frames

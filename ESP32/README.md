@@ -28,7 +28,17 @@ broker details first.
 - `send_frame_serial` - also print each frame over serial, not just MQTT
 - `read_linear_voltage` - use `analogReadMilliVolts()` (factory-calibrated) instead of raw `analogRead()`
 
-The grid size and baud rate here must match `Raspberry Pi/config.py` on the Python side.
+Over MQTT the board reports its own grid size (see below), so nothing has to match by hand.
+For Serial, the grid size and baud rate must still match `Raspberry Pi/config.py`.
+
+## MQTT identity
+
+Each board uses its chip ID (`ESP.getEfuseMac()` as 12 lowercase hex digits, printed on
+serial at boot) as its MQTT client ID and topic prefix, so several mats can share a broker:
+
+- `smartmat/<chip_id>/frame` - the frame (retained)
+- `smartmat/<chip_id>/meta` - `<chip_id>,<rows>,<cols>` (retained, sent on every MQTT connect);
+  this is how the Pi app finds the mat and learns its grid size
 
 ## How a scan works
 
@@ -39,7 +49,7 @@ The grid size and baud rate here must match `Raspberry Pi/config.py` on the Pyth
 3. Each cell is optionally smoothed against its previous value.
 4. `build_frame_text()` flattens the grid into one comma-separated string, row-major -
    what the Python side and website widget both expect.
-5. `send_frame()` publishes that string to MQTT topic `smartmat/frame` (retained), and to
+5. `send_frame()` publishes that string to MQTT topic `smartmat/<chip_id>/frame` (retained), and to
    serial too if `send_frame_serial` is on.
 
 ## Worth verifying on real hardware

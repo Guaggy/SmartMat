@@ -65,9 +65,12 @@ class StateEventTests(unittest.TestCase):
             app._handle_new_frame(np.full((16, 15), 10.0), sample_time=1)
             app.recorder = recorder
             app._capture_baseline()
-            self.assertEqual(recorder.events[-1]["kind"], "tare_captured")
-            self.assertEqual(recorder.events[-1]["frame_index"], 0)
-            self.assertEqual(recorder.events[-1]["payload"]["baseline"][0][0], 10)
+            # tare also moves the pressure-calibration offsets, so a calibration snapshot follows
+            self.assertEqual(recorder.events[-2]["kind"], "tare_captured")
+            self.assertEqual(recorder.events[-1]["kind"], "calibration_changed")
+            self.assertEqual(recorder.events[-2]["frame_index"], 0)
+            self.assertEqual(recorder.events[-2]["payload"]["baseline"][0][0], 10)
+            self.assertEqual(recorder.events[-1]["payload"]["calibration"]["cells"][0]["offset"], 10)
             app.pressure_calibration.add_point(0, 0, 100, 10)
             app._refresh_calibration("calibration_changed")
             self.assertEqual(recorder.events[-1]["kind"], "calibration_changed")

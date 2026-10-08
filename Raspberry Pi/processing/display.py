@@ -6,18 +6,14 @@ import numpy as np
 def interpolate_grid(grid, method="None", scale=4):
     if method == "None" or scale == 1:
         return grid.copy()
-    if method not in ("Nearest", "Linear") or scale < 1:
-        raise ValueError("Choose None, Nearest, or Linear and a positive display scale")
+    if method != "Linear" or scale < 1:
+        raise ValueError("Choose None or Linear and a positive display scale")
 
     rows, cols = grid.shape
     dense_rows = (rows - 1) * scale + 1
     dense_cols = (cols - 1) * scale + 1
     row_positions = np.linspace(0, rows - 1, dense_rows)
     col_positions = np.linspace(0, cols - 1, dense_cols)
-    if method == "Nearest":
-        return grid[np.rint(row_positions).astype(int)[:, None],
-                    np.rint(col_positions).astype(int)[None, :]].copy()
-
     left_rows = np.floor(row_positions).astype(int)
     left_cols = np.floor(col_positions).astype(int)
     right_rows = np.minimum(left_rows + 1, rows - 1)
