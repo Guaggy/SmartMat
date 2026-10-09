@@ -7,3 +7,5 @@ Raspberry Pi/recordings/
 **/__pycache__/
 *.pyc
 node_modules/
+# Local design docs/plans
+docs/
