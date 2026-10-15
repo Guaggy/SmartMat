@@ -111,12 +111,14 @@ start without that mat's retained meta message
 `a1b2c3d4e5f6,20,20,255,MC266,343,358`; 5, 6 or 8+ fields, bad numbers, a model with anything but
 letters/digits/`_`/`-`, or non-positive sizes are invalid); `mats` stays `{chip_id: (rows, cols)}`, value_max lives in
 `value_maxes`, the announced preset in `presets` (`model` / `default_size_mm` properties, same names as SerialSource). `MqttSource()`
-with no chip ID only listens on `smartmat/+/meta` to fill the device list.
+with no chip ID only listens on `smartmat/+/meta` to fill the device list. Both also subscribe
+`smartmat/+/status` (retained `online`/`offline`, ESP32_China only) into `status` {chip_id: state}; other payloads are
+ignored and the device dropdown appends " (offline)" for offline mats (unknown/online unchanged, still selectable).
 `SerialSource(port, profile)` picks a `PROFILES` entry: "ESP32 text (115200)"
 (config grid, value_max 1000, mat_id = port) or "Maxrays 20x20 (921600)"
 (`sources/maxrays.py` decoder, 20x20, value_max 255, mat_id `maxrays-usb`, preset model "MC266" + default sensing
 size 343 x 358 mm; datasheet facts in `notes.md`). The Maxrays stream (~60 fps) is averaged (float) over
-1/`config.SERIAL_TARGET_FPS` s (default 10, 0 = off) into ONE scaled grid per window; merged frames are not drops,
+1/`config.SERIAL_TARGET_FPS` s (default 10; 0 or negative = off; None/non-numeric = 10) into ONE scaled grid per window; merged frames are not drops,
 `serial_stats` has `frames_per_s` (decoded) and `output_per_s`. `MqttSource` ignores frame messages with the retain
 flag (stale after a reconnect); retained meta is still used. The
 desktop shows a Protocol dropdown for Serial and applies the source's shape
@@ -133,7 +135,9 @@ read it: MQTT/Serial pass the mat's own shape to `parse_frame_text_with_reason(.
 
 Per-mat profiles: `<APP_DIR>/profiles/<mat_id>.json` (gitignored; `processing/calibration.py`
 `save_profile/load_profile/apply_profile`) hold a real mat's tare baseline, both pressure calibrations (+ which is
-active) and orientation, at its oriented grid shape. Only Serial/MQTT sources with a `mat_id` get one (not
+active), orientation, the mat size the user typed and its ROI (`roi` {shape, cells}, restored only when the shape
+equals the oriented grid; `processing.calibration.profile_roi`; a connecting real mat never inherits another mat's
+ROI), at its oriented grid shape. Only Serial/MQTT sources with a `mat_id` get one (not
 `SimulatedSource`, i.e. synthetic data and recordings). `DesktopApp._save_profile` runs at the top of `_connect`,
 in `_disconnect` and `_on_close`; `_load_profile` runs in `_connect` once the source shape is known: it restores
 the orientation, applies the *oriented* shape (so the first frame through `_orient` does not reset again), then
@@ -167,7 +171,8 @@ and copied from the bundled `config.example.py` on first run). Build: `build_exe
 (onedir, windowed) -> `dist\SmartMat\SmartMat.exe` + `dist\SmartMat.zip`; `SmartMat.exe --selftest` is a headless
 smoke test (writes `selftest.txt` next to the exe). Source-tree behaviour is unchanged.
 
-`branding.py` - product/company names, website, contact address (the one the site lists), disclaimer text and the accent
+`branding.py` - product/company names, website, contact address (contact@verdianmedical.com, confirmed), `VERSION` (About, window title "SmartMat 0.1.0", first line
+of `selftest.txt`), disclaimer text and the accent
 colours taken from verdianmedical.com; `assets/logo.png` is the site's header icon. The header strip (logo, "SmartMat - by
 Verdian Medical", About button, View switch) is `DesktopApp._build_header`; the accent colours only touch the header, the
 Connect/Record buttons (`Accent.TButton`) and the View switch - never the heatmap or index/occupancy colours. Bundled read-only
@@ -213,10 +218,9 @@ features, what's still to build, and what's already shipped). Don't copy
 that list into this file - it drifts. As of 2026-10-08: multi-mat MQTT,
 custom indices, patient-detected, the ROI rework, the web dashboard, and the
 Tier 1/2 bounded-polish + calibration-rework batch are all built and tested
-(147 tests passing at the time; 223 now). Open: the "Ignore signal" display bug, the
-`user_guide.md` decision, the web dashboard's per-mat background listener,
-body-part recognition (deliberately not
-started).
+(147 tests passing at the time; 230 now). Open: the web dashboard's per-mat background listener,
+the expression builder, known-weight load calibration, body-part recognition (deliberately not
+started); hardware validation is tracked in `../SETUP_AND_TEST.md`.
 
 ## Working conventions for this repo
 
