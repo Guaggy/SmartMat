@@ -12,7 +12,7 @@ import numpy as np
 import config
 from processing import calibration
 from processing.calibration import (Calibration, PressureCalibration, apply_profile, load_profile,
-                                    profile_path, save_profile)
+                                    profile_path, profile_roi, save_profile)
 from sources.serial_source import Port, SerialSource
 
 DEFAULT_SHAPE = (config.TOTAL_ROWS, config.TOTAL_COLS)
@@ -40,6 +40,22 @@ class ProfileFileTests(unittest.TestCase):
         np.testing.assert_array_equal(tare2.baseline, tare.baseline)
         self.assertEqual(pressure2.active_name, "uniform")
         self.assertEqual(pressure2.uniform.get_curve(), pressure.uniform.get_curve())
+
+    def test_roi_round_trip_shape_mismatch_and_old_profile(self):
+        roi = np.zeros(DEFAULT_SHAPE, dtype=bool)
+        roi[1:3, 2:4] = True
+        save_profile("with", None, PressureCalibration(), ORIENTATION, roi=roi)
+        np.testing.assert_array_equal(profile_roi(load_profile("with")), roi)
+        save_profile("without", None, PressureCalibration(), ORIENTATION)
+        self.assertIsNone(profile_roi(load_profile("without")))
+        data = load_profile("with")
+        with mock.patch.object(config, "TOTAL_ROWS", 3), mock.patch.object(config, "TOTAL_COLS", 3):
+            self.assertIsNone(profile_roi(data))                      # another grid shape
+        old = {key: value for key, value in data.items() if key != "roi"}
+        self.assertIsNone(profile_roi(old))                           # profile from before the key existed
+        for bad in ({"shape": list(DEFAULT_SHAPE), "cells": "x"}, {"shape": list(DEFAULT_SHAPE), "cells": [[None, 1]]},
+                    {"cells": []}, 5, []):
+            self.assertIsNone(profile_roi({"roi": bad}))
 
     def test_missing_corrupt_or_mismatched_profile(self):
         self.assertIsNone(load_profile("nope"))
@@ -111,6 +127,17 @@ class DesktopProfileTests(unittest.TestCase):
 
         app._disconnect()
         self.assertEqual(json.loads(profile_path("COM4").read_text())["orientation"]["rotation"], 0)
+
+    def test_roi_comes_back_with_the_mat(self):
+        app = self.app
+        roi = np.zeros(DEFAULT_SHAPE, dtype=bool)
+        roi[0:2, 0:2] = True
+        self.connect("COM3 - mat A")
+        app.set_roi(roi)
+        self.connect("COM4 - mat B")
+        self.assertIsNone(app.roi)                                    # not inherited by another mat
+        self.connect("COM3 - mat A")
+        np.testing.assert_array_equal(app.roi, roi)
 
     def test_mismatched_profile_is_ignored(self):
         calibration.PROFILES_DIR.mkdir(exist_ok=True)

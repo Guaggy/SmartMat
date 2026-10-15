@@ -12,6 +12,7 @@ import numpy as np
 import config
 import paths
 from config import VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT
+from processing.roi import cells_mask, mask_to_cells
 
 class Calibration:
     """Display range, plus an optional baseline grid subtracted from future frames"""
@@ -542,11 +543,13 @@ def profile_path(mat_id):
     return PROFILES_DIR / (re.sub(r"[^\w.-]", "_", str(mat_id)) + ".json")
 
 
-def save_profile(mat_id, baseline, pressure_calibration, orientation, size_mm=None):
-    """Write the current (oriented) grid's state for this mat; size_mm = (width, height) sensing size"""
+def save_profile(mat_id, baseline, pressure_calibration, orientation, size_mm=None, roi=None):
+    """Write the current (oriented) grid's state for this mat; size_mm = (width, height) sensing size,
+    roi = boolean cell mask of the grid or None"""
     data = {"format": PROFILE_FORMAT, "mat_id": mat_id,
             "grid_shape": [config.TOTAL_ROWS, config.TOTAL_COLS], "orientation": orientation,
             "size_mm": None if size_mm is None else list(size_mm),
+            "roi": None if roi is None else {"shape": list(roi.shape), "cells": mask_to_cells(roi)},
             "baseline": None if baseline is None else np.asarray(baseline).tolist(),
             "active": pressure_calibration.active_name,
             "individual": pressure_calibration.individual.to_dict(),
@@ -569,6 +572,16 @@ def profile_size_mm(data):
     try:
         return _valid_size(data.get("size_mm"))
     except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def profile_roi(data):
+    """The ROI mask saved in a profile if it was saved for the current grid shape, else None (also for old profiles)"""
+    shape = (config.TOTAL_ROWS, config.TOTAL_COLS)
+    try:
+        saved = data["roi"]
+        return cells_mask(shape, saved["cells"]) if tuple(saved["shape"]) == shape else None
+    except (KeyError, TypeError, ValueError, IndexError):
         return None
 
 

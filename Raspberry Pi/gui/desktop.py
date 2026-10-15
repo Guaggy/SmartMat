@@ -30,7 +30,7 @@ from config import (
 from general import load_mat_names, mat_labels, save_mat_names
 from processing.calibration import (Calibration, IndividualCalibration, PressureCalibration, UniformCalibration,
                                     apply_profile, cell_size_mm, configured_mat_size, load_profile,
-                                    parse_mat_size, profile_size_mm, save_profile)
+                                    parse_mat_size, profile_roi, profile_size_mm, save_profile)
 from processing.session_events import STATE_EVENTS, apply_state_event, event_is_due
 from processing.session_state import initial_session_state
 from processing.settings import apply_settings, capture_settings, default_settings
@@ -833,7 +833,8 @@ class DesktopApp:
             return
         try:
             save_profile(mat_id, self.calibration.baseline, self.pressure_calibration, self._orientation(),
-                         self._user_size_mm)  # a preset size is not written: later preset changes must still apply
+                         self._user_size_mm,  # a preset size is not written: later preset changes must still apply
+                         self.roi)
         except OSError as error:
             self.status_var.set(f"Could not save the mat profile for {mat_id}: {error}")
 
@@ -875,6 +876,9 @@ class DesktopApp:
             rows, cols = cols, rows
         self._apply_grid_shape(rows, cols)
         self._reset_calibration()  # never inherit another mat's tare/calibration, even at the same size
+        roi = None if profile is None else profile_roi(profile)
+        if roi is not None or self.roi is not None:
+            self.set_roi(roi)  # likewise the ROI: the mat's own, else none
         if profile is None:
             return f" | new mat profile {mat_id}"
         try:
