@@ -65,6 +65,20 @@ class MaxraysDecoderTests(unittest.TestCase):
         self.assertEqual(len(out), 1)
         np.testing.assert_array_equal(out[0], self.values)
 
+    def test_trailer_that_looks_like_a_header(self):
+        other = (self.values[::-1]).copy()
+        out = self.dec.feed(packet(self.values, trailer=b"\xA5\x5A") + packet(other) + packet(self.values))
+        self.assertEqual(len(out), 3)
+        np.testing.assert_array_equal(out[1], other)
+
+    def test_packet_with_lost_bytes_is_dropped_not_decoded(self):
+        other = (self.values[::-1]).copy()
+        out = self.dec.feed(self.pkt[:-10] + packet(other) + packet(self.values))
+        self.assertEqual(len(out), 2)
+        np.testing.assert_array_equal(out[0], other)
+        np.testing.assert_array_equal(out[1], self.values)
+        self.assertGreaterEqual(self.dec.stats.invalid_frames, 1)
+
     @unittest.skipUnless(os.path.exists(FIXTURE), "tests/fixtures/maxrays_capture.bin not present")
     def test_real_capture(self):
         with open(FIXTURE, "rb") as f:

@@ -49,17 +49,18 @@ class MaxraysDecoder:
                 st.bytes_discarded += start
             if len(buf) < min_size:
                 break
-            # header-to-header spacing is the safest packet boundary; else use the declared length
-            nxt = buf.find(self.HEADER, min_size)
-            if 0 <= nxt <= max_size:
-                size = nxt
-            else:
-                declared = int.from_bytes(buf[2:4], "big")
-                if min_size <= declared <= max_size:
-                    size = declared
-                elif min_size <= declared + 4 <= max_size:
-                    size = declared + 4
-                else:  # false header
+            declared = int.from_bytes(buf[2:4], "big")
+            size = (declared if min_size <= declared <= max_size
+                    else declared + 4 if min_size <= declared + 4 <= max_size else None)
+            # a header right where the declared length ends confirms the packet (a trailer that
+            # happens to read A5 5A cannot fool this); else fall back to header-to-header spacing
+            if size is None or buf[size:size + 2] != self.HEADER:
+                nxt = buf.find(self.HEADER, min_size)
+                if 0 <= nxt <= max_size:
+                    size = nxt
+                elif size is not None and len(buf) >= size + 2:
+                    size = None  # nothing confirms it: a packet that lost bytes
+                if size is None:  # false header or truncated packet
                     del buf[0]
                     st.bytes_discarded += 1
                     st.invalid_frames += 1
