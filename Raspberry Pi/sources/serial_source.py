@@ -159,15 +159,15 @@ class SerialSource:
     def capturing(self):
         return self._capture is not None
 
-    def _capture_step(self, data=b""):
-        """Add bytes to the running capture and finish it once its time is up"""
+    def _capture_step(self, data=b"", finish=False):
+        """Add bytes to the running capture and finish it once its time is up (or now, if finish)"""
         with self._lock:
             self._bytes += len(data)
             capture = self._capture
             if capture is None:
                 return
             capture[2].extend(data)
-            if capture[3]() < capture[1]:
+            if not finish and capture[3]() < capture[1]:
                 return
             self._capture = None
             path, _, raw, _ = capture
@@ -203,9 +203,12 @@ class SerialSource:
                 self.quality.drop()
 
     def _run(self):
-        while self._running:
-            self._poll_once()
-            time.sleep(POLL_INTERVAL_S)
+        try:
+            while self._running:
+                self._poll_once()
+                time.sleep(POLL_INTERVAL_S)
+        finally:  # stop() or the port vanished: keep the bytes captured so far
+            self._capture_step(finish=True)
 
     def stop(self):
         self._running = False

@@ -96,6 +96,20 @@ class SerialSourceTest(unittest.TestCase):
         source._poll_once()  # nothing is written after the capture ended
         self.assertEqual(path.read_bytes(), stream)
 
+    def test_capture_is_written_when_the_port_vanishes(self):
+        source = self.make(MAXRAYS_PROFILE)
+        path = Path(tempfile.mkdtemp()) / "raw.bin"
+        source.start_raw_capture(path, seconds=60)
+        source._connection.data.extend(maxrays_packet(7))
+        source._poll_once()
+        source._connection = mock.Mock()
+        type(source._connection).in_waiting = mock.PropertyMock(side_effect=OSError("port gone"))
+        source._running = True
+        with self.assertRaises(OSError):
+            source._run()
+        self.assertFalse(source.capturing)
+        self.assertEqual(path.read_bytes(), maxrays_packet(7))
+
     def test_serial_stats(self):
         source = self.make(MAXRAYS_PROFILE)
         source._connection.data.extend(b"" + maxrays_packet(1))
