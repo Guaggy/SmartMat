@@ -1,6 +1,11 @@
 // SmartMat China mat bridge: ESP32-S3 is a USB host for the Maxrays 20x20 mat (CH340, 921600 baud)
 // and republishes its frames over MQTT, same topics as ESP32_Resistive but raw 0-255 values.
 // Build with -DSIMULATE_MAT to skip USB and publish a moving blob instead (no mat needed).
+//
+// Two cores: the Arduino loop (core 1) only drains USB, decodes and averages, and never blocks. All Wi-Fi and
+// MQTT work runs in network_task (core 0, next to the Wi-Fi/lwIP tasks), because a broker or Wi-Fi outage
+// blocks connect() for seconds and the 8 KB USB buffer holds only ~0.3 s of the mat's ~24 kB/s stream.
+// The two meet in one latest-wins mailbox (frame_mailbox.h), filled once per 100 ms window.
 
 #include <Arduino.h>
 #include <PubSubClient.h>
@@ -14,6 +19,7 @@
 #endif
 
 #include "frame_accumulator.h"
+#include "frame_mailbox.h"
 #include "maxrays_decoder.h"
 #include "secrets.h" // Wifi and passcodes
 
@@ -26,6 +32,12 @@ const uint8_t grid_cols = 20;
 const uint16_t value_max = 255;
 const uint16_t cell_count = grid_rows * grid_cols;
 
+// Mat preset, sent in the meta message. Sensing area measured from the MC266 datasheet drawing,
+// approximate (+/-5 %): verify with a ruler. Model: letters, digits, '_' and '-' only; sizes in whole mm.
+const char* MAT_MODEL = "MC266";
+const uint16_t MAT_WIDTH_MM = 343;
+const uint16_t MAT_HEIGHT_MM = 358;
+
 // USB host (native port: D+ GPIO20, D- GPIO19)
 const uint32_t mat_baud = 921600; // CH340, 8-N-1
 const size_t usb_rx_buffer_size = 8192; // default 512 B is only ~5 ms at 921600
@@ -35,26 +47,41 @@ const uint32_t frame_interval_ms = 100; // publish window: 10 fps, mean of all f
 // Wifi and MQTT
 const char* mqtt_topic_prefix = "smartmat"; // topics: smartmat/<chip_id>/frame, .../meta and .../status
 const uint32_t reconnect_retry_interval_ms = 5000;
-const uint16_t mqtt_socket_timeout_s = 2; // a blocked connect() must not starve the USB ring buffer for 15 s
+const uint16_t mqtt_socket_timeout_s = 2; // keeps the network task responsive while the broker is down
 const uint16_t mqtt_packet_buffer_size = 2048; // 400 values are <= 1.6 KB --> this leaves headroom
 
-// Variables
+// Network task: core 0 (the Arduino loop runs on core 1), below the Wi-Fi (23) and lwIP (18) priorities
+const BaseType_t network_core = 0;
+const UBaseType_t network_priority = 1;
+const uint32_t network_stack_bytes = 8192; // free stack is printed in the 1 Hz stats
+const uint32_t network_poll_ms = 10;
+
+// Variables (main loop only)
 MaxraysDecoder decoder;
-FrameAccumulator accumulator;       // frames decoded (or simulated) in the current publish window
-uint8_t latest_frame[cell_count];   // mean of the last window, raw 0-255
-char frame_text[cell_count * 4 + 1]; // "255," per cell
+FrameAccumulator accumulator; // frames decoded (or simulated) in the current publish window
+uint32_t window_start_ms = 0;
+
+// Set in setup(), read-only afterwards
 char chip_id[13];     // 12 hex digits, also used as MQTT client id (must be unique per board)
 char frame_topic[40];
 char meta_topic[40];
 char status_topic[40]; // "online" retained after connect, "offline" retained as last will
-char meta_text[32];   // "<chip_id>,<rows>,<cols>,<value_max>"
+char meta_text[64];   // "<chip_id>,<rows>,<cols>,<value_max>,<model>,<width_mm>,<height_mm>"
 
-// Start Wifi and MQTT
+// Shared between the two cores
+FrameMailbox mailbox; // guarded by mailbox_lock
+portMUX_TYPE mailbox_lock = portMUX_INITIALIZER_UNLOCKED;
+volatile uint32_t windows_dropped = 0; // written by the network task only
+volatile bool mqtt_up = false;         // written by the network task only
+TaskHandle_t network_task_handle = nullptr;
+
+// Network task only: never touch these from loop()
 WiFiClient wifi_client;
 PubSubClient mqtt_client(wifi_client);
 uint32_t last_wifi_attempt_ms = 0;
 uint32_t last_mqtt_attempt_ms = 0;
-uint32_t last_frame_sent_ms = 0;
+uint8_t net_frame[cell_count];
+char frame_text[cell_count * 4]; // "255," per cell, the last comma's place holds the '\0'
 
 #ifndef SIMULATE_MAT
 EspUsbHost usb;
@@ -70,8 +97,13 @@ void build_identity() {
   snprintf(frame_topic, sizeof(frame_topic), "%s/%s/frame", mqtt_topic_prefix, chip_id);
   snprintf(meta_topic, sizeof(meta_topic), "%s/%s/meta", mqtt_topic_prefix, chip_id);
   snprintf(status_topic, sizeof(status_topic), "%s/%s/status", mqtt_topic_prefix, chip_id);
-  snprintf(meta_text, sizeof(meta_text), "%s,%u,%u,%u", chip_id,
-           static_cast<unsigned>(grid_rows), static_cast<unsigned>(grid_cols), static_cast<unsigned>(value_max));
+  if (!format_meta(meta_text, sizeof(meta_text), chip_id, grid_rows, grid_cols, value_max, MAT_MODEL,
+                   MAT_WIDTH_MM, MAT_HEIGHT_MM)) {
+    for (;;) { // config error in the constants above: fail loudly instead of sending a broken meta
+      Serial.println("Bad MAT_MODEL / MAT_WIDTH_MM / MAT_HEIGHT_MM, fix the config and reflash");
+      delay(2000);
+    }
+  }
 }
 
 // Check if wifi is connected
@@ -117,28 +149,48 @@ void maintain_mqtt() {
   }
 }
 
-// Build data frame for MQTT: 400 comma-separated ints, row-major
-void build_frame_text() {
-  char* out = frame_text;
-  for (uint16_t i = 0; i < cell_count; ++i) {
-    if (i) *out++ = ',';
-    const uint8_t v = latest_frame[i];
-    if (v >= 100) *out++ = '0' + v / 100;
-    if (v >= 10) *out++ = '0' + (v / 10) % 10;
-    *out++ = '0' + v % 10;
-  }
-  *out = '\0';
-}
-
-// At the end of each window publish the mean of the frames decoded in it (nothing if none arrived)
-void send_frame() {
-  if (millis() - last_frame_sent_ms < frame_interval_ms) {
+// Publish each new window once; a window that arrives while MQTT is down is dropped (and counted)
+void publish_frame() {
+  static uint32_t last_seq = 0;
+  portENTER_CRITICAL(&mailbox_lock);
+  const bool fresh = mailbox.take_if_new(last_seq, net_frame);
+  portEXIT_CRITICAL(&mailbox_lock);
+  if (!fresh) {
     return;
   }
-  last_frame_sent_ms = millis();
-  if (accumulator.take_mean(latest_frame) && mqtt_client.connected()) {
-    build_frame_text();
-    mqtt_client.publish(frame_topic, frame_text, false); // not retained: a stale frame must not look live
+  format_frame_csv(net_frame, cell_count, frame_text);
+  // Not retained: a stale frame must not look live
+  if (!mqtt_client.connected() || !mqtt_client.publish(frame_topic, frame_text, false)) {
+    windows_dropped = windows_dropped + 1;
+  }
+}
+
+// Owns Wi-Fi and MQTT. connect() may block for seconds here; the USB loop on the other core keeps running.
+void network_task(void*) {
+  WiFi.mode(WIFI_STA);
+  mqtt_client.setServer(mqtt_broker_ip, mqtt_port);
+  mqtt_client.setBufferSize(mqtt_packet_buffer_size);
+  mqtt_client.setSocketTimeout(mqtt_socket_timeout_s);
+  for (;;) {
+    maintain_wifi();
+    maintain_mqtt();
+    mqtt_up = mqtt_client.connected();
+    publish_frame();
+    vTaskDelay(pdMS_TO_TICKS(network_poll_ms));
+  }
+}
+
+// At the end of each window hand the mean of its frames to the network task (nothing if none arrived)
+void close_window() {
+  if (millis() - window_start_ms < frame_interval_ms) {
+    return;
+  }
+  window_start_ms = millis();
+  uint8_t mean[cell_count];
+  if (accumulator.take_mean(mean)) {
+    portENTER_CRITICAL(&mailbox_lock); // 400 B memcpy: microseconds, never waits on the network
+    mailbox.put(mean);
+    portEXIT_CRITICAL(&mailbox_lock);
   }
 }
 
@@ -196,31 +248,31 @@ void print_stats() {
     return;
   }
   last_print_ms = now;
-  Serial.printf("[%s] %lu B/s, %lu frames/s, discarded %lu B, invalid %lu\n",
+  Serial.printf("[%s, %s] %lu B/s, %lu frames/s, discarded %lu B, invalid %lu, net dropped %lu, "
+                "net stack free %u B\n",
 #ifdef SIMULATE_MAT
                 "sim",
 #else
                 mat_serial.connected() ? "mat up" : "mat down",
 #endif
+                mqtt_up ? "mqtt up" : "mqtt down",
                 static_cast<unsigned long>(decoder.bytes_received - last_bytes),
                 static_cast<unsigned long>(decoder.frames_decoded - last_frames),
                 static_cast<unsigned long>(decoder.bytes_discarded),
-                static_cast<unsigned long>(decoder.invalid_frames));
+                static_cast<unsigned long>(decoder.invalid_frames),
+                static_cast<unsigned long>(windows_dropped),
+                static_cast<unsigned>(uxTaskGetStackHighWaterMark(network_task_handle)));
   last_bytes = decoder.bytes_received;
   last_frames = decoder.frames_decoded;
 }
 
 void setup() {
+  Serial.setTxBufferSize(1024); // default 0 = printf() blocks the USB loop until the line is on the wire
   Serial.begin(115200);
   delay(500);
   Serial.println("Smartmat China mat V1");
   build_identity();
   Serial.printf("Chip id: %s\n", chip_id);
-
-  WiFi.mode(WIFI_STA);
-  mqtt_client.setServer(mqtt_broker_ip, mqtt_port);
-  mqtt_client.setBufferSize(mqtt_packet_buffer_size);
-  mqtt_client.setSocketTimeout(mqtt_socket_timeout_s);
 
 #ifdef SIMULATE_MAT
   Serial.println("SIMULATE_MAT: USB host off, publishing a moving blob");
@@ -233,19 +285,19 @@ void setup() {
   }
 #endif
 
+  xTaskCreatePinnedToCore(network_task, "network", network_stack_bytes, nullptr, network_priority,
+                          &network_task_handle, network_core);
   Serial.println("Boot OK");
 }
 
+// USB loop: no network calls, nothing that blocks
 void loop() {
-  maintain_wifi();
-  maintain_mqtt();
-
 #ifdef SIMULATE_MAT
   simulate_frame();
 #else
   read_mat();
 #endif
-  send_frame();
+  close_window();
 
   if (serial_debug) print_stats();
   delay(1);

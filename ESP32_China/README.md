@@ -8,7 +8,7 @@ over MQTT to the SmartMat Raspberry Pi app. Engineering aid, not a medical devic
 
 | Topic | Payload |
 |---|---|
-| `smartmat/<chip_id>/meta` (retained) | `<chip_id>,20,20,255` (rows, cols, value_max) |
+| `smartmat/<chip_id>/meta` (retained) | `<chip_id>,<rows>,<cols>,<value_max>,<model>,<width_mm>,<height_mm>`, e.g. `a1b2c3d4e5f6,20,20,255,MC266,343,358`. Model: letters, digits, `_`, `-`; sizes: sensing area in whole mm (`MAT_MODEL`, `MAT_WIDTH_MM`, `MAT_HEIGHT_MM` in `main.cpp`; MC266 size read from the datasheet drawing, about +/-5 %) |
 | `smartmat/<chip_id>/frame` (NOT retained) | 400 comma-separated ints 0-255, row-major, at most 10 fps, mean of the frames decoded in each 100 ms window |
 | `smartmat/<chip_id>/status` (retained) | `online` after every MQTT connect; `offline` is the last will, published by the broker when the board vanishes |
 
@@ -19,14 +19,31 @@ The mat streams at about 60 Hz. Instead of dropping frames, every frame decoded 
 per-cell sums and the rounded mean is published when the window ends (nothing is published if no frame arrived).
 Frames are not retained, so a subscriber never sees a stale frame as live; use the `status` topic for presence.
 
+## Architecture (two cores)
+
+- **Core 1, Arduino `loop()`**: drains the USB receive buffer, decodes, averages, and at the end of each 100 ms
+  window puts the mean into a mailbox. No network calls and nothing that blocks.
+- **Core 0, `network_task`** (priority 1, 8 KB stack, next to the Wi-Fi and lwIP tasks): Wi-Fi reconnect, MQTT
+  connect/loop, meta and status, and frame publish. `PubSubClient`/`WiFiClient` are only touched here.
+- **Mailbox** (`frame_mailbox.h`): 400 averaged bytes + sequence number + valid flag behind a spinlock
+  (`portMUX`, held only for a 400 B copy). Latest wins: the loop never waits; the network task formats the CSV
+  and publishes when MQTT is up and the sequence changed. Windows that arrive while MQTT is down are dropped and
+  counted (`net dropped` in the UART stats).
+
+Why: the mat streams 60 fps x 406 B = about **24.4 kB/s**, and the USB receive buffer is 8 KB, so it overflows
+after 8192 / 24400 = about **0.34 s** without a read. With the broker or Wi-Fi down, `mqtt_client.connect()`
+blocks for the TCP connect plus up to 2 s (socket timeout) every 5 s; in one loop that lost USB data and made
+the decoder resync. On its own core it only delays publishing, never the USB read.
+
 ## Files
 
-- `src/main.cpp` - Wi-Fi/MQTT keep-alive, USB host read, publish, `SIMULATE_MAT` blob.
+- `src/main.cpp` - USB host read and window mean (loop), Wi-Fi/MQTT network task, `SIMULATE_MAT` blob.
+- `src/frame_mailbox.h` - header-only latest-wins mailbox, frame CSV and meta formatting, no Arduino includes.
 - `src/frame_accumulator.h` - header-only per-window mean (uint16 sums + count, rounded), no Arduino includes.
 - `src/maxrays_decoder.h` - header-only decoder, no Arduino includes. Same framing rules as
   `Raspberry Pi/sources/maxrays.py`: resync on `A5 5A`, packet end from the next header (404-436 bytes) or the
   declared length (406, or declared+4), lone trailing `A5` kept, garbage dropped, payload = bytes 4..403.
-- `test/test_decoder/`, `test/test_accumulator/` - host Unity tests of the decoder and the accumulator.
+- `test/test_decoder/`, `test/test_accumulator/`, `test/test_mailbox/` - host Unity tests.
 - `src/secrets.h.example` - copy to `src/secrets.h` (gitignored) and fill in Wi-Fi and MQTT values.
 
 ## Wiring (USB-A breakout on the S3 native USB port)
@@ -96,9 +113,11 @@ C:\Users\evenm\.platformio\penv\Scripts\python.exe -m platformio test -e native
    bank or 1 A charger, see Power).
 5. Flash the real `esp32-s3-devkitc-1` build with the mat attached: the mat appears. Compare frame by frame with
    the direct-USB view on the PC (same orientation, same range). The UART log prints bytes/s, frames/s,
-   discarded bytes and invalid frames once a second; the mat should show up as `mat up` at about 60 frames/s
-   while the Pi sees at most 10 frames/s.
+   discarded bytes, invalid frames, dropped windows and the network task's free stack once a second; the mat
+   should show up as `mat up` at about 60 frames/s while the Pi sees at most 10 frames/s.
 6. Pull and replug the mat, and the Wi-Fi: it recovers without a reset, and `status` goes back to `online`.
+   Stop the broker for 30 s: frames/s stays at about 60 and `discarded`/`invalid` do not grow, only
+   `net dropped` does. If `net stack free` falls under about 1 KB, raise `network_stack_bytes`.
 
 Not verified without hardware: CH340 at 921600 through the host driver, enumeration on GPIO19/20, replug
 rebinding, and VBUS capability of the 5V pin.
