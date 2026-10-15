@@ -108,8 +108,8 @@ class MqttSource:
                 if meta[0] == self.chip_id:
                     self._meta_seen.set()
             return
-        if self.shape is None:
-            return  # no metadata for this mat yet
+        if message.retain or self.shape is None:
+            return  # a retained frame is stale after a reconnect and must not look live; or no metadata yet
         grid, reason = ((None, "malformed") if text is None
                         else parse_frame_text_with_reason(text, self.value_max, self.shape))
         self.quality.packet(reason, timestamp=False)

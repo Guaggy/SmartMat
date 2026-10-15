@@ -100,8 +100,8 @@ def make_source(chip_id=None):
         return MqttSource(chip_id)
 
 
-def message(topic, text):
-    return types.SimpleNamespace(topic=topic, payload=text.encode("ascii"))
+def message(topic, text, retain=False):
+    return types.SimpleNamespace(topic=topic, payload=text.encode("ascii"), retain=retain)
 
 
 def connect(source, failed=False):
@@ -168,6 +168,17 @@ class MqttSourceTests(unittest.TestCase):
         self.assertEqual(source.latest.take().shape, (20, 12))
         source._on_message(None, None, message("smartmat/bbb222/frame", "1,2,3"))
         self.assertEqual(source.quality.snapshot()["unexpected_grid_size"], 1)
+
+    def test_retained_frame_is_ignored_but_retained_meta_is_not(self):
+        source = make_source("bbb222")
+        connect(source)
+        source._on_message(None, None, message("smartmat/bbb222/meta", "bbb222,20,12", retain=True))
+        self.assertEqual(source.shape, (20, 12))
+        source._on_message(None, None, message("smartmat/bbb222/frame", ",".join(["5"] * 240), retain=True))
+        self.assertIsNone(source.latest.take())
+        self.assertEqual(source.quality.snapshot()["received"], 0)
+        source._on_message(None, None, message("smartmat/bbb222/frame", ",".join(["5"] * 240)))
+        self.assertEqual(source.latest.take().shape, (20, 12))
 
     def test_8_bit_mat_is_range_checked_raw_and_scaled_at_ingest(self):
         use_shape(self, 20, 20)
