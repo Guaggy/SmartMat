@@ -18,4 +18,3 @@ Archived/
 # Python build/venv output
 .venv/
 build/
-dist/
