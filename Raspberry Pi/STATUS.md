@@ -164,12 +164,24 @@ Recordings store frames after scaling; `metadata.value_max`/`mat_id` say where
 they came from (missing value_max = 1000). `load_session` returns frames at the
 recording's own `grid_shape`, and playback applies that size first.
 
-`paths.py` - `APP_DIR`: the project folder, or the exe's folder when frozen (PyInstaller). `general.MATS_FILE`,
-`processing.recording.RECORDINGS_DIR` and a relative `DEFAULT_PRESSURE_CALIBRATION_FILE` resolve against it;
-`main.py` imports it first so a frozen build puts that folder on `sys.path` (config.py is excluded from the bundle
-and copied from the bundled `config.example.py` on first run). Build: `build_exe.bat` -> `SmartMat.spec`
-(onedir, windowed) -> `dist\SmartMat\SmartMat.exe` + `dist\SmartMat.zip`; `SmartMat.exe --selftest` is a headless
-smoke test (writes `selftest.txt` next to the exe). Source-tree behaviour is unchanged.
+`paths.py` - `APP_DIR` / `DATA_MODE` (`choose_data_dir`, pure and tested): source tree = the project folder; frozen =
+the exe's folder if `portable.txt` sits next to the exe (portable) or config.py/mats.json/recordings/profiles already
+do (legacy), else `%LOCALAPPDATA%\SmartMat` (user; falls back to the exe's folder if unavailable). `general.MATS_FILE`,
+`processing.recording.RECORDINGS_DIR`, the profiles folder and a relative `DEFAULT_PRESSURE_CALIBRATION_FILE` resolve
+against it; `main.py` imports it first so a frozen build puts that folder on `sys.path` (config.py is excluded from the
+bundle and copied from the bundled `config.example.py` on first run). Bundled read-only files go through
+`resource_path()` (`sys._MEIPASS`, which is also the temp extraction folder of the one-file build). Builds:
+`build_exe.bat` -> `SmartMat.spec` (onedir, windowed) -> `dist\SmartMat\SmartMat.exe` + `dist\SmartMat.zip`
+(about 2 s start), and `build_exe_onefile.bat` -> `SmartMat-onefile.spec` (same Analysis, keep in sync) ->
+`dist\onefile\SmartMat.exe` (one 41 MB file, about 6-8 s start, extracts to `%TEMP%` each launch).
+`SmartMat.exe --selftest` is a headless smoke test (writes `selftest.txt` with app_dir and mode to APP_DIR).
+Source-tree behaviour is unchanged.
+
+`app_settings.py` - `settings.json` in `paths.APP_DIR` (gitignored, plaintext) holds the MQTT broker;
+`effective_mqtt()` = settings.json > config.py (only the example credential placeholders count as unset; the host never does) > `localhost:1883`, no
+credentials. `MqttSource` reads it at construction and only calls `username_pw_set` for a non-empty user;
+Engineering > Connection edits it (Test = `check_broker`, Save restarts discovery via
+`DesktopApp.restart_discovery`). An open MQTT connection keeps its old broker until it reconnects.
 
 `branding.py` - product/company names, website, contact address (contact@verdianmedical.com, confirmed), `VERSION` (About, window title "SmartMat 0.1.0", first line
 of `selftest.txt`), disclaimer text and the accent

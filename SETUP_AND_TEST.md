@@ -50,10 +50,25 @@ sudo apt install -y mosquitto mosquitto-clients python3-venv python3-tk git
 ## 3. Install the app
 
 ### PC, from the exe [verified]
-`Raspberry Pi\dist\SmartMat.zip` -> unzip anywhere writable -> run `SmartMat.exe`.
-Config, `mats.json`, `recordings\`, `profiles\` and raw captures live **next to the exe**.
-First run copies `config.py` there from the bundled example (edit it for the broker address).
-Headless check: `SmartMat.exe --selftest` writes `selftest.txt` (exit code 0 = OK).
+Two builds, same program:
+
+| Build | File | Start | Use it for |
+|---|---|---|---|
+| Folder (zip) | `Raspberry Pi\dist\SmartMat.zip` -> unzip anywhere -> `SmartMat.exe` | about 2 s | The school/pilot PC, locked-down or antivirus-scanned machines |
+| One file | `Raspberry Pi\dist\onefile\SmartMat.exe` (single file, about 41 MB) | about 6-8 s (unpacks to `%TEMP%` on every launch) | Quick tests, sending to a friend; may trip antivirus |
+
+Your data (`config.py`, `settings.json`, `mats.json`, `recordings\`, `profiles\`, raw captures, `selftest.txt`) lives in
+**`%LOCALAPPDATA%\SmartMat`**, not next to the exe. To keep it next to the exe instead (USB stick), create an empty
+file named `portable.txt` beside `SmartMat.exe`; installs that already have data next to the exe keep using it.
+The broker is set **inside the app**: Engineering > Connection (host, port, user, password, Test, Save); the
+default is `localhost:1883` without a login. The password is stored as plain text in `settings.json`.
+Headless check: `SmartMat.exe --selftest` writes `selftest.txt` (app folder and mode, exit code 0 = OK).
+
+#### Sending the exe to a friend
+Send the one-file `SmartMat.exe` (or the zip). Tell them: Windows SmartScreen will say "unknown publisher"
+(the exe is unsigned): **More info > Run anyway**; they need Windows 10/11 64-bit, no Python; Source
+**Simulated** works without any hardware; with the mat they need the CH340 driver and must close the vendor
+client. MQTT needs your broker address and login, so USB or Simulated is the path for a friend.
 
 ### PC, from source [verified]
 ```powershell
@@ -69,8 +84,11 @@ Use a venv: a global `paho-mqtt` 1.x (pinned by some other tools) breaks MQTT; t
 ```powershell
 cd "Raspberry Pi"
 .venv\Scripts\pip install pyinstaller        # once
-.\build_exe.bat                              # -> dist\SmartMat\SmartMat.exe and dist\SmartMat.zip
+.\build_exe.bat                              # folder build -> dist\SmartMat\SmartMat.exe and dist\SmartMat.zip
+.\build_exe_onefile.bat                      # one file    -> dist\onefile\SmartMat.exe
 ```
+(`build_exe_onefile.bat` uses `SmartMat-onefile.spec`; keep its Analysis section in sync with `SmartMat.spec`.
+Run both from PowerShell as `cmd /c ".\build_exe.bat"` if a plain call does not start.)
 
 ### Raspberry Pi [unverified]
 ```bash
@@ -98,10 +116,11 @@ sudo systemctl restart mosquitto
 hostname -I                                                       # the Pi's address for the configs below
 ```
 
-Same username/password go into three places:
-`Raspberry Pi/config.py` (`broker_host`, `mqtt_username`, `mqtt_password`),
+The same host/username/password go into three places:
+the app (**Engineering > Connection**, saved in `settings.json`; or `Raspberry Pi/config.py`
+`broker_host`/`mqtt_username`/`mqtt_password` when running from source),
 `ESP32_Resistive/src/secrets.h` and `ESP32_China/src/secrets.h` (copy each from `secrets.h.example`;
-`secrets.h` is gitignored, never commit it).
+`secrets.h` is gitignored, never commit it). Precedence in the app: `settings.json` > `config.py` > `localhost`.
 
 Use a fixed address: a DHCP reservation on the router, or note `hostname -I` and re-flash if it changes.
 The firmware takes an IP string, not a hostname.
@@ -173,7 +192,7 @@ Each test: do the steps, compare with "Expect". Note anything that differs.
 6. **Diagnostics...**: about 60 frames/s "in", about 10 frames/s "out", discarded bytes flat (not climbing),
    malformed/invalid close to 0.
 7. **Capture raw (5 s)**: once unloaded, once loaded. Files land in `recordings\raw_maxrays_<timestamp>.bin`
-   (next to the exe). Keep both; copy one to `Raspberry Pi\tests\fixtures\maxrays_capture.bin`.
+   (in `%LOCALAPPDATA%\SmartMat\recordings\`, or next to the exe in portable mode). Keep both; copy one to `Raspberry Pi\tests\fixtures\maxrays_capture.bin`.
 8. Write down: does pressure make values go **up** or **down**? Do loaded cells **saturate at 255**? Is the
    picture **mirrored/rotated** (fix with Rotate/Mirror, then re-tare)? Idle noise in counts? Frame rate?
 9. **Mat size...**: the preset is 343 x 358 mm (measured from the datasheet drawing, about +/-5 %). Measure
@@ -239,7 +258,7 @@ or another PC on the same network. Only the mat currently open in the desktop ap
 | "discarded bytes" keeps climbing | Stream differs from the spec (filler/other packet): send the raw capture |
 | Picture mirrored/rotated | Rotate/Mirror controls; re-tare afterwards (changing them resets that mat's tare) |
 | Mat missing from MQTT list | Broker address/user/password wrong in `secrets.h`; Wi-Fi 5 GHz (ESP32 is 2.4 GHz only); check `mosquitto_sub` |
-| MQTT: "refused" in the app log | Wrong `mqtt_username`/`mqtt_password` in `config.py`; paho 1.x installed (use the venv) |
+| MQTT: "Cannot reach MQTT broker" / "refused" | Set host, port and login under **Engineering > Connection** and press **Test connection**; from source also check `config.py`; paho 1.x installed (use the venv) |
 | Old mats stay in the device list | Retained `meta`: clear with `mosquitto_pub ... -t smartmat/<id>/meta -r -n` |
 | S3: nothing from the mat, status online | Breakout wiring (D+/D- swapped), VBUS missing, mat draws too much, wrong cable |
 | S3 resets when Wi-Fi starts | Weak supply: use a power bank or 1 A charger |

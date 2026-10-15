@@ -29,7 +29,7 @@ The **View: Simple | Advanced** switch (top right) hides everything but connect,
 build_exe.bat
 ```
 
-Produces `dist\SmartMat\SmartMat.exe` (PyInstaller onedir, windowed) and `dist\SmartMat.zip`. The logo in `assets\` is bundled into the exe. Config, `mats.json`, `recordings\`, calibration files and raw captures live next to the exe; on first run `config.py` is copied there from the bundled `config.example.py`. `SmartMat.exe --selftest` writes `selftest.txt` next to the exe (paths, web API answer) without opening the GUI.
+Produces `dist\SmartMat\SmartMat.exe` (PyInstaller onedir, windowed) and `dist\SmartMat.zip`; `build_exe_onefile.bat` produces a single file, `dist\onefile\SmartMat.exe` (about 41 MB, starts in 6-8 s because it unpacks to `%TEMP%` on every launch, and antivirus tools dislike one-file builds more than the folder build). The logo in `assets\` is bundled into the exe. Config, `settings.json`, `mats.json`, `recordings\`, profiles and raw captures live in `%LOCALAPPDATA%\SmartMat` (or next to the exe if an empty `portable.txt` sits there, or if data already lives there); on first run `config.py` is copied there from the bundled `config.example.py`. The MQTT broker is set in the app under Engineering > Connection (default `localhost:1883`, no login; stored as plain text in `settings.json`). `SmartMat.exe --selftest` writes `selftest.txt` (app folder, mode, paths, web API answer) without opening the GUI.
 
 ## Not a medical device
 
