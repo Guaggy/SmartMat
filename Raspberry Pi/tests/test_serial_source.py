@@ -100,6 +100,12 @@ class SerialSourceTest(unittest.TestCase):
         self.assertEqual(source.quality.snapshot()["valid"], 2)
         self.assertEqual(source.quality.snapshot()["dropped"], 1)
 
+    def test_maxrays_preset_name_and_size(self):
+        source = SerialSource("COM9", MAXRAYS_PROFILE)
+        self.assertEqual((source.model, source.default_size_mm), ("MC266", (343.0, 358.0)))
+        text = SerialSource("COM9", TEXT_PROFILE)
+        self.assertEqual((text.model, text.default_size_mm), (None, None))
+
     def test_default_target_rate_is_ten_for_maxrays_only(self):
         self.assertEqual(SerialSource("COM9", MAXRAYS_PROFILE).target_fps, 10)
         self.assertEqual(SerialSource("COM9", TEXT_PROFILE).target_fps, 0)

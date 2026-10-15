@@ -47,6 +47,7 @@ Recording / Playback — save experiments or replay recorded sessions."""),
 • Use calibrated pressure for physical pressure measurements.
 • Interpolation improves the display; it does not add sensors.
 • Engineering thresholds and burden metrics are experimental, not diagnoses.
+• The estimated load (kg) is indicative only: the Maxrays vendor rates the mat at about ±10% at best and states it is not suitable for weighing, only for trends and presence.
 • If readings look wrong, check Diagnostics, tare, and calibration first."""),
 )
 

@@ -159,6 +159,29 @@ class DesktopCellSizeTests(unittest.TestCase):
             app._load_profile()
             self.assertIsNone(app.mat_size_mm)
 
+    def test_preset_size_sits_between_the_profile_and_the_config_default(self):
+        app = self.app
+        folder = self.enterContext(tempfile.TemporaryDirectory())
+        self.enterContext(mock.patch.object(calibration, "PROFILES_DIR", Path(folder)))
+        self.enterContext(mock.patch.object(config, "MAT_WIDTH_MM", 500.0, create=True))
+        self.enterContext(mock.patch.object(config, "MAT_HEIGHT_MM", 400.0, create=True))
+        grid = (config.TOTAL_ROWS, config.TOTAL_COLS)
+        preset = dict(shape=grid, stop=lambda: None, model="MC266", default_size_mm=(343.0, 358.0))
+        app.source = SimpleNamespace(mat_id="presetA", **preset)  # no profile file: the preset
+        app._load_profile()
+        self.assertEqual(app.mat_size_mm, (343.0, 358.0))
+        app._update_cell_info()
+        self.assertEqual(app.model_var.get(), "Mat: Maxrays MC266")
+        save_profile("presetB", None, PressureCalibration.default(), ORIENTATION, (300.0, 200.0))
+        app.source = SimpleNamespace(mat_id="presetB", **preset)  # the profile's own size wins
+        app._load_profile()
+        self.assertEqual(app.mat_size_mm, (300.0, 200.0))
+        app.source = SimpleNamespace(mat_id="plain", shape=grid, stop=lambda: None)  # no preset: config default
+        app._load_profile()
+        self.assertEqual(app.mat_size_mm, (500.0, 400.0))
+        app._update_cell_info()
+        self.assertEqual(app.model_var.get(), "")
+
     def test_size_entered_before_connect_goes_to_a_mat_without_one(self):
         app = self.app
         folder = self.enterContext(tempfile.TemporaryDirectory())

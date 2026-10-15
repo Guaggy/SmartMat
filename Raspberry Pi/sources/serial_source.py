@@ -22,10 +22,15 @@ RX_BUFFER_BYTES = 256 * 1024  # driver receive buffer asked for (Windows), ~2.8 
 TEXT_PROFILE = "ESP32 text (115200)"
 MAXRAYS_PROFILE = "Maxrays 20x20 (921600)"
 DEFAULT_SHAPE = (config.TOTAL_ROWS, config.TOTAL_COLS)  # config.py's own size (TOTAL_* are overwritten at runtime)
-# shape/mat_id None = the text profile: config grid size, port name as mat id
+# shape/mat_id None = the text profile: config grid size, port name as mat id.
+# model / size_mm = preset: the mat's name and its default sensing size (width, height) in mm, used when the mat's
+# own profile has no size. MC266 datasheet: 20x20, 5 V / 200 mA, 800 Pa - 200 kPa, about +/-10 % at best (repeatability
+# +/-15 %), not suitable for weighing. size_mm was measured from the datasheet drawing (see notes.md), approximate.
 PROFILES = {
-    TEXT_PROFILE: {"baud": BAUD_RATE, "shape": None, "value_max": VALUE_MAX_DEFAULT, "mat_id": None},
-    MAXRAYS_PROFILE: {"baud": 921600, "shape": (20, 20), "value_max": 255, "mat_id": "maxrays-usb"},
+    TEXT_PROFILE: {"baud": BAUD_RATE, "shape": None, "value_max": VALUE_MAX_DEFAULT, "mat_id": None,
+                   "model": None, "size_mm": None},
+    MAXRAYS_PROFILE: {"baud": 921600, "shape": (20, 20), "value_max": 255, "mat_id": "maxrays-usb",
+                      "model": "MC266", "size_mm": (343.0, 358.0)},
 }
 
 Port = namedtuple("Port", "device label")
@@ -130,6 +135,7 @@ class SerialSource:
         self.shape = spec["shape"] or DEFAULT_SHAPE
         self.value_max = spec["value_max"]
         self.mat_id = spec["mat_id"] or port
+        self.model, self.default_size_mm = spec["model"], spec["size_mm"]  # preset (None for the text profile)
         self.latest = LatestFrame()
         self.quality = SourceQuality()
         self.decoder = MaxraysDecoder(*self.shape) if profile == MAXRAYS_PROFILE else None

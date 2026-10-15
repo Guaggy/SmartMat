@@ -575,6 +575,8 @@ class DesktopApp:
         ttk.Label(panel, textvariable=self.grid_info_var).pack(anchor="w")
         self.baud_var = tk.StringVar(value=self._baud_text())
         ttk.Label(panel, textvariable=self.baud_var).pack(anchor="w")
+        self.model_var = tk.StringVar()  # the connected mat's preset name, empty without one
+        ttk.Label(panel, textvariable=self.model_var).pack(anchor="w")
         self._info_line(panel, f"Value range: {VALUE_MIN_DEFAULT}-{VALUE_MAX_DEFAULT}")
 
         self._info_line(panel, "App", header=True, top_pad=8)
@@ -781,6 +783,8 @@ class DesktopApp:
         size = self.cell_size_mm
         self.cell_info_var.set("Cell area: not configured" if size is None else
                                f"Cell: {size[0]:.1f} x {size[1]:.1f} mm")
+        model = getattr(self.source, "model", None)
+        self.model_var.set(f"Mat: Maxrays {model}" if model else "")
 
     def _set_mat_size(self):
         """Ask for the mat's physical sensing size (outer edge of the first to the last sensing element)"""
@@ -822,7 +826,8 @@ class DesktopApp:
         """A real mat just connected: restore its orientation, tare and calibration, or start it clean.
         Applies the *oriented* shape first so the first live frame (_orient) does not reset it again."""
         mat_id = self._profile_mat_id()
-        self.mat_size_mm = configured_mat_size()  # simulated data / recordings and new mats: config default
+        # new mats: the source's preset size (e.g. Maxrays MC266), else the config default; a profile's own size wins below
+        self.mat_size_mm = getattr(self.source, "default_size_mm", None) or configured_mat_size()
         if mat_id is None:
             recorded = profile_size_mm({"size_mm": (self._playback_metadata or {}).get("mat_size_mm")})
             if recorded:  # the recording's own size (as built); its frames are already oriented

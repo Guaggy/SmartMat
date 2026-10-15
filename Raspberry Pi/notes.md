@@ -23,6 +23,14 @@
 - Mat size / load estimate: the "Estimated load" line is indicative only (force from calibrated pressure x cell area / 9.81, an engineering aid, not a weight measurement). It needs the mat's physical sensing size entered once per mat (About > Mat size...); with the default linear pressure curve it is shown as "default curve, not calibrated". Calibrating the scale factor against a known weight is a later step. Cells are assumed uniform per mat (width / cols, height / rows), so edge margins or gaps between cells are not modelled.
 - ESP32: `mux_settling_delay_us` and the ADC calibration assumptions haven't been verified against real hardware yet (only tested in simulation so far).
 
+## Maxrays MC266 datasheet (docs/mat_specs.pdf, vendor deck; the serial preset in `sources/serial_source.py` PROFILES)
+
+- 20 x 20, USB Type C (CH340), 921600 baud, stream `A5 5A 01 96 ...`; vendor client shows 60.0 Hz. 5 V, max 200 mA.
+- Range 800 Pa - 200 kPa (measured on a 1 cm2 circular contact). Repeatability +/-15 % (1.5 kg load), product consistency +/-20 %, about +/-10 % error at best. The vendor says it is NOT suitable for weighing, only for trends / presence - so the kg readout stays "indicative".
+- Resistance is roughly a power law of pressure; conductance is roughly linear with pressure (so the default linear curve is a first guess only).
+- Outer size 438 x 438 mm; the sensing grid is smaller. Preset sensing size (used when the mat's profile has no size; precedence profile file > preset > config MAT_*/CELL_*): **343 x 358 mm, cell pitch about 17.2 x 17.9 mm**, measured from the page-4 drawing: the 20 x 20 electrode grid is 20 x 22.32 px = 446 px square at 150 dpi, against the 438 mm outer box drawn 569 px wide and 546 px tall (the drawing is not equal-scale: the two 438 mm dimensions measure 1.299 and 1.247 px/mm), so 446/569*438 = 343 mm and 446/546*438 = 358 mm. Treat as +/-5 %; an equal-scale reading would give about 350 x 350. Measure the real mat and enter it under Mat size... to override.
+- Frames: ~60 fps is averaged down to `SERIAL_TARGET_FPS` (default 10, 0 = off) before analysis; diagnostics show source and output rate.
+
 ## Still to build
 
 - Web dashboard: a light background listener per known mat, so mats the desktop app doesn't have open also show a live raw heatmap. Needs a frame-reading path independent of the app's current grid size, plus one extra MQTT connection per mat. Hotspots/patient-state/indices stay limited to the connected mat until per-mat tare and calibration exist.
