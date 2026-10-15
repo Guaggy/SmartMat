@@ -113,6 +113,16 @@ already oriented), before `process_frame`; a change or a 90/270 turn of a non-sq
 `_apply_grid_shape` (analysis state resets). So `config.TOTAL_*` is the *oriented* grid and sources must not
 read it: MQTT/Serial pass the mat's own shape to `parse_frame_text_with_reason(..., shape)`.
 
+Per-mat profiles: `<APP_DIR>/profiles/<mat_id>.json` (gitignored; `processing/calibration.py`
+`save_profile/load_profile/apply_profile`) hold a real mat's tare baseline, both pressure calibrations (+ which is
+active) and orientation, at its oriented grid shape. Only Serial/MQTT sources with a `mat_id` get one (not
+`SimulatedSource`, i.e. synthetic data and recordings). `DesktopApp._save_profile` runs at the top of `_connect`,
+in `_disconnect` and `_on_close`; `_load_profile` runs in `_connect` once the source shape is known: it restores
+the orientation, applies the *oriented* shape (so the first frame through `_orient` does not reset again), then
+always `_reset_calibration()` and, if the file's grid shape matches, puts its state back. So a real mat never
+inherits another mat's tare; a mat without a (matching) profile starts clean and keeps the current orientation.
+The calibration window shows which profile is active. Design: `docs/superpowers/specs/2026-10-15-per-mat-profiles-design.md`.
+
 `general.py` - frame parsing (`parse_frame_text_with_reason(text, value_max)`),
 `scale_to_app_range(grid, value_max)`, plus the mat nickname registry
 (`mats.json`, gitignored, `{chip_id: nickname}`).

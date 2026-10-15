@@ -6,6 +6,7 @@
 Raspberry Pi/config.py
 Raspberry Pi/mats.json
 Raspberry Pi/recordings/
+Raspberry Pi/profiles/
 **/__pycache__/
 *.pyc
 node_modules/

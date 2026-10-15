@@ -29,8 +29,9 @@ def _when(profile, exists):
 
 
 class CalibrationWindow:
-    def __init__(self, parent, calibration, raw_grid_getter, on_change):
+    def __init__(self, parent, calibration, raw_grid_getter, on_change, profile_text=""):
         self.calibration = calibration  # PressureCalibration holding both profiles
+        self.profile_text = profile_text  # which mat's saved profile this edits
         self.individual = calibration.individual
         self.uniform = calibration.uniform
         self.raw_grid_getter = raw_grid_getter
@@ -39,6 +40,9 @@ class CalibrationWindow:
         self.window.title("Pressure calibration")
         self.window.geometry("760x860")
         ttk.Label(self.window, text='Teaches the mat what each sensor reading means in kPa. Needed before pressure values and hotspots can be trusted.', wraplength=760, padding=(8, 6)).pack(side=tk.TOP, fill=tk.X)
+        if profile_text:
+            ttk.Label(self.window, text=profile_text, font=("TkDefaultFont", 9, "bold"),
+                      wraplength=760, padding=(8, 0)).pack(side=tk.TOP, fill=tk.X)
 
         notebook = ttk.Notebook(self.window)
         notebook.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=(10, 0))

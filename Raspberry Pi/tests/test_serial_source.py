@@ -7,6 +7,7 @@ from unittest import mock
 import numpy as np
 
 import config
+from processing import calibration
 from processing.frames import orient_grid
 from sources.serial_source import MAXRAYS_PROFILE, TEXT_PROFILE, Port, SerialSource
 
@@ -126,7 +127,9 @@ class DesktopSerialTests(unittest.TestCase):
         for patch in (mock.patch.object(desktop, "list_ports",
                                         return_value=[Port("COM3", "COM3 - USB-SERIAL CH340")]),
                       mock.patch.object(SerialSource, "start"),
-                      mock.patch.object(desktop, "save_mat_names")):
+                      mock.patch.object(desktop, "save_mat_names"),
+                      mock.patch.object(calibration, "PROFILES_DIR", Path(self.enterContext(
+                          tempfile.TemporaryDirectory())))):
             patch.start()
             self.addCleanup(patch.stop)
         try:

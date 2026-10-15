@@ -2,6 +2,7 @@
 
 import copy
 import json
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -468,3 +469,51 @@ class PressureCalibration:
         with path.open() as file:
             self.load_dict(json.load(file))
         self.active.path = path
+
+
+# ---- per-mat profiles: one JSON per real mat with its tare, both calibrations and orientation
+
+PROFILE_FORMAT = "smartmat_mat_profile_v1"
+PROFILES_DIR = paths.APP_DIR / "profiles"
+
+
+def profile_path(mat_id):
+    return PROFILES_DIR / (re.sub(r"[^\w.-]", "_", str(mat_id)) + ".json")
+
+
+def save_profile(mat_id, baseline, pressure_calibration, orientation):
+    """Write the current (oriented) grid's state for this mat"""
+    data = {"format": PROFILE_FORMAT, "mat_id": mat_id,
+            "grid_shape": [config.TOTAL_ROWS, config.TOTAL_COLS], "orientation": orientation,
+            "baseline": None if baseline is None else np.asarray(baseline).tolist(),
+            "active": pressure_calibration.active_name,
+            "individual": pressure_calibration.individual.to_dict(),
+            "uniform": pressure_calibration.uniform.to_dict()}
+    PROFILES_DIR.mkdir(parents=True, exist_ok=True)
+    profile_path(mat_id).write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def load_profile(mat_id):
+    """The saved profile dict, or None when there is none (or it is unreadable / not a profile)"""
+    try:
+        data = json.loads(profile_path(mat_id).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) and data.get("format") == PROFILE_FORMAT else None
+
+
+def apply_profile(data, calibration, pressure_calibration):
+    """Put a profile's tare and calibrations back; all-or-nothing (raises ValueError, changes nothing)"""
+    try:
+        individual, uniform = IndividualCalibration(), UniformCalibration()
+        individual.load_dict(data["individual"])
+        uniform.load_dict(data["uniform"])
+        baseline = None if data["baseline"] is None else np.asarray(data["baseline"], dtype=float)
+        if baseline is not None and baseline.shape != (config.TOTAL_ROWS, config.TOTAL_COLS):
+            raise ValueError("Profile tare does not match the grid")
+        active = data["active"] if data.get("active") in PressureCalibration.PROFILES else "individual"
+    except (KeyError, TypeError) as error:
+        raise ValueError(f"Incomplete mat profile: {error}") from error
+    pressure_calibration.individual, pressure_calibration.uniform = individual, uniform
+    pressure_calibration.use(active)
+    calibration.baseline = baseline

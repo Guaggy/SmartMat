@@ -23,7 +23,8 @@ from config import (
     VALIDATION_MATCH_WINDOW_S, INDEX_UPDATE_INTERVAL_S,
 )
 from general import load_mat_names, mat_labels, save_mat_names
-from processing.calibration import Calibration, IndividualCalibration, PressureCalibration, UniformCalibration
+from processing.calibration import (Calibration, IndividualCalibration, PressureCalibration, UniformCalibration,
+                                    apply_profile, load_profile, save_profile)
 from processing.session_events import STATE_EVENTS, apply_state_event, event_is_due
 from processing.session_state import initial_session_state
 from processing.settings import apply_settings, capture_settings, default_settings
@@ -559,13 +560,7 @@ class DesktopApp:
         if self.recorder is not None:
             self._toggle_recording()  # a recording cannot span two grid sizes: save it at the old one
         app_config.TOTAL_ROWS, app_config.TOTAL_COLS = rows, cols
-        self.calibration.baseline = None
-        try:
-            self.pressure_calibration.individual = IndividualCalibration.default()
-        except ValueError:  # the configured startup calibration file is for another grid size
-            self.pressure_calibration.individual = IndividualCalibration()
-        self.pressure_calibration.uniform = UniformCalibration()
-        self.pressure_calibration.use("individual")
+        self._reset_calibration()
         for mode in MODES:
             mode.reset()
         self.temporal.reset_all()
@@ -589,6 +584,69 @@ class DesktopApp:
         self._build_plot()
         if self.roi_window is not None and self.roi_window.window.winfo_exists():
             self.roi_window.reset()
+
+    def _reset_calibration(self):
+        """No tare, default pressure calibration (the startup one if it fits this grid)"""
+        self.calibration.baseline = None
+        try:
+            self.pressure_calibration.individual = IndividualCalibration.default()
+        except ValueError:  # the configured startup calibration file is for another grid size
+            self.pressure_calibration.individual = IndividualCalibration()
+        self.pressure_calibration.uniform = UniformCalibration()
+        self.pressure_calibration.use("individual")
+
+    def _orientation(self):
+        return {"rotation": self._rotation, "mirror_h": self.mirror_h_var.get(),
+                "mirror_v": self.mirror_v_var.get()}
+
+    def _profile_mat_id(self):
+        """Real mats (Serial/MQTT) keep a profile; simulated data and recordings do not"""
+        if self.source is None or isinstance(self.source, SimulatedSource):
+            return None
+        return getattr(self.source, "mat_id", None)
+
+    def _save_profile(self):
+        mat_id = self._profile_mat_id()
+        if mat_id is None:
+            return
+        try:
+            save_profile(mat_id, self.calibration.baseline, self.pressure_calibration, self._orientation())
+        except OSError as error:
+            self.status_var.set(f"Could not save the mat profile for {mat_id}: {error}")
+
+    def _load_profile(self):
+        """A real mat just connected: restore its orientation, tare and calibration, or start it clean.
+        Applies the *oriented* shape first so the first live frame (_orient) does not reset it again."""
+        mat_id = self._profile_mat_id()
+        if mat_id is None:
+            return ""
+        profile = load_profile(mat_id)
+        rows, cols = self.source.shape
+        if profile is not None:
+            try:
+                orientation = profile["orientation"]
+                rotation = int(orientation["rotation"])
+                oriented = [cols, rows] if (rotation // 90) % 2 else [rows, cols]
+                if rotation not in (0, 90, 180, 270) or profile["grid_shape"] != oriented:
+                    profile = None  # another grid size (e.g. firmware changed): start clean
+            except (KeyError, TypeError, ValueError):
+                profile = None
+        if profile is not None:
+            self._rotation = rotation
+            self.rotation_var.set(str(rotation))
+            self.mirror_h_var.set(bool(orientation.get("mirror_h")))
+            self.mirror_v_var.set(bool(orientation.get("mirror_v")))
+        if (self._rotation // 90) % 2:
+            rows, cols = cols, rows
+        self._apply_grid_shape(rows, cols)
+        self._reset_calibration()  # never inherit another mat's tare/calibration, even at the same size
+        if profile is None:
+            return f" | new mat profile {mat_id}"
+        try:
+            apply_profile(profile, self.calibration, self.pressure_calibration)
+        except ValueError as error:
+            return f" | mat profile {mat_id} ignored ({error})"
+        return f" | mat profile {mat_id} restored"
 
     def _orientation_changed(self):
         """Rotate/mirror changed: cell positions moved, so the analysis state starts over like a new mat"""
@@ -635,6 +693,7 @@ class DesktopApp:
     def _connect(self):
         """Stop the current source and start the selected one"""
         self._close_calibration_windows()
+        self._save_profile()  # the mat being left (switch or reconnect)
         previous_analysis_settings = self._current_analysis_settings
         if self.source is not None:
             self.source.stop()
@@ -719,9 +778,10 @@ class DesktopApp:
             self.source.start()
             if source_name == "MQTT":
                 self._apply_grid_shape(*self.source.shape)  # start() only returns once the mat reported it
+            profile_label = self._load_profile()
             self.last_frame_time = time.time()
             replay_label = f" | {self._replay_policy}" if getattr(self.source, "is_playback", False) else ""
-            self.status_var.set(f"Connected via {source_name} ({device}){replay_label}")
+            self.status_var.set(f"Connected via {source_name} ({device}){replay_label}{profile_label}")
             self._publish_web(force=True)
         except Exception as error:
             self.source = None
@@ -732,6 +792,7 @@ class DesktopApp:
 
     def _disconnect(self):
         self._close_calibration_windows()
+        self._save_profile()
         if self.source is not None:
             self.source.stop()
             self.add_event("source_disconnected")
@@ -949,8 +1010,12 @@ class DesktopApp:
             self.status_var.set("Signal noise threshold must be a nonnegative number")
 
     def _open_calibration(self):
+        mat_id = self._profile_mat_id()
+        profile_text = (f"Mat profile: {mat_id} (saved automatically on disconnect, mat switch and close)"
+                        if mat_id else "No mat profile: simulated data, a recording or not connected - "
+                                       "changes here are not saved per mat")
         editor = CalibrationWindow(self.root, self.pressure_calibration,
-                                   lambda: self.pre_baseline_grid, self._refresh_calibration)
+                                   lambda: self.pre_baseline_grid, self._refresh_calibration, profile_text)
         self.calibration_windows.append(editor)
 
     def _open_plot_options(self):
@@ -1297,8 +1362,7 @@ class DesktopApp:
                 # frames are stored scaled to 0-1000; value_max is the raw full scale they came from
                 "value_max": getattr(self.source, "value_max", VALUE_MAX_DEFAULT),
                 "mat_id": getattr(self.source, "mat_id", None),
-                "orientation": {"rotation": self._rotation, "mirror_h": self.mirror_h_var.get(),
-                                "mirror_v": self.mirror_v_var.get()},
+                "orientation": self._orientation(),
             }
             self.recorder = Recorder(name, source=source_name, metadata=metadata)
             self.add_event("recording_started")
@@ -1845,6 +1909,7 @@ class DesktopApp:
             self.add_event("recording_stopped")
             self.recorder.metadata["temporal_final"] = self.temporal.settings()
             self.recorder.save()
+        self._save_profile()
         if self.source is not None:
             self.source.stop()
         if self._discovery is not None:
