@@ -79,6 +79,12 @@ ESP32 --MQTT/Serial--> sources/*Source (raw 0..value_max -> 0-1000, general.scal
 - `desktop.py` - main window, source/device selection, main plot, toggles. The Data dropdown is
   `DesktopApp.data_modes` (`DATA_MODES` plus the cell signals and each map index, rebuilt in `_set_indices`);
   signal/index maps are `_derived_grid(key)`, not frame keys. CoP/ROI/analysis use `_base_key()`, i.e. pressure.
+  Simple / Advanced view (top-right "View:" switch, `config.START_IN_SIMPLE_MODE`): widgets registered with `_adv()` /
+  `_checkbox(advanced=True)` are `pack_forget`-ed in Simple and put back in their original place by `_apply_view` (rows are
+  recorded by `_remember_rows`; Serial's capture button goes through `_place_capture_button`). Geometry only - no state is
+  touched. Simple keeps source/device/protocol, Connect/Disconnect, Tare, Record, Export snapshot, 2D/3D, Data, the heatmap and
+  the Peak / Estimated load / Hotspots lines + patient chip. Tests: `tests/test_view_mode.py`. A new main-window widget that
+  is not part of that set must be registered with `_adv()`.
 - One file per tool window: `calibration_window.py`, `analysis_window.py`,
   `diagnostics_window.py`, `temporal_window.py`, `hotspot_window.py`,
   `motion_window.py`, `engineering_window.py`, `annotation_window.py`,

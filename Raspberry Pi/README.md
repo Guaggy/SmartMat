@@ -20,7 +20,7 @@ Use the **Simulated** source to try it without hardware.
 
 ## First run
 
-Pick a source and device, **Connect**, **Tare** with the mat unloaded, then open **Pressure calibration**. Switch **Data** to **Calibrated pressure** once calibrated, and **Record** to save a session. The in-app **Help** button has a short walkthrough; `notes.md` has the full feature list.
+The **View: Simple | Advanced** switch (top right) hides everything but connect, tare, record, export, the data dropdown, the heatmap and the key numbers; set `START_IN_SIMPLE_MODE = True` in `config.py` to start that way. Pick a source and device, **Connect**, **Tare** with the mat unloaded, then open **Pressure calibration**. Switch **Data** to **Calibrated pressure** once calibrated, and **Record** to save a session. The in-app **Help** button has a short walkthrough; `notes.md` has the full feature list.
 
 ## Build the exe
 

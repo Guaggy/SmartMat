@@ -206,10 +206,15 @@ class DesktopApp:
         self._fps_frame_count = 0
         self._fps_last_check = time.time()
 
+        self._advanced = set()  # widgets hidden in Simple view (see _apply_view)
+        self._rows = []         # (parent, [(widget, pack options)]) in pack order, to put hidden widgets back
+        self._build_header()
         self._build_connection_bar()
         self._build_actions_bar()
         self._build_data_bar()
         self._build_options_bar()
+        for bar in [self.root, *self.root.pack_slaves()]:
+            self._remember_rows(bar)
         self.status_var = tk.StringVar(value="Not connected")
         self._notice, self._notice_until = "", 0.0  # one-off message that the live status line must not wipe
         status_bar = ttk.Frame(self.root)
@@ -221,6 +226,8 @@ class DesktopApp:
         self._build_index_chips()
         self._update_occupancy()
         ttk.Label(status_bar, textvariable=self.status_var, padding=4).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._adv(self.index_chip_bar)
+        self._remember_rows(status_bar)
         self._toggle_web_ui()  # Web UI defaults to on
         self._refresh_devices()
 
@@ -230,9 +237,60 @@ class DesktopApp:
         self._build_about_panel()
         self._build_plot_area()
         self._build_plot()
+        self._apply_view()
         self._poll()
 
     # ---- window layout
+
+    def _build_header(self):
+        """Top strip: the Simple / Advanced switch (Simple hides everything registered with _adv)"""
+        self.header = ttk.Frame(self.root, padding=(8, 4, 8, 0))
+        self.header.pack(side=tk.TOP, fill=tk.X)
+        switch = ttk.Frame(self.header)
+        switch.pack(side=tk.RIGHT)
+        ttk.Label(switch, text="View:").pack(side=tk.LEFT, padx=(0, 4))
+        self.view_var = tk.StringVar(
+            value="Simple" if getattr(app_config, "START_IN_SIMPLE_MODE", False) else "Advanced")
+        for label in ("Simple", "Advanced"):
+            ttk.Radiobutton(switch, text=label, value=label, variable=self.view_var, style="Toolbutton",
+                            command=self._apply_view).pack(side=tk.LEFT)
+
+    def _adv(self, widget):
+        """Mark a widget as Advanced-only (hidden in Simple view); returns it"""
+        self._advanced.add(widget)
+        return widget
+
+    def _remember_rows(self, parent):
+        """Record parent's packed children in order, so _apply_view can put hidden ones back in place"""
+        self._rows.append((parent, [(child, {key: value for key, value in child.pack_info().items() if key != "in"})
+                                    for child in parent.pack_slaves()]))
+
+    def _apply_view(self):
+        """Show or hide the Advanced-only widgets. Only geometry changes: no variable, source or calibration is touched"""
+        simple = self.view_var.get() == "Simple"
+        for parent, order in self._rows:
+            for index, (widget, options) in enumerate(order):
+                if widget not in self._advanced:
+                    continue
+                if simple:
+                    widget.pack_forget()
+                elif not widget.winfo_manager():
+                    later = next((w for w, _ in order[index + 1:] if w not in self._advanced), None)
+                    if later is not None:
+                        where = {"before": later}
+                    elif index:
+                        where = {"after": order[index - 1][0]}
+                    else:
+                        where = {"before": parent.pack_slaves()[0]}  # still packed siblings (e.g. the plot)
+                    widget.pack(**options, **where)
+        self._place_capture_button()
+
+    def _place_capture_button(self):
+        """Serial only, and only in Advanced view"""
+        if self.source_var.get() == "Serial" and self.view_var.get() != "Simple":
+            self.capture_button.pack(side=tk.LEFT, padx=(0, 8), after=self.protocol_menu)
+        else:
+            self.capture_button.pack_forget()
 
     def _build_connection_bar(self):
         bar = ttk.Frame(self.root, padding=(8, 8, 8, 0))
@@ -260,6 +318,7 @@ class DesktopApp:
         self.capture_button = ttk.Button(bar, text="Capture raw (5 s)", command=self._capture_raw, state="disabled")
         self.rename_button = ttk.Button(bar, text="Rename...", command=self._rename_mat)
         self.rename_button.pack(side=tk.LEFT, padx=(0, 8))
+        self._adv(self.rename_button)
 
         ttk.Button(bar, text="Connect", command=self._connect).pack(side=tk.LEFT, padx=(0, 12))
         ttk.Button(bar, text="Disconnect", command=self._disconnect).pack(side=tk.LEFT, padx=(0, 12))
@@ -293,41 +352,41 @@ class DesktopApp:
         plot_menu.pack(side=tk.LEFT, padx=(0, 12))
         plot_menu.bind("<<ComboboxSelected>>", lambda _event: self._build_plot())
 
-        ttk.Label(bar, text="Mode:").pack(side=tk.LEFT)
+        self._adv(ttk.Label(bar, text="Mode:")).pack(side=tk.LEFT)
         self.mode_var = tk.StringVar(value=self.active_mode.label)
         mode_menu = ttk.Combobox(
             bar, textvariable=self.mode_var, state="readonly",
             values=[mode.label for mode in MODES], width=16,
         )
-        mode_menu.pack(side=tk.LEFT, padx=(0, 4))
+        self._adv(mode_menu).pack(side=tk.LEFT, padx=(0, 4))
         mode_menu.bind("<<ComboboxSelected>>", lambda _event: self._select_mode())
 
         self.mode_param_label_var = tk.StringVar(value="")
-        ttk.Label(bar, textvariable=self.mode_param_label_var).pack(side=tk.LEFT)
+        self._adv(ttk.Label(bar, textvariable=self.mode_param_label_var)).pack(side=tk.LEFT)
         self.mode_param_var = tk.StringVar()
         self.mode_param_entry = ttk.Entry(bar, textvariable=self.mode_param_var, width=6)
-        self.mode_param_entry.pack(side=tk.LEFT, padx=(0, 12))
+        self._adv(self.mode_param_entry).pack(side=tk.LEFT, padx=(0, 12))
         self.mode_param_entry.bind("<Return>", lambda _event: self._apply_mode_param())
         self.mode_param_entry.bind("<FocusOut>", lambda _event: self._apply_mode_param())
         self._select_mode()
 
-        ttk.Button(bar, text="Reset", command=self._reset).pack(side=tk.LEFT, padx=(0, 4))
+        self._adv(ttk.Button(bar, text="Reset", command=self._reset)).pack(side=tk.LEFT, padx=(0, 4))
         ttk.Button(bar, text="Tare", command=self._capture_baseline).pack(side=tk.LEFT, padx=(0, 4))
-        ttk.Button(bar, text="View tare", command=self._view_baseline).pack(side=tk.LEFT, padx=(0, 12))
+        self._adv(ttk.Button(bar, text="View tare", command=self._view_baseline)).pack(side=tk.LEFT, padx=(0, 12))
 
         self.record_button = ttk.Button(bar, text="Record", command=self._toggle_recording)
         self.record_button.pack(side=tk.LEFT, padx=(0, 4))
         ttk.Button(bar, text="Export snapshot...", command=self._export_snapshot).pack(side=tk.LEFT, padx=(0, 12))
 
         # Orientation of live data, applied at ingest (not to recordings, which are saved already oriented)
-        ttk.Label(bar, text="Rotate:").pack(side=tk.LEFT)
+        self._adv(ttk.Label(bar, text="Rotate:")).pack(side=tk.LEFT)
         self.rotation_var = tk.StringVar(value="0")
         rotation_menu = ttk.Combobox(bar, textvariable=self.rotation_var, state="readonly",
                                      values=["0", "90", "180", "270"], width=4)
-        rotation_menu.pack(side=tk.LEFT, padx=(0, 4))
+        self._adv(rotation_menu).pack(side=tk.LEFT, padx=(0, 4))
         rotation_menu.bind("<<ComboboxSelected>>", lambda _event: self._orientation_changed())
-        self.mirror_h_var = self._checkbox(bar, "Mirror H", self._orientation_changed)
-        self.mirror_v_var = self._checkbox(bar, "Mirror V", self._orientation_changed)
+        self.mirror_h_var = self._checkbox(bar, "Mirror H", self._orientation_changed, advanced=True)
+        self.mirror_v_var = self._checkbox(bar, "Mirror V", self._orientation_changed, advanced=True)
 
     def _build_data_bar(self):
         bar = ttk.Frame(self.root, padding=(8, 0, 8, 8))
@@ -344,20 +403,20 @@ class DesktopApp:
 
         self.threshold_var = tk.StringVar(value=str(self.contact_threshold_kpa))
 
-        ttk.Label(bar, text="Ignore signal <=").pack(side=tk.LEFT)
+        self._adv(ttk.Label(bar, text="Ignore signal <=")).pack(side=tk.LEFT)
         self.noise_threshold_var = tk.StringVar(value=str(self.signal_noise_threshold))
         noise_entry = ttk.Entry(bar, textvariable=self.noise_threshold_var, width=6)
-        noise_entry.pack(side=tk.LEFT, padx=(2, 8))
+        self._adv(noise_entry).pack(side=tk.LEFT, padx=(2, 8))
         noise_entry.bind("<Return>", lambda _event: self._apply_noise_threshold())
         noise_entry.bind("<FocusOut>", lambda _event: self._apply_noise_threshold())
 
-        self.cop_var = self._checkbox(bar, "Show CoP", self._update_plot)
-        ttk.Button(bar, text="Pressure calibration...", command=self._open_calibration).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(bar, text="Plot options...", command=self._open_plot_options).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(bar, text="ROI...", command=self._open_roi).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(bar, text="Analysis...", command=self._open_analysis).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(bar, text="Diagnostics...", command=self._open_diagnostics).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(bar, text="Temporal...", command=self._open_temporal).pack(side=tk.LEFT)
+        self.cop_var = self._checkbox(bar, "Show CoP", self._update_plot, advanced=True)
+        for text, command, gap in (("Pressure calibration...", self._open_calibration, 8),
+                                   ("Plot options...", self._open_plot_options, 8), ("ROI...", self._open_roi, 8),
+                                   ("Analysis...", self._open_analysis, 8),
+                                   ("Diagnostics...", self._open_diagnostics, 8),
+                                   ("Temporal...", self._open_temporal, 0)):
+            self._adv(ttk.Button(bar, text=text, command=command)).pack(side=tk.LEFT, padx=(0, gap))
 
     def _build_data_modes(self):
         """Dropdown label -> frame key: the base maps, the cell signals, and each map index"""
@@ -411,7 +470,7 @@ class DesktopApp:
 
     def _build_options_bar(self):
         """On/off checkboxes, separate from the action buttons above"""
-        bar = ttk.Frame(self.root, padding=(8, 0, 8, 8))
+        bar = self._adv(ttk.Frame(self.root, padding=(8, 0, 8, 8)))  # the whole row is Advanced-only
         bar.pack(side=tk.TOP, fill=tk.X)
 
         self.auto_scale_var = self._checkbox(bar, "Auto-scale", self._toggle_calibration)
@@ -426,12 +485,14 @@ class DesktopApp:
         ttk.Button(bar, text="Engineering...", command=self._open_engineering).pack(side=tk.LEFT, padx=4)
         ttk.Button(bar, text="Help", command=self._open_help).pack(side=tk.LEFT, padx=4)
 
-    @staticmethod
-    def _checkbox(parent, text, command=None, default=False):
+    def _checkbox(self, parent, text, command=None, default=False, advanced=False):
         """Add one checkbox to parent, return its BooleanVar"""
         var = tk.BooleanVar(value=default)
         kwargs = {"command": command} if command else {}
-        ttk.Checkbutton(parent, text=text, variable=var, **kwargs).pack(side=tk.LEFT, padx=(0, 8))
+        button = ttk.Checkbutton(parent, text=text, variable=var, **kwargs)
+        button.pack(side=tk.LEFT, padx=(0, 8))
+        if advanced:
+            self._adv(button)
         return var
 
     def _build_about_panel(self):
@@ -442,20 +503,26 @@ class DesktopApp:
         stats_panel = ttk.LabelFrame(sidebar, text="Live pressure", padding=8)
         stats_panel.pack(side=tk.TOP, fill=tk.X)
         self.pressure_status_var = tk.StringVar(value="Default pressure calibration active")
-        ttk.Label(stats_panel, textvariable=self.pressure_status_var, wraplength=190).pack(anchor="w")
+        self._adv(ttk.Label(stats_panel, textvariable=self.pressure_status_var, wraplength=190)).pack(anchor="w")
         self.peak_var = tk.StringVar(value="Peak: -")
         self.mean_var = tk.StringVar(value="Mean contact: -")
         self.area_var = tk.StringVar(value="Contact area: -")
         self.force_var = tk.StringVar(value="Force: -")
         self.load_var = tk.StringVar(value="Estimated load: -")
+        self.hotspots_var = tk.StringVar(value="Hotspots: -")
         self.cop_text_var = tk.StringVar(value="CoP: -")
         self.selected_cell_var = tk.StringVar(value="Cell: click the 2D plot")
-        for variable in (self.peak_var, self.mean_var, self.area_var,
-                         self.force_var, self.load_var, self.cop_text_var, self.selected_cell_var):
-            ttk.Label(stats_panel, textvariable=variable, wraplength=190).pack(anchor="w")
+        for variable in (self.peak_var, self.mean_var, self.area_var, self.force_var, self.load_var,
+                         self.hotspots_var, self.cop_text_var, self.selected_cell_var):
+            label = ttk.Label(stats_panel, textvariable=variable, wraplength=190)
+            label.pack(anchor="w")
+            if variable not in (self.peak_var, self.load_var, self.hotspots_var):
+                self._adv(label)  # Simple view keeps peak, load and hotspots
+        self._remember_rows(stats_panel)
 
-        panel = ttk.LabelFrame(sidebar, text="About", padding=8)
+        panel = self._adv(ttk.LabelFrame(sidebar, text="About", padding=8))
         panel.pack(side=tk.TOP, fill=tk.X, pady=(8, 0))
+        self._remember_rows(sidebar)
 
         self.fps_var = tk.StringVar(value="FPS: -")
         ttk.Label(panel, textvariable=self.fps_var).pack(anchor="w", pady=(0, 8))
@@ -493,12 +560,10 @@ class DesktopApp:
         if source != "Serial":
             self.protocol_label.pack_forget()
             self.protocol_menu.pack_forget()
-            self.capture_button.pack_forget()
 
         if source == "Serial":
             self.protocol_label.pack(side=tk.LEFT, after=self.device_menu)
             self.protocol_menu.pack(side=tk.LEFT, padx=(0, 8), after=self.protocol_label)
-            self.capture_button.pack(side=tk.LEFT, padx=(0, 8), after=self.protocol_menu)
             self._port_devices = {port.label: port.device for port in list_ports()}  # label -> device
             values = list(self._port_devices)
             default = values[0] if values else ""
@@ -523,6 +588,7 @@ class DesktopApp:
                            if path.suffix in (".csv", ".json")]
             default = values[0]
 
+        self._place_capture_button()
         self.device_menu.configure(values=values)
         self.device_var.set(previous if previous in values else default)
 
@@ -559,8 +625,9 @@ class DesktopApp:
         """Holds the reference buttons directly above the (rebuilt) plot canvas"""
         self.plot_area = ttk.Frame(self.content)
         self.plot_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        bar = ttk.Frame(self.plot_area, padding=(0, 0, 0, 4))
+        bar = self._adv(ttk.Frame(self.plot_area, padding=(0, 0, 0, 4)))
         bar.pack(side=tk.TOP, fill=tk.X)
+        self._remember_rows(self.plot_area)
         ttk.Button(bar, text="Capture reference", command=self._capture_reference).pack(side=tk.LEFT, padx=(0, 8))
         ttk.Checkbutton(bar, text="Show reference", variable=self.difference_var,
                         command=self._toggle_difference).pack(side=tk.LEFT)
@@ -1909,8 +1976,17 @@ class DesktopApp:
             prefix = self._notice + "   " + prefix
         self.status_var.set(prefix + ("Difference vs reference | " if difference else "") + status)
 
+    def _hotspot_text(self):
+        if not self.hotspots.data_valid:
+            return "Hotspots: -"
+        active = self.hotspots.active
+        if not active:
+            return "Hotspots: none"
+        return f"Hotspots: {len(active)} active, longest {max(track['active_s'] for track in active):.0f} s"
+
     def _update_stats(self):
         self._update_cell_info()
+        self.hotspots_var.set(self._hotspot_text())
         if self.frame is None:
             self.display_cop = (None, None)
             return

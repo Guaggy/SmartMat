@@ -120,3 +120,6 @@ WEB_PORT = 8000
 # Connection health (gui/desktop.py)
 STALE_AFTER_S = 10        # flag the connection as stale if no frame arrives for this long
 RECONNECT_INTERVAL_S = 3  # how often to retry when auto-reconnect is on
+
+# Start with the reduced Simple view (connect, tare, record, export, heatmap, key numbers); Advanced shows everything.
+START_IN_SIMPLE_MODE = False
