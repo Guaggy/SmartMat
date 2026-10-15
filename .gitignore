@@ -13,3 +13,7 @@ node_modules/
 # Local design docs/plans
 docs/
 Archived/
+# Python build/venv output
+.venv/
+build/
+dist/
