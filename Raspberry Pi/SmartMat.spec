@@ -1,5 +1,5 @@
 # PyInstaller spec: onedir, windowed. Build with build_exe.bat.
-# config.py is excluded on purpose: it is user-editable and loaded from the exe's folder (see paths.py).
+# config.py is excluded on purpose: it is user-editable and loaded from paths.APP_DIR (see paths.py).
 a = Analysis(
     ["main.py"],
     pathex=["."],

@@ -1,10 +1,10 @@
 import sys
 
-import paths  # must run first: frozen builds load config.py from the exe folder
+import paths  # must run first: frozen builds load config.py from paths.APP_DIR
 from gui.desktop import DesktopApp
 
 def selftest():
-    """Headless smoke test of a frozen build: `SmartMat.exe --selftest` writes selftest.txt next to the exe."""
+    """Headless smoke test of a frozen build: `SmartMat.exe --selftest` writes selftest.txt into paths.APP_DIR."""
     import branding
     import config
     import general
@@ -20,7 +20,8 @@ def selftest():
     finally:
         server.stop()
     (paths.APP_DIR / "selftest.txt").write_text(
-        f"version={branding.VERSION}\nfrozen={paths.FROZEN}\nconfig={config.__file__}\nmats={general.MATS_FILE}\n"
+        f"version={branding.VERSION}\nfrozen={paths.FROZEN}\napp_dir={paths.APP_DIR}\nmode={paths.DATA_MODE}\n"
+        f"config={config.__file__}\nmats={general.MATS_FILE}\n"
         f"recordings={RECORDINGS_DIR}\nweb /api/mats={api}\n", encoding="utf-8")
 
 def main():
