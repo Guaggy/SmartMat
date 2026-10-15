@@ -11,7 +11,7 @@
 
 ## Known limitations (shipped deliberately scoped down, not bugs)
 
-- Multi-mat: a recording made on a mat that is not the `config.py` default size cannot be played back - playback uses the default size and `load_session` rejects the mismatch. Fix when a second mat size actually exists (take the size from the recording's own `grid_shape`).
+- Multi-mat: (fixed 2026-10-15) recordings of any grid size now play back at their own size - `load_session` uses the file's `grid_shape` and playback switches the app to it. Like any size switch, this resets the live tare/pressure calibration in memory.
 - Multi-mat: tare and pressure calibration reset when the grid size changes, but two mats of the same size share whatever is in memory when you switch between them - re-tare / load the right calibration after switching. Per-mat calibration files would be the real fix.
 - Multi-mat: the two-board hardware check (flash two boards, confirm both stay connected and both show up in the device list) has not been run yet - steps at the end of `docs/superpowers/plans/2026-10-08-multi-mat-mqtt.md`. Also clear the old retained `smartmat/frame` topic on the broker once.
 - Multi-mat: the app needs paho-mqtt 2.x. This PC has 1.6.1 because esphome pins it, so MQTT does not work here until the app runs in its own venv - not a concern on a dedicated Pi.

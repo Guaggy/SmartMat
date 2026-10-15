@@ -19,7 +19,8 @@ risk/exposure-adjacent wording or defaults.
 ## Data flow
 
 ```
-ESP32 --MQTT/Serial--> sources/*Source --> processing/frames.process_frame()
+ESP32 --MQTT/Serial--> sources/*Source (raw 0..value_max -> 0-1000, general.scale_to_app_range)
+  --> processing/frames.process_frame()
   --> mode (modes.py) --> tare baseline (calibration.Calibration)
   --> pressure calibration (calibration.PressureCalibration) --> kPa
   --> statistics/analysis/temporal/hotspots/motion/sensor_health
@@ -88,19 +89,30 @@ ESP32 --MQTT/Serial--> sources/*Source --> processing/frames.process_frame()
   desktop is connected to has data; non-MQTT sources appear as id `local`.
 
 `sources/` - `mqtt_source.py`, `serial_source.py`, `simulated_source.py`, all
-expose the same `latest`/`quality`/`start`/`stop` shape. `MqttSource(chip_id)`
-streams one mat (`smartmat/<chip_id>/frame`) and will not start without that
-mat's retained meta message; `MqttSource()` with no chip ID only listens on
-`smartmat/+/meta` to fill the device list.
+expose the same `latest`/`quality`/`start`/`stop` shape plus the mat info
+`shape` (rows, cols), `value_max` (raw full scale) and `mat_id`. Every source
+range-checks raw units against its own `value_max` and scales to 0-1000 once,
+right before `latest.set` (the app range stays 0-1000 everywhere after that).
+`MqttSource(chip_id)` streams one mat (`smartmat/<chip_id>/frame`) and will not
+start without that mat's retained meta message
+(`<chip_id>,<rows>,<cols>[,<value_max>]`, 3 fields = 1000); `mats` stays
+`{chip_id: (rows, cols)}`, value_max lives in `value_maxes`. `MqttSource()`
+with no chip ID only listens on `smartmat/+/meta` to fill the device list.
 
-`general.py` - frame parsing, plus the mat nickname registry (`mats.json`,
-gitignored, `{chip_id: nickname}`).
+`general.py` - frame parsing (`parse_frame_text_with_reason(text, value_max)`),
+`scale_to_app_range(grid, value_max)`, plus the mat nickname registry
+(`mats.json`, gitignored, `{chip_id: nickname}`).
+
+Recordings store frames after scaling; `metadata.value_max`/`mat_id` say where
+they came from (missing value_max = 1000). `load_session` returns frames at the
+recording's own `grid_shape`, and playback applies that size first.
 
 `config.py` (gitignored, copy from `config.example.py`) holds every
 threshold/constant used by the modules above, and the default grid size.
 `config.TOTAL_ROWS`/`TOTAL_COLS` are overwritten at runtime when an MQTT mat of
-another size connects (`DesktopApp._apply_grid_shape`, which also restarts
-everything sized to the old grid) and set back for Serial/Simulated. Always
+another size connects or a recording of another size is played
+(`DesktopApp._apply_grid_shape`, which also restarts everything sized to the
+old grid) and set back for Serial/Simulated. Always
 read them as `config.TOTAL_ROWS` - a `from config import TOTAL_ROWS` copy goes
 stale. `sources/simulated_source.py` is the one deliberate exception.
 

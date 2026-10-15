@@ -587,8 +587,12 @@ class DesktopApp:
         device = self.device_var.get()
 
         try:
+            recording = None
+            if source_name == "Simulated" and device and not device.startswith("Synthetic:"):
+                recording = load_session(RECORDINGS_DIR / device, with_timestamps=True, with_details=True)
             if source_name != "MQTT":
-                self._apply_grid_shape(*DEFAULT_SHAPE)  # only MQTT mats report their own size
+                # MQTT mats report their size after start(); a recording carries its own
+                self._apply_grid_shape(*(recording[0][0].shape if recording else DEFAULT_SHAPE))
             if source_name == "Serial":
                 self.source = SerialSource(device)
             elif source_name == "MQTT":
@@ -600,9 +604,10 @@ class DesktopApp:
             elif not device:
                 self.source = SimulatedSource()
             else:
-                frames, timestamps, metadata, events = load_session(
-                    RECORDINGS_DIR / device, with_timestamps=True, with_details=True)
-                self.source = SimulatedSource(playback_frames=frames, playback_timestamps=timestamps)
+                frames, timestamps, metadata, events = recording
+                self.source = SimulatedSource(playback_frames=frames, playback_timestamps=timestamps,
+                                              value_max=metadata.get("value_max", VALUE_MAX_DEFAULT),
+                                              mat_id=metadata.get("mat_id") or "recording")
                 self.timeline = EventTimeline(events)
                 self._live_state = (self.calibration, self.pressure_calibration, self.temporal,
                                     self.hotspots, self.motion,
@@ -1210,6 +1215,9 @@ class DesktopApp:
                 "session_initial": self.session_state,
                 "recording_initial": self._recording_initial_state(),
                 "indices": copy.deepcopy(self.indices.definitions),
+                # frames are stored scaled to 0-1000; value_max is the raw full scale they came from
+                "value_max": getattr(self.source, "value_max", VALUE_MAX_DEFAULT),
+                "mat_id": getattr(self.source, "mat_id", None),
             }
             self.recorder = Recorder(name, source=source_name, metadata=metadata)
             self.add_event("recording_started")

@@ -52,7 +52,9 @@ class Recorder:
             "started_at": self.started_at,
             "source": self.source,
             "grid_shape": [config.TOTAL_ROWS, config.TOTAL_COLS],
-            "units": "relative sensor value",
+            # frames are stored after ingest scaling; raw = value * metadata.value_max / 1000
+            # (no value_max in metadata = 1000, i.e. stored values are raw)
+            "units": "relative sensor value 0-1000, scaled at ingest from 0..metadata.value_max",
             "metadata": self.metadata,
             "events": self.events,
         }
@@ -76,9 +78,10 @@ class Recorder:
 
 
 def load_session(path, with_timestamps=False, with_details=False):
-    """Return grids, plus usable timestamps when requested."""
+    """Return grids (at the recording's own grid size), plus usable timestamps when requested."""
     timestamps = None
     raw_format = False
+    rows, cols = config.TOTAL_ROWS, config.TOTAL_COLS  # CSV/legacy JSON carry no size of their own
     metadata, events = {}, []
     if Path(path).suffix == ".json":
         with open(path) as file:
@@ -89,8 +92,11 @@ def load_session(path, with_timestamps=False, with_details=False):
             raise ValueError("Unsupported recording format")
         if session.get("format") == "smartmat_raw_v1":
             raw_format = True
-            if session.get("grid_shape") != [config.TOTAL_ROWS, config.TOTAL_COLS]:
-                raise ValueError("Recording grid size does not match configuration")
+            shape = session.get("grid_shape")
+            if (not isinstance(shape, list) or len(shape) != 2
+                    or not all(isinstance(side, int) and side >= 1 for side in shape)):
+                raise ValueError("Recording has an invalid grid size")
+            rows, cols = shape
             grids = [frame["raw"] for frame in session["frames"]]
             times = [frame.get("timestamp") for frame in session["frames"]]
             if all(isinstance(value, (int, float)) and np.isfinite(value) for value in times):
@@ -108,9 +114,9 @@ def load_session(path, with_timestamps=False, with_details=False):
     frames = []
     for grid in grids:
         values = np.asarray(grid, dtype=float)
-        if values.size != config.TOTAL_ROWS * config.TOTAL_COLS or (not raw_format and not np.all(np.isfinite(values))):
+        if values.size != rows * cols or (not raw_format and not np.all(np.isfinite(values))):
             raise ValueError("Recording contains an invalid frame")
-        frames.append(values.reshape(config.TOTAL_ROWS, config.TOTAL_COLS))
+        frames.append(values.reshape(rows, cols))
     if with_details:
         return frames, timestamps, metadata, events
     return (frames, timestamps) if with_timestamps else frames

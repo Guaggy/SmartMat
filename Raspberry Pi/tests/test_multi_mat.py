@@ -12,7 +12,7 @@ import numpy as np
 
 import config
 from general import (LatestFrame, load_mat_names, mat_labels, parse_frame_text_with_reason,
-                     save_mat_names)
+                     save_mat_names, scale_to_app_range)
 from processing.calibration import IndividualCalibration
 from processing.recording import RECORDINGS_DIR, Recorder, load_session
 from processing.sensor_health import SensorHealth
@@ -56,8 +56,43 @@ class GridShapeTests(unittest.TestCase):
         self.addCleanup(path.unlink)
         self.assertEqual(load_session(path)[0].shape, (20, 12))
         config.TOTAL_ROWS, config.TOTAL_COLS = DEFAULT_SHAPE
-        with self.assertRaises(ValueError):
-            load_session(path)
+        self.assertEqual(load_session(path)[0].shape, (20, 12))  # its own size, not the config's
+
+    def test_20x20_recording_round_trip_keeps_value_max_and_mat_id(self):
+        use_shape(self, 20, 20)
+        recorder = Recorder("multi_mat_20x20_test", metadata={"value_max": 255, "mat_id": "maxrays-usb"})
+        recorder.add_frame(scale_to_app_range(np.full((20, 20), 255.0), 255), timestamp=1.0)
+        path = recorder.save()
+        self.addCleanup(path.unlink)
+        config.TOTAL_ROWS, config.TOTAL_COLS = DEFAULT_SHAPE
+        frames, _, metadata, _ = load_session(path, with_details=True)
+        self.assertEqual(frames[0].shape, (20, 20))
+        self.assertEqual(frames[0][0, 0], 1000)
+        self.assertEqual((metadata["value_max"], metadata["mat_id"]), (255, "maxrays-usb"))
+
+    def test_old_recording_without_value_max_still_loads(self):
+        recorder = Recorder("multi_mat_old_test")
+        recorder.add_frame(np.full(DEFAULT_SHAPE, 7.0), timestamp=1.0)
+        path = recorder.save()
+        self.addCleanup(path.unlink)
+        frames, _, metadata, _ = load_session(path, with_details=True)
+        self.assertEqual(frames[0].shape, DEFAULT_SHAPE)
+        self.assertNotIn("value_max", metadata)  # the desktop reads a missing value_max as 1000
+
+
+class ScalingTests(unittest.TestCase):
+    def test_scale_to_app_range(self):
+        np.testing.assert_allclose(scale_to_app_range(np.array([0, 51, 255, 300, -5]), 255),
+                                   [0, 200, 1000, 1000, 0])
+        np.testing.assert_allclose(scale_to_app_range(np.array([0, 500, 1000]), 1000), [0, 500, 1000])
+
+    def test_range_check_uses_the_mats_value_max_on_raw_units(self):
+        cells = config.TOTAL_ROWS * config.TOTAL_COLS
+        self.assertEqual(parse_frame_text_with_reason(",".join(["256"] * cells), 255)[1], "out_of_range")
+        grid, reason = parse_frame_text_with_reason(",".join(["255"] * cells), 255)
+        self.assertIsNone(reason)
+        self.assertEqual(grid[0, 0], 255)  # parsing does not scale
+        self.assertIsNone(parse_frame_text_with_reason(",".join(["1000"] * cells))[1])
 
 
 def make_source(chip_id=None):
@@ -75,11 +110,13 @@ def connect(source, failed=False):
 
 class MetaParsingTests(unittest.TestCase):
     def test_valid_payload(self):
-        self.assertEqual(parse_meta("a1b2c3d4e5f6,16,15"), ("a1b2c3d4e5f6", 16, 15))
-        self.assertEqual(parse_meta(" a1b2 , 20 ,12\n"), ("a1b2", 20, 12))
+        self.assertEqual(parse_meta("a1b2c3d4e5f6,16,15"), ("a1b2c3d4e5f6", 16, 15, 1000))
+        self.assertEqual(parse_meta(" a1b2 , 20 ,12\n"), ("a1b2", 20, 12, 1000))
+        self.assertEqual(parse_meta("a1b2c3d4e5f6,20,20,255"), ("a1b2c3d4e5f6", 20, 20, 255))
 
     def test_malformed_payloads(self):
-        for text in ("", "a1b2", "a1b2,16", "a1b2,16,15,1", "a1b2,x,15", "a1b2,16,1.5",
+        for text in ("", "a1b2", "a1b2,16", "a1b2,16,15,0", "a1b2,16,15,x", "a1b2,16,15,255,1",
+                     "a1b2,x,15", "a1b2,16,1.5",
                      "a1b2,0,15", "a1b2,16,-1", "a1b2,16,999", ",16,15",
                      "a/b,16,15", "+,16,15", "#,16,15"):
             with self.subTest(text=text):
@@ -132,6 +169,18 @@ class MqttSourceTests(unittest.TestCase):
         self.assertEqual(source.latest.take().shape, (20, 12))
         source._on_message(None, None, message("smartmat/bbb222/frame", "1,2,3"))
         self.assertEqual(source.quality.snapshot()["unexpected_grid_size"], 1)
+
+    def test_8_bit_mat_is_range_checked_raw_and_scaled_at_ingest(self):
+        use_shape(self, 20, 20)
+        source = make_source("ccc333")
+        connect(source)
+        source._on_message(None, None, message("smartmat/ccc333/meta", "ccc333,20,20,255"))
+        self.assertEqual((source.shape, source.value_max, source.mat_id), ((20, 20), 255, "ccc333"))
+        source._on_message(None, None, message("smartmat/ccc333/frame", ",".join(["255"] * 400)))
+        np.testing.assert_allclose(source.latest.take(), np.full((20, 20), 1000.0))
+        source._on_message(None, None, message("smartmat/ccc333/frame", ",".join(["256"] * 400)))
+        self.assertIsNone(source.latest.take())
+        self.assertEqual(source.quality.snapshot()["out_of_range"], 1)
 
     def test_start_fails_clearly_when_meta_never_arrives(self):
         source = make_source("bbb222")
@@ -262,6 +311,22 @@ class DesktopMatTests(unittest.TestCase):
         self.assertIsNone(self.app.source)
         self.assertIn("no mat selected", self.app.status_var.get())
         self.assertEqual((config.TOTAL_ROWS, config.TOTAL_COLS), DEFAULT_SHAPE)
+
+    def test_non_default_size_recording_plays_at_its_own_size(self):
+        use_shape(self, 20, 20)
+        recorder = Recorder("multi_mat_playback_test", metadata={"value_max": 255, "mat_id": "abc"})
+        recorder.add_frame(np.full((20, 20), 500.0), timestamp=1.0)
+        path = recorder.save()
+        self.addCleanup(path.unlink)
+        config.TOTAL_ROWS, config.TOTAL_COLS = DEFAULT_SHAPE
+        self.app.source_var.set("Simulated")
+        self.app._refresh_devices()
+        self.app.device_var.set(path.name)
+        self.app._connect()
+        self.assertTrue(self.app.source.is_playback, self.app.status_var.get())
+        self.assertEqual((config.TOTAL_ROWS, config.TOTAL_COLS), (20, 20))
+        self.assertEqual((self.app.source.shape, self.app.source.value_max, self.app.source.mat_id),
+                         ((20, 20), 255, "abc"))
 
     def test_recording_is_saved_before_the_grid_changes(self):
         self.app._handle_new_frame(np.full(DEFAULT_SHAPE, 10.0), sample_time=1)

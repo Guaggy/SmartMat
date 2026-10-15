@@ -5,9 +5,10 @@ import time
 import serial
 import serial.tools.list_ports
 
-from general import LatestFrame, parse_frame_text, parse_frame_text_with_reason
+import config
+from general import LatestFrame, parse_frame_text, parse_frame_text_with_reason, scale_to_app_range
 from processing.source_quality import SourceQuality
-from config import BAUD_RATE
+from config import BAUD_RATE, VALUE_MAX_DEFAULT
 
 POLL_INTERVAL_S = 0.02  # How often the background thread checks for new bytes
 MAX_RECEIVE_BUFFER_BYTES = 16 * 1024  # Guards against no new line
@@ -67,6 +68,9 @@ class SerialSource:
 
     def __init__(self, port):
         self.port = port
+        self.shape = (config.TOTAL_ROWS, config.TOTAL_COLS)  # the resistive ESP32 sends the config grid
+        self.value_max = VALUE_MAX_DEFAULT
+        self.mat_id = port
         self.latest = LatestFrame()
         self.quality = SourceQuality()
         self._connection = None
@@ -85,7 +89,7 @@ class SerialSource:
         while self._running:
             grid = _read_latest_frame(self._connection, receive_buffer, self.quality)
             if grid is not None:
-                if self.latest.set(grid):
+                if self.latest.set(scale_to_app_range(grid, self.value_max)):
                     self.quality.drop()
             time.sleep(POLL_INTERVAL_S)
 

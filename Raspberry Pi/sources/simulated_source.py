@@ -6,7 +6,7 @@ import time
 
 import numpy as np
 
-from general import LatestFrame, QueuedFrames
+from general import LatestFrame, QueuedFrames, scale_to_app_range
 from processing.source_quality import SourceQuality
 from config import TOTAL_ROWS, TOTAL_COLS, VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT
 
@@ -66,10 +66,16 @@ SCENARIOS = {
 class SimulatedSource:
     """Fake grids on a background thread: a named scenario, or a recording played back in a loop"""
 
-    def __init__(self, playback_frames=None, playback_timestamps=None, scenario="Drifting blob"):
+    def __init__(self, playback_frames=None, playback_timestamps=None, scenario="Drifting blob",
+                 value_max=VALUE_MAX_DEFAULT, mat_id="simulated"):
+        """A recording passes its own value_max/mat_id: its frames are already scaled to 0-1000,
+        the values only describe the raw range they came from."""
         if playback_frames is not None and len(playback_frames) == 0:
             raise ValueError("Recording contains no frames")
         self.is_playback = playback_frames is not None
+        self.shape = playback_frames[0].shape if self.is_playback else (TOTAL_ROWS, TOTAL_COLS)
+        self.value_max = value_max
+        self.mat_id = mat_id
         self.latest = QueuedFrames() if self.is_playback else LatestFrame()
         self.quality = SourceQuality()
         self._playback_frames = playback_frames
@@ -132,7 +138,7 @@ class SimulatedSource:
                 else:
                     grid = self._generate(time.time() - start_time)
                     interval = FRAME_INTERVAL_S
-                    if self.latest.set(grid):
+                    if self.latest.set(scale_to_app_range(grid, self.value_max)):
                         self.quality.drop()
                     self.quality.packet()
                 self._wait_interval(interval)

@@ -4,7 +4,8 @@ import threading
 
 import paho.mqtt.client as mqtt
 import config
-from general import LatestFrame, parse_frame_text, parse_frame_text_with_reason
+from config import VALUE_MAX_DEFAULT
+from general import LatestFrame, parse_frame_text, parse_frame_text_with_reason, scale_to_app_range
 from processing.source_quality import SourceQuality
 
 TOPIC_PREFIX = "smartmat"  # must match mqtt_topic_prefix in ESP32/src/main.cpp
@@ -22,18 +23,22 @@ def parse_frame(payload):
 
 
 def parse_meta(text):
-    """Convert a "<chip_id>,<rows>,<cols>" meta payload to (chip_id, rows, cols), None if invalid"""
+    """Convert "<chip_id>,<rows>,<cols>[,<value_max>]" to (chip_id, rows, cols, value_max), None if invalid.
+
+    Without value_max (the resistive firmware) the mat already sends 0-1000.
+    """
 
     pieces = [piece.strip() for piece in text.split(",")]
-    if len(pieces) != 3 or not pieces[0].isalnum():  # isalnum also keeps topic wildcards out
+    if len(pieces) not in (3, 4) or not pieces[0].isalnum():  # isalnum also keeps topic wildcards out
         return None
     try:
         rows, cols = int(pieces[1]), int(pieces[2])
+        value_max = int(pieces[3]) if len(pieces) == 4 else VALUE_MAX_DEFAULT
     except ValueError:
         return None
-    if not (1 <= rows <= MAX_GRID_SIDE and 1 <= cols <= MAX_GRID_SIDE):
+    if not (1 <= rows <= MAX_GRID_SIDE and 1 <= cols <= MAX_GRID_SIDE) or value_max < 1:
         return None
-    return pieces[0], rows, cols
+    return pieces[0], rows, cols, value_max
 
 
 class MqttSource:
@@ -45,6 +50,7 @@ class MqttSource:
     def __init__(self, chip_id=None):
         self.chip_id = chip_id
         self.mats = {}  # chip_id -> (rows, cols) for every mat the broker has metadata for
+        self.value_maxes = {}  # chip_id -> raw full scale (kept apart so mats stays (rows, cols))
         self.latest = LatestFrame()
         self.quality = SourceQuality()
         self._connected = False
@@ -60,6 +66,15 @@ class MqttSource:
     def shape(self):
         """(rows, cols) reported by the selected mat, None until its metadata arrives"""
         return self.mats.get(self.chip_id)
+
+    @property
+    def value_max(self):
+        """Raw full scale reported by the selected mat"""
+        return self.value_maxes.get(self.chip_id, VALUE_MAX_DEFAULT)
+
+    @property
+    def mat_id(self):
+        return self.chip_id
 
     @property
     def state(self):
@@ -88,16 +103,18 @@ class MqttSource:
         if message.topic.endswith("/meta"):
             meta = parse_meta(text or "")
             if meta is not None and message.topic == f"{TOPIC_PREFIX}/{meta[0]}/meta":
-                self.mats[meta[0]] = meta[1:]
+                self.value_maxes[meta[0]] = meta[3]
+                self.mats[meta[0]] = meta[1:3]
                 if meta[0] == self.chip_id:
                     self._meta_seen.set()
             return
         if self.shape != (config.TOTAL_ROWS, config.TOTAL_COLS):
             return  # the app has not switched to this mat's grid size yet
-        grid, reason = (None, "malformed") if text is None else parse_frame_text_with_reason(text)
+        grid, reason = ((None, "malformed") if text is None
+                        else parse_frame_text_with_reason(text, self.value_max))
         self.quality.packet(reason, timestamp=False)
         if grid is not None:
-            if self.latest.set(grid):
+            if self.latest.set(scale_to_app_range(grid, self.value_max)):
                 self.quality.drop()
 
     def start(self):

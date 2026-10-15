@@ -14,8 +14,17 @@ def parse_frame_text(text):
     return parse_frame_text_with_reason(text)[0]
 
 
-def parse_frame_text_with_reason(text):
-    """Return a grid and a packet-level rejection reason."""
+def scale_to_app_range(grid, value_max):
+    """Raw mat units (0..value_max) -> the app's 0-1000 range, clipped. Done once, at ingest."""
+    scaled = np.asarray(grid, dtype=float) * (VALUE_MAX_DEFAULT / value_max)
+    return np.clip(scaled, VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT)
+
+
+def parse_frame_text_with_reason(text, value_max=VALUE_MAX_DEFAULT):
+    """Return a raw (unscaled) grid and a packet-level rejection reason.
+
+    value_max is the mat's own full scale; the range check runs on raw units.
+    """
 
     text = text.strip()
     if text.endswith(","):
@@ -37,7 +46,7 @@ def parse_frame_text_with_reason(text):
     # Check if data is valid
     if not np.all(np.isfinite(values)):
         return None, "malformed"
-    if np.any(values < VALUE_MIN_DEFAULT) or np.any(values > VALUE_MAX_DEFAULT):
+    if np.any(values < VALUE_MIN_DEFAULT) or np.any(values > value_max):
         return None, "out_of_range"
 
     grid = values.reshape(config.TOTAL_ROWS, config.TOTAL_COLS)
