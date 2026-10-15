@@ -7,9 +7,9 @@
 #include "secrets.h" // Wifi and passcodes
 
 // CONFIG
-const bool serial_debug = true; // print debug info to serial
+const bool serial_debug = false; // print debug info to serial (keep OFF when send_frame_serial is on: debug lines would be read as malformed frames)
 const bool smoothing_enabled = true; // Enable lowpass filter
-const bool send_frame_serial = false; // Send frame over serial
+const bool send_frame_serial = true; // Send frame over serial
 const bool read_linear_voltage = true; // Convert ADC to linear measurements --> can calculate absolute pressure etc.
 
 // Wiring
@@ -38,6 +38,10 @@ const uint16_t normalized_max = 1000; // Final pressure values = 0-1000
 const float smoothing_strength = 0.7f;  // 0 = no smoothing, near 1 = smoother but slower to react
 
 const uint32_t frame_interval_ms = 100; // 10 fps
+// A frame is up to ~1.2 KB as text; 115200 baud is ~11.5 kB/s, so 10 fps would saturate the
+// port and Serial.println() would block the scan loop. Serial copy is limited to 5 fps
+// (~6 kB/s worst case), MQTT stays at frame_interval_ms.
+const uint32_t serial_frame_interval_ms = 200;
 
 // Wifi and MQTT
 const char* mqtt_topic_prefix = "smartmat"; // topics: smartmat/<chip_id>/frame and .../meta
@@ -222,11 +226,16 @@ void send_frame() {
   build_frame_text();
 
   if (mqtt_client.connected()) {
-    mqtt_client.publish(frame_topic, frame_text, true);
+    mqtt_client.publish(frame_topic, frame_text); // NOT retained: a retained frame is stale data for late subscribers
     if (serial_debug) Serial.println("MQTT frame sent");
   }
 
-  if (send_frame_serial) {
+  static uint32_t next_serial_ms = 0;
+  if (send_frame_serial && static_cast<int32_t>(millis() - next_serial_ms) >= 0) {
+    next_serial_ms += serial_frame_interval_ms;
+    if (static_cast<int32_t>(millis() - next_serial_ms) >= 0) {
+      next_serial_ms = millis() + serial_frame_interval_ms; // fell behind (stall): resync instead of bursting
+    }
     Serial.println(frame_text);
     if (serial_debug) Serial.println("Serial frame sent");
   }
