@@ -5,7 +5,6 @@ import os
 import numpy as np
 
 import config
-from config import CELL_WIDTH_MM, CELL_HEIGHT_MM
 from processing.recording import RECORDINGS_DIR
 from processing.validation import reposition_validation
 
@@ -33,8 +32,8 @@ def readiness(app):
         warnings.append("Pressure calibration incomplete")
     if app.calibration.baseline is None:
         warnings.append("No tare baseline captured")
-    if not CELL_WIDTH_MM or not CELL_HEIGHT_MM:
-        warnings.append("Physical cell dimensions not configured")
+    if app.cell_area_m2 is None:
+        warnings.append("Physical mat size not set")
     if not RECORDINGS_DIR.exists() or not os.access(RECORDINGS_DIR, os.W_OK):
         warnings.append("Recording directory may not be writable")
     if health_warning_count(app.sensor_health.states):

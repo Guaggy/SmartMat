@@ -41,3 +41,11 @@ def pressure_statistics(pressure_kpa, threshold_kpa, cell_area_m2=None):
 
     stats["cop_x"], stats["cop_y"] = weighted_center(pressure_kpa, threshold_kpa)
     return stats
+
+
+def load_estimate_text(force_n, default_curve=False):
+    """Sidebar line for the indicative load (force / g in kg); an engineering aid, not a measurement"""
+    if force_n is None:
+        return "Estimated load: set mat size"
+    text = f"Estimated load: {force_n / 9.81:.1f} kg (indicative)"
+    return text + " - default curve, not calibrated" if default_curve else text

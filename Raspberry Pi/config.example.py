@@ -18,7 +18,13 @@ BAUD_RATE = 115200
 VALUE_MIN_DEFAULT = 0
 VALUE_MAX_DEFAULT = 1000
 
-# Physical cell dimensions; set both to measured values to enable area and force.
+# Physical SENSING size of the whole mat, outer edge of the first sensing element to the outer edge
+# of the last (as built, before any rotation). Cell width = width / columns, cell height = height / rows.
+# Default for mats whose profile has no size; each mat's size is set in the app (About > Mat size...)
+# and kept in its profile. Enables area, force and the indicative load estimate (engineering aid only).
+MAT_WIDTH_MM = None
+MAT_HEIGHT_MM = None
+# Older alternative: per-cell size, used only when no mat size is known.
 CELL_WIDTH_MM = None
 CELL_HEIGHT_MM = None
 

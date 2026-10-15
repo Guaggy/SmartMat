@@ -125,7 +125,15 @@ in `_disconnect` and `_on_close`; `_load_profile` runs in `_connect` once the so
 the orientation, applies the *oriented* shape (so the first frame through `_orient` does not reset again), then
 always `_reset_calibration()` and, if the file's grid shape matches, puts its state back. So a real mat never
 inherits another mat's tare; a mat without a (matching) profile starts clean and keeps the current orientation.
-The calibration window shows which profile is active. Design: `docs/superpowers/specs/2026-10-15-per-mat-profiles-design.md`.
+The profile also carries `size_mm` (the mat's physical sensing size, width x height as built; old profiles without it load
+fine and fall back to `config.MAT_WIDTH_MM/MAT_HEIGHT_MM`, then to the per-cell `CELL_*_MM`). The calibration window shows which profile is active. Design: `docs/superpowers/specs/2026-10-15-per-mat-profiles-design.md`.
+
+Mat size / load estimate: `DesktopApp.mat_size_mm` (About panel > "Mat size...", kept in the mat's profile) feeds ONE
+`cell_size_mm` / `cell_area_m2` property (`processing/calibration.cell_size_mm`: width / cols, height / rows of the oriented
+grid, axes swap on a 90/270 rotation). Area, force, hotspots, analysis, calibration-window newtons, the "Cell: W x H mm" line and
+the readiness warning all read it - never `config.CELL_*` directly. "Estimated load: X kg (indicative)" = force_N / 9.81
+(`statistics.load_estimate_text`); marked "default curve, not calibrated" while `PressureCalibration.is_default_curve`.
+An engineering aid, not a weight measurement. Tests: `tests/test_mat_size.py`.
 
 `general.py` - frame parsing (`parse_frame_text_with_reason(text, value_max)`),
 `scale_to_app_range(grid, value_max)`, plus the mat nickname registry
@@ -181,9 +189,9 @@ features, what's still to build, and what's already shipped). Don't copy
 that list into this file - it drifts. As of 2026-10-08: multi-mat MQTT,
 custom indices, patient-detected, the ROI rework, the web dashboard, and the
 Tier 1/2 bounded-polish + calibration-rework batch are all built and tested
-(147 tests passing). Open: the "Ignore signal" display bug, the
+(147 tests passing at the time; 201 now). Open: the "Ignore signal" display bug, the
 `user_guide.md` decision, the web dashboard's per-mat background listener,
-area-per-cell/weight-estimate, and body-part recognition (deliberately not
+body-part recognition (deliberately not
 started).
 
 ## Working conventions for this repo

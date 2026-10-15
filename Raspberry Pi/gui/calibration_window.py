@@ -11,7 +11,6 @@ from matplotlib.colors import ListedColormap
 from matplotlib.figure import Figure
 
 import config
-from config import CELL_WIDTH_MM, CELL_HEIGHT_MM
 
 # muted tones: this gets looked at for a long time
 UNCALIBRATED_COLOR = "#a86a6a"
@@ -29,7 +28,9 @@ def _when(profile, exists):
 
 
 class CalibrationWindow:
-    def __init__(self, parent, calibration, raw_grid_getter, on_change, profile_text=""):
+    def __init__(self, parent, calibration, raw_grid_getter, on_change, profile_text="",
+                 cell_area_getter=lambda: None):
+        self.cell_area_getter = cell_area_getter  # m2 of one cell from the app's mat size, or None
         self.calibration = calibration  # PressureCalibration holding both profiles
         self.profile_text = profile_text  # which mat's saved profile this edits
         self.individual = calibration.individual
@@ -245,13 +246,13 @@ class CalibrationWindow:
     def _fail(self, error):
         messagebox.showerror("Pressure calibration", str(error), parent=self.window)
 
-    @staticmethod
-    def _pressure_kpa(value, unit, cell_count=1):
+    def _pressure_kpa(self, value, unit, cell_count=1):
         pressure = float(value)
         if unit == "N":
-            if not CELL_WIDTH_MM or not CELL_HEIGHT_MM or CELL_WIDTH_MM <= 0 or CELL_HEIGHT_MM <= 0:
-                raise ValueError("Set positive cell dimensions in config.py to use newtons")
-            pressure = pressure * 1000 / (CELL_WIDTH_MM * CELL_HEIGHT_MM * cell_count)
+            area = self.cell_area_getter()
+            if area is None:
+                raise ValueError("Set the mat size (About panel > Mat size...) to use newtons")
+            pressure = pressure / (area * 1000 * cell_count)
         return pressure
 
     def _refresh_all(self):

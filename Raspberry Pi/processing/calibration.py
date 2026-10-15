@@ -147,6 +147,11 @@ class IndividualCalibration:
         return calibration
 
     @property
+    def uses_default_curve(self):
+        """True while any cell still has the built-in linear fallback (nobody calibrated it)"""
+        return bool(self._default_cells)
+
+    @property
     def calibrated_count(self):
         return sum(self.is_calibrated(row, col) for row, col in self.cells)
 
@@ -253,7 +258,7 @@ class IndividualCalibration:
         return pressure
 
     def to_dict(self):
-        return {
+        data = {
             "format": INDIVIDUAL_FORMAT,
             "calibrated_at": _date_text(self.modified_at),
             "units": "kPa",
@@ -261,6 +266,9 @@ class IndividualCalibration:
             "cells": [dict(row=row, col=col, **self.get_cell(row, col))
                       for row, col in sorted(self.cells)],
         }
+        if self._default_cells:  # so a saved profile still knows it was never calibrated
+            data["default_cells"] = [list(cell) for cell in sorted(self._default_cells)]
+        return data
 
     def load_dict(self, data):
         if data.get("format") != INDIVIDUAL_FORMAT:
@@ -276,7 +284,7 @@ class IndividualCalibration:
                 loaded.add_point(row, col, raw, pressure)
         self.cells = loaded.cells
         self.modified_at = _parse_date(data.get("calibrated_at"))
-        self._default_cells.clear()
+        self._default_cells = {(int(row), int(col)) for row, col in data.get("default_cells", [])}
 
     def save(self, path):
         path = Path(path)
@@ -417,6 +425,11 @@ class PressureCalibration:
         return calibration
 
     @property
+    def is_default_curve(self):
+        """The active profile is still the built-in linear fallback, not a calibration"""
+        return self.active_name == "individual" and self.individual.uses_default_curve
+
+    @property
     def active(self):
         return self.individual if self.active_name == "individual" else self.uniform
 
@@ -471,6 +484,54 @@ class PressureCalibration:
         self.active.path = path
 
 
+# ---- mat size: physical sensing size (width x height, mm) -> per-cell size of the oriented grid
+
+def _valid_size(size):
+    """(width, height) as floats when both are finite and positive, None for None; else ValueError"""
+    if size is None:
+        return None
+    width, height = (float(value) for value in size)
+    if not (np.isfinite(width) and np.isfinite(height) and width > 0 and height > 0):
+        raise ValueError("Mat width and height must be positive numbers")
+    return width, height
+
+
+def parse_mat_size(text):
+    """'600 x 500' (mm, width x height) -> (600.0, 500.0); empty text -> None (not set)"""
+    text = text.strip()
+    if not text:
+        return None
+    parts = re.split(r"\s*[x*,;]\s*|\s+", text.lower().replace("mm", ""))
+    if len(parts) != 2:
+        raise ValueError("Enter width and height in mm, for example 600 x 500")
+    return _valid_size(parts)
+
+
+def configured_mat_size():
+    """The config.py default (MAT_WIDTH_MM x MAT_HEIGHT_MM), or None"""
+    try:
+        return _valid_size((config.MAT_WIDTH_MM, config.MAT_HEIGHT_MM))
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def cell_size_mm(size_mm, rows, cols, rotation=0):
+    """(cell_width, cell_height) in mm of the oriented rows x cols grid, or None when not known.
+
+    size_mm is the mat as built (width along its columns). A 90/270 rotation makes the oriented
+    columns run along the built height, so the axes swap; mirror and 180 change nothing. Without
+    size_mm the older per-cell CELL_WIDTH_MM x CELL_HEIGHT_MM from config.py is the fallback."""
+    swap = (rotation // 90) % 2 == 1
+    if size_mm is not None:
+        width, height = size_mm
+        return (height / cols, width / rows) if swap else (width / cols, height / rows)
+    try:
+        cell = _valid_size((config.CELL_WIDTH_MM, config.CELL_HEIGHT_MM))
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return None if cell is None else (cell[1], cell[0]) if swap else cell
+
+
 # ---- per-mat profiles: one JSON per real mat with its tare, both calibrations and orientation
 
 PROFILE_FORMAT = "smartmat_mat_profile_v1"
@@ -481,10 +542,11 @@ def profile_path(mat_id):
     return PROFILES_DIR / (re.sub(r"[^\w.-]", "_", str(mat_id)) + ".json")
 
 
-def save_profile(mat_id, baseline, pressure_calibration, orientation):
-    """Write the current (oriented) grid's state for this mat"""
+def save_profile(mat_id, baseline, pressure_calibration, orientation, size_mm=None):
+    """Write the current (oriented) grid's state for this mat; size_mm = (width, height) sensing size"""
     data = {"format": PROFILE_FORMAT, "mat_id": mat_id,
             "grid_shape": [config.TOTAL_ROWS, config.TOTAL_COLS], "orientation": orientation,
+            "size_mm": None if size_mm is None else list(size_mm),
             "baseline": None if baseline is None else np.asarray(baseline).tolist(),
             "active": pressure_calibration.active_name,
             "individual": pressure_calibration.individual.to_dict(),
@@ -500,6 +562,14 @@ def load_profile(mat_id):
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) and data.get("format") == PROFILE_FORMAT else None
+
+
+def profile_size_mm(data):
+    """(width, height) mm saved in a profile, or None (old profiles have none)"""
+    try:
+        return _valid_size(data.get("size_mm"))
+    except (AttributeError, TypeError, ValueError):
+        return None
 
 
 def apply_profile(data, calibration, pressure_calibration):

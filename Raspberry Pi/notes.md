@@ -20,13 +20,14 @@
 - ROI: several named ROIs at once, saving ROIs to a file, an adjustable brush size, and remembering the ROI across restarts are all not built.
 - Web dashboard: only the mat currently open in the desktop app shows a live heatmap/hotspots/patient-state/indices - other known mats are listed but not live (see "Still to build" for the planned fix). `http://<hostname>.local:8000` relies on Avahi/mDNS, which Raspberry Pi OS runs by default, but this has not been confirmed on the deployed Pi yet (the IP is shown beside it as a fallback).
 - The public website widget's "Live" mode is fully broken, not just a stale tunnel URL: `Website/smartmat-heatmap-widget.html` still points at the old `/data` address, which no longer exists after the web-dashboard rework (the new API is `/api/mats` and `/api/mats/<mat_id>`, shaped differently). See `Website/notes.md`.
+- Mat size / load estimate: the "Estimated load" line is indicative only (force from calibrated pressure x cell area / 9.81, an engineering aid, not a weight measurement). It needs the mat's physical sensing size entered once per mat (About > Mat size...); with the default linear pressure curve it is shown as "default curve, not calibrated". Calibrating the scale factor against a known weight is a later step. Cells are assumed uniform per mat (width / cols, height / rows), so edge margins or gaps between cells are not modelled.
 - ESP32: `mux_settling_delay_us` and the ADC calibration assumptions haven't been verified against real hardware yet (only tested in simulation so far).
 
 ## Still to build
 
 - Web dashboard: a light background listener per known mat, so mats the desktop app doesn't have open also show a live raw heatmap. Needs a frame-reading path independent of the app's current grid size, plus one extra MQTT connection per mat. Hotspots/patient-state/indices stay limited to the connected mat until per-mat tare and calibration exist.
 - Multi-mat: connect to and record multiple mats at once (today you switch between them one at a time) - advanced per-cell stuff doesn't need to run for every mat automatically (save compute).
-- Area-per-cell setting (for N/kg calculations) and an option to estimate patient/body-part weight from a marked ROI.
+- Load estimate: scale-factor calibration with a known weight (the kg figure is only as good as the pressure calibration), and an option to estimate load per marked ROI / body part.
 - Body-part recognition (deliberately deferred for now - mat position -> anatomical region, posture-dependent).
 
 ## Shipped (see docs/superpowers/ for the design/plan trail)

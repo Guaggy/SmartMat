@@ -18,14 +18,15 @@ from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 - registers the 3D project
 from config import (
     VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT,
     WEB_PORT, STALE_AFTER_S, RECONNECT_INTERVAL_S,
-    CELL_WIDTH_MM, CELL_HEIGHT_MM, CONTACT_THRESHOLD_KPA,
+    CONTACT_THRESHOLD_KPA,
     PRESSURE_DISPLAY_MAX_KPA, HISTORY_MAX_FRAMES,
     DISPLAY_SCALE, PRESSURE_CONTOUR_LEVELS_KPA, RELATIVE_CONTOUR_LEVELS,
     VALIDATION_MATCH_WINDOW_S, INDEX_UPDATE_INTERVAL_S,
 )
 from general import load_mat_names, mat_labels, save_mat_names
 from processing.calibration import (Calibration, IndividualCalibration, PressureCalibration, UniformCalibration,
-                                    apply_profile, load_profile, save_profile)
+                                    apply_profile, cell_size_mm, configured_mat_size, load_profile,
+                                    parse_mat_size, profile_size_mm, save_profile)
 from processing.session_events import STATE_EVENTS, apply_state_event, event_is_due
 from processing.session_state import initial_session_state
 from processing.settings import apply_settings, capture_settings, default_settings
@@ -43,7 +44,7 @@ from processing.indices import NEAR, OK, OVER, IndexMonitor
 from processing.signals import SIGNALS, Context, read_signal
 from processing.temporal import TemporalAnalysis
 from processing.timeline import EventTimeline
-from processing.statistics import contact_mask, pressure_statistics, weighted_center
+from processing.statistics import contact_mask, load_estimate_text, pressure_statistics, weighted_center
 from sources.mqtt_source import MqttSource
 from sources.serial_source import PROFILES, RAW_CAPTURE_S, TEXT_PROFILE, SerialSource, list_ports
 from sources.simulated_source import SCENARIOS, SimulatedSource
@@ -160,9 +161,7 @@ class DesktopApp:
         self._last_dropped = 0
         self.contact_threshold_kpa = CONTACT_THRESHOLD_KPA
         self.signal_noise_threshold = float(getattr(app_config, "SIGNAL_NOISE_THRESHOLD", 0.0))
-        self.cell_area_m2 = None
-        if CELL_WIDTH_MM and CELL_HEIGHT_MM and CELL_WIDTH_MM > 0 and CELL_HEIGHT_MM > 0:
-            self.cell_area_m2 = CELL_WIDTH_MM * CELL_HEIGHT_MM / 1_000_000
+        self.mat_size_mm = configured_mat_size()  # (width, height) sensing size of the connected mat, or None
         self.frame = None
         self.raw_grid = None
         self.current_grid = None
@@ -448,11 +447,12 @@ class DesktopApp:
         self.mean_var = tk.StringVar(value="Mean contact: -")
         self.area_var = tk.StringVar(value="Contact area: -")
         self.force_var = tk.StringVar(value="Force: -")
+        self.load_var = tk.StringVar(value="Estimated load: -")
         self.cop_text_var = tk.StringVar(value="CoP: -")
         self.selected_cell_var = tk.StringVar(value="Cell: click the 2D plot")
         for variable in (self.peak_var, self.mean_var, self.area_var,
-                         self.force_var, self.cop_text_var, self.selected_cell_var):
-            ttk.Label(stats_panel, textvariable=variable).pack(anchor="w")
+                         self.force_var, self.load_var, self.cop_text_var, self.selected_cell_var):
+            ttk.Label(stats_panel, textvariable=variable, wraplength=190).pack(anchor="w")
 
         panel = ttk.LabelFrame(sidebar, text="About", padding=8)
         panel.pack(side=tk.TOP, fill=tk.X, pady=(8, 0))
@@ -472,10 +472,10 @@ class DesktopApp:
         ttk.Label(panel, textvariable=self.web_address_var, wraplength=190).pack(anchor="w")
         self._info_line(panel, f"Stale after: {STALE_AFTER_S}s")
         self._info_line(panel, f"Reconnect every: {RECONNECT_INTERVAL_S}s")
-        if self.cell_area_m2 is None:
-            self._info_line(panel, "Cell area: not configured")
-        else:
-            self._info_line(panel, f"Cell: {CELL_WIDTH_MM} x {CELL_HEIGHT_MM} mm")
+        self.cell_info_var = tk.StringVar()
+        ttk.Label(panel, textvariable=self.cell_info_var).pack(anchor="w")
+        ttk.Button(panel, text="Mat size...", command=self._set_mat_size).pack(anchor="w", pady=(4, 0))
+        self._update_cell_info()
 
     def _baud_text(self):
         return f"Baud rate: {PROFILES[self.protocol_var.get()]['baud']}"
@@ -657,6 +657,40 @@ class DesktopApp:
         return {"rotation": self._rotation, "mirror_h": self.mirror_h_var.get(),
                 "mirror_v": self.mirror_v_var.get()}
 
+    @property
+    def cell_size_mm(self):
+        """(width, height) mm of one cell of the oriented grid, or None; follows mat size, grid and rotation"""
+        return cell_size_mm(self.mat_size_mm, app_config.TOTAL_ROWS, app_config.TOTAL_COLS, self._rotation)
+
+    @property
+    def cell_area_m2(self):
+        """Area of one cell in m2, or None when the mat size is not set (the one source for every window)"""
+        size = self.cell_size_mm
+        return None if size is None else size[0] * size[1] / 1_000_000
+
+    def _update_cell_info(self):
+        size = self.cell_size_mm
+        self.cell_info_var.set("Cell area: not configured" if size is None else
+                               f"Cell: {size[0]:.1f} x {size[1]:.1f} mm")
+
+    def _set_mat_size(self):
+        """Ask for the mat's physical sensing size (outer edge of the first to the last sensing element)"""
+        current = "" if self.mat_size_mm is None else f"{self.mat_size_mm[0]:g} x {self.mat_size_mm[1]:g}"
+        text = simpledialog.askstring(
+            "Mat size", "Sensing size of the whole mat in mm, width x height, outer edge of the first "
+            "sensing element to the outer edge of the last (as built, before rotation).\n"
+            "Used for area, force and the indicative load estimate. Empty = not set.",
+            initialvalue=current, parent=self.root)
+        if text is None:
+            return
+        try:
+            self.mat_size_mm = parse_mat_size(text)
+        except ValueError as error:
+            self.status_var.set(f"Mat size not changed: {error}")
+            return
+        self._save_profile()
+        self._update_stats()
+
     def _profile_mat_id(self):
         """Real mats (Serial/MQTT) keep a profile; simulated data and recordings do not"""
         if self.source is None or isinstance(self.source, SimulatedSource):
@@ -668,7 +702,8 @@ class DesktopApp:
         if mat_id is None:
             return
         try:
-            save_profile(mat_id, self.calibration.baseline, self.pressure_calibration, self._orientation())
+            save_profile(mat_id, self.calibration.baseline, self.pressure_calibration, self._orientation(),
+                         self.mat_size_mm)
         except OSError as error:
             self.status_var.set(f"Could not save the mat profile for {mat_id}: {error}")
 
@@ -676,9 +711,12 @@ class DesktopApp:
         """A real mat just connected: restore its orientation, tare and calibration, or start it clean.
         Applies the *oriented* shape first so the first live frame (_orient) does not reset it again."""
         mat_id = self._profile_mat_id()
+        self.mat_size_mm = configured_mat_size()  # simulated data / recordings and new mats: config default
         if mat_id is None:
             return ""
         profile = load_profile(mat_id)
+        if profile is not None:
+            self.mat_size_mm = profile_size_mm(profile) or self.mat_size_mm  # the size is the mat's, whatever its grid
         rows, cols = self.source.shape
         if profile is not None:
             try:
@@ -714,6 +752,7 @@ class DesktopApp:
         if ((rotation - self._rotation) // 90) % 2:
             rows, cols = cols, rows
         self._rotation = rotation
+        self._update_cell_info()
         if live:
             self._apply_grid_shape(rows, cols, force=True)
         note = " 90/270 swaps rows and cols of a non-square mat." if rows != cols else ""
@@ -1081,7 +1120,8 @@ class DesktopApp:
                         if mat_id else "No mat profile: simulated data, a recording or not connected - "
                                        "changes here are not saved per mat")
         editor = CalibrationWindow(self.root, self.pressure_calibration,
-                                   lambda: self.pre_baseline_grid, self._refresh_calibration, profile_text)
+                                   lambda: self.pre_baseline_grid, self._refresh_calibration, profile_text,
+                                   lambda: self.cell_area_m2)
         self.calibration_windows.append(editor)
 
     def _open_plot_options(self):
@@ -1412,8 +1452,9 @@ class DesktopApp:
                 "processing_mode": self.active_mode.label,
                 "processing_parameter": self.mode_param_var.get() if self.active_mode.param_label else None,
                 "contact_threshold_kpa": self.contact_threshold_kpa,
-                "cell_width_mm": CELL_WIDTH_MM,
-                "cell_height_mm": CELL_HEIGHT_MM,
+                "cell_width_mm": None if self.cell_size_mm is None else self.cell_size_mm[0],
+                "cell_height_mm": None if self.cell_size_mm is None else self.cell_size_mm[1],
+                "mat_size_mm": None if self.mat_size_mm is None else list(self.mat_size_mm),
                 "temporal": self.temporal.settings(),
                 "hotspots": self.hotspots.settings(),
                 "movement": self.motion.settings(),
@@ -1869,6 +1910,7 @@ class DesktopApp:
         self.status_var.set(prefix + ("Difference vs reference | " if difference else "") + status)
 
     def _update_stats(self):
+        self._update_cell_info()
         if self.frame is None:
             self.display_cop = (None, None)
             return
@@ -1889,6 +1931,7 @@ class DesktopApp:
             self.mean_var.set("Mean contact: -")
             self.area_var.set("Contact area: -")
             self.force_var.set("Force: -")
+            self.load_var.set("Estimated load: -")
             x, y = self.display_cop
             self.cop_text_var.set(
                 f"CoP (relative): x={x:.1f}, y={y:.1f} cells" if x is not None else "CoP (relative): -")
@@ -1906,7 +1949,8 @@ class DesktopApp:
         self.area_var.set(f"Contact area: {area * 10_000:.1f} cm² ({count} cells)" if area is not None
                           else f"Contact area: {count} cells")
         force = self.stats["force_n"]
-        self.force_var.set(f"Force: {force:.1f} N" if force is not None else "Force: set cell dimensions")
+        self.force_var.set(f"Force: {force:.1f} N" if force is not None else "Force: set mat size")
+        self.load_var.set(load_estimate_text(force, self.pressure_calibration.is_default_curve))
         x, y = self.display_cop
         label = "CoP" if key == "pressure" else "CoP (relative)"
         self.cop_text_var.set(f"{label}: x={x:.1f}, y={y:.1f} cells" if x is not None else f"{label}: -")
