@@ -65,7 +65,32 @@ class SerialSourceTest(unittest.TestCase):
         self.assertEqual(grid.shape, (20, 20))
         self.assertTrue((grid == 1000).all())  # 255 -> 1000
         quality = source.quality.snapshot()
-        self.assertEqual((quality["valid"], quality["malformed"]), (1, 1))  # 2 leading garbage bytes
+        self.assertEqual((quality["valid"], quality["malformed"]), (1, 0))  # 2 leading filler bytes: not malformed
+        self.assertEqual(source.serial_stats()["discarded_bytes"], 2)  # ...but still visible in diagnostics
+
+    def test_filler_between_frames_is_not_malformed(self):
+        source = self.make(MAXRAYS_PROFILE)
+        source._connection.data.extend(b"\x00" * 50)  # idle bytes alone
+        source._poll_once()
+        source._connection.data.extend(b"\x00" * 20 + maxrays_packet(5))
+        source._poll_once()
+        quality = source.quality.snapshot()
+        self.assertEqual((quality["valid"], quality["malformed"]), (1, 0))
+        self.assertEqual(source.serial_stats()["discarded_bytes"], 70)
+
+    def test_invalid_frame_is_malformed_but_not_when_the_poll_also_decoded_a_frame(self):
+        source = self.make(MAXRAYS_PROFILE)
+        bad = b"\xA5\x5A\x00\x00" + b"\x11" * 500  # false header, nothing confirms a packet
+        source._connection.data.extend(bad)
+        source._poll_once()
+        quality = source.quality.snapshot()
+        self.assertEqual((quality["valid"], quality["malformed"]), (0, 1))
+        self.assertEqual(source.serial_stats()["invalid_frames"], 1)
+        source._connection.data.extend(bad + maxrays_packet(7))
+        source._poll_once()
+        quality = source.quality.snapshot()
+        self.assertEqual((quality["valid"], quality["malformed"]), (1, 1))  # no second malformed packet
+        self.assertEqual(source.serial_stats()["invalid_frames"], 2)
 
     def test_two_frames_in_one_read_count_one_drop(self):
         source = self.make(MAXRAYS_PROFILE)
@@ -196,6 +221,59 @@ class DesktopSerialTests(unittest.TestCase):
         app._update_capture_button()
         self.assertFalse(app.capture_button.instate(["disabled"]))
         app.source = None
+
+    def test_auto_reconnect_keeps_retrying_until_it_works_and_disconnect_stops_it(self):
+        from gui import desktop
+        self.addCleanup(setattr, config, "TOTAL_ROWS", DEFAULT_SHAPE[0])
+        self.addCleanup(setattr, config, "TOTAL_COLS", DEFAULT_SHAPE[1])
+        now = [1000.0]
+        fake_time = mock.Mock(wraps=desktop.time, time=lambda: now[0])
+        start = mock.patch.object(SerialSource, "start", side_effect=[None, OSError("gone"), OSError("gone"),
+                                                                      OSError("gone"), None])
+        for patch in (mock.patch.object(desktop, "save_mat_names"), mock.patch.object(desktop, "time", fake_time),
+                      mock.patch.object(calibration, "PROFILES_DIR", Path(self.enterContext(
+                          tempfile.TemporaryDirectory())))):
+            patch.start()
+            self.addCleanup(patch.stop)
+        try:
+            app = desktop.DesktopApp()
+        except tk.TclError:
+            self.skipTest("Tk display unavailable")
+        self.addCleanup(app._on_close)
+        starts = start.start()
+        self.addCleanup(start.stop)
+        app.source_var.set("Serial")
+        app._port_devices = {"COM9": "COM9"}
+        app.device_var.set("COM9")
+        app.auto_reconnect_var.set(True)
+        app._connect()
+        self.assertIsNotNone(app.source, app.status_var.get())
+        now[0] += config.STALE_AFTER_S + 1
+        app._check_connection_health()  # stale: first reconnect attempt fails
+        self.assertEqual((app.source, starts.call_count), (None, 2))
+        self.assertIn("reconnecting...", app.connection_var.get())
+        app._retry_reconnect()  # too soon
+        self.assertEqual(starts.call_count, 2)
+        now[0] += config.RECONNECT_INTERVAL_S
+        app._retry_reconnect()  # still unplugged: second failure keeps the loop alive
+        self.assertEqual((app.source, starts.call_count), (None, 3))
+        now[0] += config.RECONNECT_INTERVAL_S
+        app._retry_reconnect()
+        self.assertEqual((app.source, starts.call_count), (None, 4))
+        now[0] += config.RECONNECT_INTERVAL_S
+        app._retry_reconnect()  # replugged
+        self.assertIsNotNone(app.source)
+        self.assertEqual(starts.call_count, 5)
+        # a manual Disconnect after a failed attempt stops the retries
+        starts.side_effect = OSError("gone")
+        now[0] += config.STALE_AFTER_S + 1
+        app._check_connection_health()
+        self.assertIsNone(app.source)
+        calls = starts.call_count
+        app._disconnect()
+        now[0] += config.RECONNECT_INTERVAL_S * 3
+        app._retry_reconnect()
+        self.assertEqual(starts.call_count, calls)
 
 
 if __name__ == "__main__":

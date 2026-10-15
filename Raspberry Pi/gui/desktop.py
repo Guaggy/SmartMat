@@ -199,6 +199,7 @@ class DesktopApp:
         self.last_frame_time = None
         self.frame_timestamp = None
         self.last_reconnect_attempt = 0.0
+        self._reconnect_since = None  # time the source went stale while auto-reconnect keeps retrying
         self._last_draw_time = 0.0
         self._fps_frame_count = 0
         self._fps_last_check = time.time()
@@ -782,6 +783,7 @@ class DesktopApp:
             self.last_frame_time = time.time()
             replay_label = f" | {self._replay_policy}" if getattr(self.source, "is_playback", False) else ""
             self.status_var.set(f"Connected via {source_name} ({device}){replay_label}{profile_label}")
+            self._reconnect_since = None
             self._publish_web(force=True)
         except Exception as error:
             self.source = None
@@ -791,6 +793,7 @@ class DesktopApp:
             self._publish_web(force=True)
 
     def _disconnect(self):
+        self._reconnect_since = None  # a manual Disconnect stops auto-reconnect retries
         self._close_calibration_windows()
         self._save_profile()
         if self.source is not None:
@@ -1461,6 +1464,7 @@ class DesktopApp:
                     self.indices_window.refresh()
                 if self.roi_window is not None and self.roi_window.window.winfo_exists():
                     self.roi_window.refresh()
+        self._retry_reconnect()
         self._update_occupancy()
         self._update_fps()
         self.root.after(POLL_INTERVAL_MS, self._poll)
@@ -1615,9 +1619,22 @@ class DesktopApp:
             self.hotspots.invalidate()
             self.motion.invalidate()
         if self.auto_reconnect_var.get() and time.time() - self.last_reconnect_attempt >= RECONNECT_INTERVAL_S:
-            self.last_reconnect_attempt = time.time()
-            self.connection_var.set(f"No data for {stale_for:.0f}s - reconnecting...")
-            self._connect()
+            self._reconnect_since = self._reconnect_since or time.time() - stale_for
+            self._auto_reconnect()
+
+    def _auto_reconnect(self):
+        self.last_reconnect_attempt = time.time()
+        text = f"No data for {time.time() - self._reconnect_since:.0f}s - reconnecting..."
+        self.connection_var.set(text)
+        self._connect()
+        if self.source is None:  # port unplugged or held elsewhere: _retry_reconnect tries again
+            self.connection_var.set(text)
+
+    def _retry_reconnect(self):
+        """A reconnect attempt failed (source is None): keep trying until it works or the user disconnects"""
+        if (self.source is None and self._reconnect_since is not None and self.auto_reconnect_var.get()
+                and time.time() - self.last_reconnect_attempt >= RECONNECT_INTERVAL_S):
+            self._auto_reconnect()
 
     def _update_plot(self):
         if self.frame is None:

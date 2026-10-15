@@ -92,9 +92,11 @@ def _read_latest_maxrays(connection, decoder, quality):
     available = connection.in_waiting
     if not available:
         return None
-    discarded = decoder.stats.bytes_discarded
+    invalid = decoder.stats.invalid_frames
     frames = decoder.feed(connection.read(available))
-    if decoder.stats.bytes_discarded > discarded:  # garbage or a false header
+    # only a false header / truncated packet is malformed; filler or idle bytes between frames are not
+    # (they stay visible as discarded bytes in serial_stats), and a poll with a valid frame is not either
+    if decoder.stats.invalid_frames > invalid and not frames:
         quality.packet("malformed", timestamp=False)
     for _ in frames:
         quality.packet(None, timestamp=False)
