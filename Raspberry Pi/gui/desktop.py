@@ -1926,9 +1926,7 @@ class DesktopApp:
         pressure_unavailable = grid is None
         if pressure_unavailable:
             grid = np.zeros((app_config.TOTAL_ROWS, app_config.TOTAL_COLS))
-        elif derived:
-            pass
-        elif key != "pressure":
+        elif not derived:
             grid = np.where(np.isfinite(grid) & (grid > self.signal_noise_threshold), grid, 0.0)
         finite_values = grid[np.isfinite(grid)]
         difference = (self.difference_var.get() and self.reference_grid is not None
@@ -1936,11 +1934,10 @@ class DesktopApp:
         if difference:
             comparison = self.comparison_grid if self.comparison_grid is not None else grid
             reference = self.reference_grid
-            if key != "pressure":
-                comparison = np.where(
-                    np.isfinite(comparison) & (comparison > self.signal_noise_threshold), comparison, 0.0)
-                reference = np.where(
-                    np.isfinite(reference) & (reference > self.signal_noise_threshold), reference, 0.0)
+            comparison = np.where(
+                np.isfinite(comparison) & (comparison > self.signal_noise_threshold), comparison, 0.0)
+            reference = np.where(
+                np.isfinite(reference) & (reference > self.signal_noise_threshold), reference, 0.0)
             grid = comparison - reference
             finite_difference = grid[np.isfinite(grid)]
             limit = max(1.0, float(np.max(np.abs(finite_difference)))) if finite_difference.size else 1.0
@@ -2078,7 +2075,8 @@ class DesktopApp:
         if selected_grid is None:
             self.display_cop = (None, None)
         elif key == "pressure":
-            self.display_cop = weighted_center(selected_grid, self.contact_threshold_kpa)
+            self.display_cop = weighted_center(
+                selected_grid, max(self.contact_threshold_kpa, self.signal_noise_threshold))
         else:
             self.display_cop = weighted_center(selected_grid, self.signal_noise_threshold)
 
