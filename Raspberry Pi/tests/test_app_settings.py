@@ -55,6 +55,7 @@ class AppSettingsTests(unittest.TestCase):
         app_settings.save_mqtt("h", 1, "u", "p")
         self.assertEqual(json.loads(self.file.read_text(encoding="utf-8")),
                          {"other": 1, "mqtt": {"host": "h", "port": 1, "username": "u", "password": "p"}})
+        self.assertEqual([p.name for p in self.file.parent.iterdir()], ["settings.json"])  # no temp file left
 
     def test_missing_corrupt_or_wrong_shaped_file_falls_back(self):
         self.set_config(broker_host="10.0.0.5")

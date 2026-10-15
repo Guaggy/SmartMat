@@ -5,6 +5,7 @@ missing or corrupt file: the broker then comes from config.py, then the defaults
 """
 
 import json
+import os
 
 import config
 import paths
@@ -33,7 +34,10 @@ def save_mqtt(host, port, username, password):
     """Write the broker settings (other saved keys are kept). Raises OSError if the file cannot be written."""
     data = load()
     data["mqtt"] = {"host": host, "port": port, "username": username, "password": password}
-    settings_path().write_text(json.dumps(data, indent=2), encoding="utf-8")
+    path = settings_path()
+    temp = path.with_name(path.name + ".tmp")  # write then swap, so a crash mid-write keeps the old file
+    temp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    os.replace(temp, path)
 
 
 def parse_port(value):
