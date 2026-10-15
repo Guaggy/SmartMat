@@ -1,6 +1,7 @@
 """Multi-mat MQTT: live grid shape, meta handshake, nickname registry, device list."""
 
 import json
+import socket
 import tempfile
 import tkinter as tk
 import types
@@ -95,8 +96,9 @@ class ScalingTests(unittest.TestCase):
         self.assertIsNone(parse_frame_text_with_reason(",".join(["1000"] * cells))[1])
 
 
-def make_source(chip_id=None):
-    with mock.patch.object(mqtt_source, "mqtt"):  # no real paho client, no network
+def make_source(chip_id=None, saved=None):
+    """A source with a mocked paho client; `saved` stands in for settings.json (default: none)"""
+    with mock.patch.object(mqtt_source, "mqtt"),             mock.patch.object(mqtt_source.app_settings, "load", return_value=saved or {}):
         return MqttSource(chip_id)
 
 
@@ -234,13 +236,48 @@ class MqttSourceTests(unittest.TestCase):
         source = make_source("bbb222")
         source._on_message(None, None, message("smartmat/bbb222/meta", "bbb222,20,12"))
         source.start()
-        source._client.connect.assert_called_once_with(config.broker_host, config.broker_port)
+        source._client.connect.assert_called_once_with(source.host, source.port)
         source._client.loop_stop.assert_not_called()
+
+    def test_unreachable_broker_gives_a_clear_message(self):
+        source = make_source("bbb222", saved={"mqtt": {"host": "10.0.0.9", "port": 1884}})
+        source._client.connect.side_effect = ConnectionRefusedError("refused")
+        with self.assertRaisesRegex(ConnectionError, r"Cannot reach MQTT broker at 10\.0\.0\.9:1884 - "
+                                                    r"set it under Engineering > Connection"):
+            source.start()
+        source._client.loop_start.assert_not_called()
+
+    def test_refused_login_is_reported_instead_of_the_meta_timeout(self):
+        source = make_source("bbb222")
+        connect(source, failed=True)
+        with mock.patch.object(mqtt_source, "META_TIMEOUT_S", 0.01):
+            with self.assertRaisesRegex(TimeoutError, "refused the connection"):
+                source.start()
+
+    def test_discovery_reports_a_failed_connect_and_clears_it(self):
+        source = make_source()
+        source._on_connect_fail(source._client, None)
+        self.assertIn("Cannot reach MQTT broker at", source.error)
+        connect(source)
+        self.assertIsNone(source.error)
+
+    def test_username_is_only_sent_when_set(self):
+        make_source_client = lambda saved: make_source(saved=saved)._client
+        self.assertFalse(make_source_client({"mqtt": {"username": ""}}).username_pw_set.called)
+        client = make_source_client({"mqtt": {"username": "u", "password": "p"}})
+        client.username_pw_set.assert_called_once_with("u", "p")
+
+    def test_check_broker_reports_a_closed_port(self):
+        with socket.socket() as probe:  # grab a free port, then close it so nothing listens there
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        message = mqtt_source.check_broker("127.0.0.1", port, timeout=3)
+        self.assertIn(f"127.0.0.1:{port}", message)  # "Cannot reach ..." or, if Windows is slow, "No answer ..."
 
     def test_discovery_start_never_blocks_on_the_broker(self):
         source = make_source()
         source.start()
-        source._client.connect_async.assert_called_once_with(config.broker_host, config.broker_port)
+        source._client.connect_async.assert_called_once_with(source.host, source.port)
         source._client.connect.assert_not_called()
 
 

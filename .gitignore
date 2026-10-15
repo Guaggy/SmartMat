@@ -5,6 +5,7 @@
 **/secrets.h
 Raspberry Pi/config.py
 Raspberry Pi/mats.json
+Raspberry Pi/settings.json
 Raspberry Pi/recordings/
 Raspberry Pi/profiles/
 **/__pycache__/

@@ -7,6 +7,8 @@ from tkinter import filedialog, ttk
 
 from pathlib import Path
 
+import app_settings
+from sources.mqtt_source import check_broker
 from processing.export import recording_to_csv
 from processing.recording import RECORDINGS_DIR
 from processing.session_summary import session_summary
@@ -79,9 +81,11 @@ class EngineeringWindow:
         session_tab = ttk.Frame(tabs, padding=8)
         debug_tab = ttk.Frame(tabs, padding=8)
         experiment_tab = ttk.Frame(tabs, padding=8)
+        connection_tab = ttk.Frame(tabs, padding=8)
         for tab, label in ((settings_tab, "Thresholds & presets"), (indices_tab, "Indices"),
                            (validation_tab, "Validation"), (session_tab, "Session & export"),
-                           (debug_tab, "Algorithm debug"), (experiment_tab, "Experiment info")):
+                           (debug_tab, "Algorithm debug"), (experiment_tab, "Experiment info"),
+                           (connection_tab, "Connection")):
             tabs.add(tab, text=label)
         self._build_settings(settings_tab)
         ttk.Label(indices_tab, wraplength=800, text=(
@@ -93,6 +97,7 @@ class EngineeringWindow:
         self._build_session(session_tab)
         self._build_debug(debug_tab)
         self._build_experiment(experiment_tab)
+        self._build_connection(connection_tab)
         self.refresh()
 
     def _build_settings(self, parent):
@@ -308,6 +313,75 @@ class EngineeringWindow:
         if self.app.recorder is not None:
             self.app.recorder.metadata["experiment"] = self.app.experiment_info.copy()
             self.app.add_event("experiment_info_changed", payload=self.app.experiment_info.copy())
+
+    def _build_connection(self, parent):
+        ttk.Label(parent, wraplength=790, justify=tk.LEFT, text=(
+            "MQTT broker the app listens to for mats. Leave the username empty if the broker has no login. "
+            "The password is stored as plain text in settings.json on this PC.")).grid(
+            row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
+        current = app_settings.effective_mqtt()
+        self.connection_vars = {key: tk.StringVar(value=str(current[key]))
+                                for key in ("host", "port", "username", "password")}
+        for row, (label, key) in enumerate((("Host", "host"), ("Port", "port"),
+                                            ("Username", "username"), ("Password", "password")), start=1):
+            ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", pady=5)
+            entry = ttk.Entry(parent, textvariable=self.connection_vars[key], width=35,
+                              show="*" if key == "password" else "")
+            entry.grid(row=row, column=1, sticky="w", padx=8)
+        self.password_entry = entry
+        self.show_password_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(parent, text="Show", variable=self.show_password_var,
+                        command=lambda: self.password_entry.configure(
+                            show="" if self.show_password_var.get() else "*")).grid(row=4, column=2, sticky="w")
+        buttons = ttk.Frame(parent)
+        buttons.grid(row=5, column=1, sticky="w", padx=8, pady=12)
+        self.test_button = ttk.Button(buttons, text="Test connection", command=self._test_connection)
+        self.test_button.pack(side=tk.LEFT)
+        ttk.Button(buttons, text="Save", command=self._save_connection).pack(side=tk.LEFT, padx=8)
+        self.connection_status = tk.StringVar(
+            value="Save refreshes the device list. An open connection keeps its old broker until you reconnect.")
+        ttk.Label(parent, textvariable=self.connection_status, wraplength=790, justify=tk.LEFT).grid(
+            row=6, column=0, columnspan=3, sticky="w")
+
+    def _connection_form(self):
+        """(host, port, username, password) from the fields; ValueError with a readable text if invalid"""
+        host = self.connection_vars["host"].get().strip()
+        port = app_settings.parse_port(self.connection_vars["port"].get())
+        if not host:
+            raise ValueError("Host is required")
+        if port is None:
+            raise ValueError("Port must be a number from 1 to 65535")
+        return host, port, self.connection_vars["username"].get().strip(), self.connection_vars["password"].get()
+
+    def _test_connection(self):
+        try:
+            form = self._connection_form()
+        except ValueError as error:
+            self.connection_status.set(str(error))
+            return
+        self.test_button.state(["disabled"])
+        self.connection_status.set(f"Testing {form[0]}:{form[1]} ...")
+
+        def work():
+            message = check_broker(*form) or f"OK: connected to {form[0]}:{form[1]}"
+            self.window.after(0, lambda: self._test_done(message))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _test_done(self, message):
+        if self.window.winfo_exists():
+            self.test_button.state(["!disabled"])
+            self.connection_status.set(message)
+
+    def _save_connection(self):
+        try:
+            host, port, username, password = self._connection_form()
+            app_settings.save_mqtt(host, port, username, password)
+        except (ValueError, OSError) as error:
+            self.connection_status.set(f"Not saved: {error}")
+            return
+        self.app.restart_discovery()
+        self.connection_status.set(f"Saved to {app_settings.settings_path()}; looking for mats at {host}:{port}")
 
     def refresh(self):
         if not self.window.winfo_exists():

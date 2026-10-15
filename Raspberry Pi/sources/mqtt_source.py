@@ -5,7 +5,7 @@ import re
 import threading
 
 import paho.mqtt.client as mqtt
-import config
+import app_settings
 from config import VALUE_MAX_DEFAULT
 from general import LatestFrame, parse_frame_text, parse_frame_text_with_reason, scale_to_app_range
 from processing.source_quality import SourceQuality
@@ -13,6 +13,48 @@ from processing.source_quality import SourceQuality
 TOPIC_PREFIX = "smartmat"  # must match mqtt_topic_prefix in ESP32/src/main.cpp
 META_TIMEOUT_S = 3.0       # how long start() waits for the selected mat's metadata
 MAX_GRID_SIDE = 255        # the ESP32 keeps rows/cols in a uint8
+TEST_TIMEOUT_S = 3.0       # check_broker gives up after this long
+
+
+def unreachable_text(host, port):
+    return f"Cannot reach MQTT broker at {host}:{port} - set it under Engineering > Connection"
+
+
+def refused_text(host, port, reason):
+    return (f"MQTT broker at {host}:{port} refused the connection ({reason}) - "
+            "check the username and password under Engineering > Connection")
+
+
+def check_broker(host, port, username="", password="", timeout=TEST_TIMEOUT_S):
+    """Try one connection with these settings; None if the broker accepts it, else a short reason.
+
+    Blocks for at most `timeout` seconds, so call it from a thread.
+    """
+
+    done = threading.Event()
+    outcome = []
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="smartmat-pi-test")
+    if username:
+        client.username_pw_set(username, password)
+
+    def finish(text):
+        outcome.append(text)
+        done.set()
+
+    client.on_connect = lambda c, u, flags, reason_code, properties=None: finish(
+        refused_text(host, port, reason_code) if reason_code.is_failure else None)
+    client.on_connect_fail = lambda c, u: finish(unreachable_text(host, port))
+    try:
+        client.connect_async(host, port)
+        client.loop_start()
+        if not done.wait(timeout):
+            finish(f"No answer from {host}:{port} within {timeout:g} s")
+    except Exception as error:  # a bad host name etc.; the Test button must never raise
+        finish(f"{type(error).__name__}: {error}")
+    finally:
+        client.loop_stop()
+        client.disconnect()
+    return outcome[0]
 
 def parse_frame(payload):
     """Decode one MQTT payload and convert it to grid"""
@@ -72,8 +114,13 @@ class MqttSource:
         # own client id for the listener, so it can stay up next to a streaming connection
         self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
                                    client_id="smartmat-pi" if chip_id else "smartmat-pi-discovery")
-        self._client.username_pw_set(config.mqtt_username, config.mqtt_password)
+        self.error = None  # last connection problem as readable text, None while fine
+        settings = app_settings.effective_mqtt()  # read now, so a saved change applies to the next source
+        self.host, self.port = settings["host"], settings["port"]
+        if settings["username"]:
+            self._client.username_pw_set(settings["username"], settings["password"])
         self._client.on_connect = self._on_connect
+        self._client.on_connect_fail = self._on_connect_fail
         self._client.on_message = self._on_message
 
     @property
@@ -111,14 +158,19 @@ class MqttSource:
 
     def _on_connect(self, client, userdata, flags, reason_code, properties=None):
         if reason_code.is_failure:
-            print(f"MQTT broker refused the connection: {reason_code}")
+            self.error = refused_text(self.host, self.port, reason_code)
+            print(self.error)
             return
         self._connected = True
-        print(f"Connected to {config.broker_host}:{config.broker_port}")
+        self.error = None
+        print(f"Connected to {self.host}:{self.port}")
         client.subscribe(f"{TOPIC_PREFIX}/+/meta")  # retained, so known mats arrive right away
         client.subscribe(f"{TOPIC_PREFIX}/+/status")  # retained online/offline (ESP32_China firmware)
         if self.chip_id is not None:
             client.subscribe(f"{TOPIC_PREFIX}/{self.chip_id}/frame")
+
+    def _on_connect_fail(self, client, userdata):
+        self.error = unreachable_text(self.host, self.port)
 
     def _on_message(self, client, userdata, message):
         try:
@@ -155,19 +207,22 @@ class MqttSource:
     def start(self):
         """Connect and start paho's background network loop.
 
-        With a mat selected this raises if the broker is unreachable or the mat's metadata
-        does not arrive. The metadata listener never blocks: paho keeps retrying in its thread.
+        With a mat selected this raises if the broker is unreachable or refuses the login, or the
+        mat's metadata does not arrive. The metadata listener never blocks: paho keeps retrying in its thread.
         """
         if self.chip_id is None:
-            self._client.connect_async(config.broker_host, config.broker_port)
+            self._client.connect_async(self.host, self.port)
             self._client.loop_start()
             return
-        self._client.connect(config.broker_host, config.broker_port)
+        try:
+            self._client.connect(self.host, self.port)
+        except OSError as error:  # refused, unknown host, timeout
+            raise ConnectionError(unreachable_text(self.host, self.port)) from error
         self._client.loop_start()
         if not self._meta_seen.wait(META_TIMEOUT_S):
-            state = self.state
+            state, error = self.state, self.error
             self.stop()
-            raise TimeoutError(f"no metadata from mat {self.chip_id} ({state})")
+            raise TimeoutError(error or f"no metadata from mat {self.chip_id} ({state})")
 
     def stop(self):
         self._client.loop_stop()

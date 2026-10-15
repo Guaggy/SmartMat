@@ -127,6 +127,7 @@ class DesktopApp:
         self._mat_ids = {}                 # device-list label -> chip id
         self._status = {}                  # chip id -> "online" / "offline", as last shown in the device list
         self._discovery = None             # MqttSource that only listens for mats' metadata
+        self._discovery_error = None       # its last connection problem already shown in the status bar
         self.calibration = Calibration()
         self.pressure_calibration = PressureCalibration.default()
         self.sensor_health = SensorHealth()
@@ -650,6 +651,11 @@ class DesktopApp:
 
     def _sync_mats(self):
         """Relist the MQTT devices when the broker has reported a new or changed mat"""
+        error = getattr(self._discovery, "error", None)
+        if error != self._discovery_error:  # shown once per change, and not over a mat's own status
+            if self.source is None and (error or self.status_var.get() == self._discovery_error):
+                self.status_var.set(error or "")
+            self._discovery_error = error
         if self._discovery is not None and (self._discovery.mats != self._mats
                                             or self._discovery.status != self._status):
             self._mats = dict(self._discovery.mats)
@@ -657,6 +663,18 @@ class DesktopApp:
             self._publish_web(force=True)
             if self.source_var.get() == "MQTT":
                 self._refresh_devices()
+
+    def restart_discovery(self):
+        """Drop the device-list listener and the mats it knew; the next _refresh_devices builds a new
+        one with the saved broker settings (Engineering > Connection > Save)."""
+        if self._discovery is not None:
+            self._discovery.stop()
+            self._discovery = None
+        if self.status_var.get() == self._discovery_error:
+            self.status_var.set("")
+        self._mats, self._status, self._discovery_error = {}, {}, None
+        self._publish_web(force=True)
+        self._refresh_devices()
 
     def _rename_mat(self):
         chip_id = self._mat_ids.get(self.device_var.get())
