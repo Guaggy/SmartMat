@@ -14,3 +14,10 @@
 - Choices: `mqtt_client.setSocketTimeout(2)` so a blocked connect cannot overflow the 8 KB USB ring buffer (the decoder would resync anyway); decoder reset on mat unplug; a retained frame stays on the broker while the mat is unplugged (no "offline" signal yet - add if the Pi app needs it).
 - Python decoder behaviour kept on purpose: a false header followed by two real frames within 32 bytes can emit one garbage frame; only the capture will tell if that matters.
 - Untested without hardware: everything USB (CH34x at 921600, enumeration, replug, VBUS), Wi-Fi/MQTT on the real board, publish rate under load.
+
+# F1-F3 follow-up (2026-10-15)
+
+- F1: `src/frame_accumulator.h` averages all frames decoded in each 100 ms publish window (uint16 sums, rounded mean, publish only if count > 0; at most 257 frames per window so the sums cannot overflow). Replaces "keep only the newest frame". Native tests in `test/test_accumulator` (mean, rounding, count reset, saturation at 255).
+- F2: MQTT last will `smartmat/<chip_id>/status` = `offline` (retained), `online` (retained) published after each connect. Frames are now NOT retained (the Pi app ignores retained frames); meta stays retained. Resolves the B2 "no offline signal" gap.
+- F3: power numbers, shopping list and the B3 checklist are in `README.md`.
+- Future product work (not planned now): Wi-Fi provisioning (captive portal instead of `secrets.h`) and OTA updates.

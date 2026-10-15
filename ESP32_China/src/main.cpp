@@ -13,6 +13,7 @@
 #include <EspUsbHost.h>
 #endif
 
+#include "frame_accumulator.h"
 #include "maxrays_decoder.h"
 #include "secrets.h" // Wifi and passcodes
 
@@ -29,22 +30,23 @@ const uint16_t cell_count = grid_rows * grid_cols;
 const uint32_t mat_baud = 921600; // CH340, 8-N-1
 const size_t usb_rx_buffer_size = 8192; // default 512 B is only ~5 ms at 921600
 
-const uint32_t frame_interval_ms = 100; // publish at most 10 fps, latest frame only
+const uint32_t frame_interval_ms = 100; // publish window: 10 fps, mean of all frames decoded in it
 
 // Wifi and MQTT
-const char* mqtt_topic_prefix = "smartmat"; // topics: smartmat/<chip_id>/frame and .../meta
+const char* mqtt_topic_prefix = "smartmat"; // topics: smartmat/<chip_id>/frame, .../meta and .../status
 const uint32_t reconnect_retry_interval_ms = 5000;
 const uint16_t mqtt_socket_timeout_s = 2; // a blocked connect() must not starve the USB ring buffer for 15 s
 const uint16_t mqtt_packet_buffer_size = 2048; // 400 values are <= 1.6 KB --> this leaves headroom
 
 // Variables
 MaxraysDecoder decoder;
-uint8_t latest_frame[cell_count];   // newest decoded (or simulated) frame, raw 0-255
-bool frame_is_new = false;          // latest_frame not published yet
+FrameAccumulator accumulator;       // frames decoded (or simulated) in the current publish window
+uint8_t latest_frame[cell_count];   // mean of the last window, raw 0-255
 char frame_text[cell_count * 4 + 1]; // "255," per cell
 char chip_id[13];     // 12 hex digits, also used as MQTT client id (must be unique per board)
 char frame_topic[40];
 char meta_topic[40];
+char status_topic[40]; // "online" retained after connect, "offline" retained as last will
 char meta_text[32];   // "<chip_id>,<rows>,<cols>,<value_max>"
 
 // Start Wifi and MQTT
@@ -67,6 +69,7 @@ void build_identity() {
            static_cast<unsigned>(mac >> 32) & 0xFFFFU, static_cast<unsigned>(mac & 0xFFFFFFFFU));
   snprintf(frame_topic, sizeof(frame_topic), "%s/%s/frame", mqtt_topic_prefix, chip_id);
   snprintf(meta_topic, sizeof(meta_topic), "%s/%s/meta", mqtt_topic_prefix, chip_id);
+  snprintf(status_topic, sizeof(status_topic), "%s/%s/status", mqtt_topic_prefix, chip_id);
   snprintf(meta_text, sizeof(meta_text), "%s,%u,%u,%u", chip_id,
            static_cast<unsigned>(grid_rows), static_cast<unsigned>(grid_cols), static_cast<unsigned>(value_max));
 }
@@ -104,7 +107,9 @@ void maintain_mqtt() {
     return;
   }
   last_mqtt_attempt_ms = now;
-  if (mqtt_client.connect(chip_id, mqtt_username, mqtt_password)) {
+  // Last will: the broker publishes "offline" (retained) on status if we vanish without a clean disconnect
+  if (mqtt_client.connect(chip_id, mqtt_username, mqtt_password, status_topic, 0, true, "offline")) {
+    mqtt_client.publish(status_topic, "online", true);
     mqtt_client.publish(meta_topic, meta_text, true); // retained: a Pi that subscribes later still gets it
     if (serial_debug) Serial.printf("MQTT connected as %s\n", chip_id);
   } else if (serial_debug) {
@@ -125,16 +130,15 @@ void build_frame_text() {
   *out = '\0';
 }
 
-// Publish the latest frame if there is a new one and the frame interval has passed
+// At the end of each window publish the mean of the frames decoded in it (nothing if none arrived)
 void send_frame() {
-  if (!frame_is_new || millis() - last_frame_sent_ms < frame_interval_ms) {
+  if (millis() - last_frame_sent_ms < frame_interval_ms) {
     return;
   }
-  frame_is_new = false;
   last_frame_sent_ms = millis();
-  if (mqtt_client.connected()) {
+  if (accumulator.take_mean(latest_frame) && mqtt_client.connected()) {
     build_frame_text();
-    mqtt_client.publish(frame_topic, frame_text, true);
+    mqtt_client.publish(frame_topic, frame_text, false); // not retained: a stale frame must not look live
   }
 }
 
@@ -151,17 +155,18 @@ void simulate_frame() {
   const float t = now / 1000.0f;
   const float centre_x = (grid_cols - 1) / 2.0f + 6.0f * sinf(t * 0.9f);
   const float centre_y = (grid_rows - 1) / 2.0f + 6.0f * cosf(t * 0.6f);
+  uint8_t frame[cell_count];
   for (uint8_t row = 0; row < grid_rows; ++row) {
     for (uint8_t col = 0; col < grid_cols; ++col) {
       const float dx = col - centre_x;
       const float dy = row - centre_y;
-      latest_frame[row * grid_cols + col] = static_cast<uint8_t>(255.0f * expf(-(dx * dx + dy * dy) / 18.0f));
+      frame[row * grid_cols + col] = static_cast<uint8_t>(255.0f * expf(-(dx * dx + dy * dy) / 18.0f));
     }
   }
-  frame_is_new = true;
+  accumulator.add(frame);
 }
 #else
-// Pull everything the USB ring buffer holds through the decoder, keep only the newest frame
+// Pull everything the USB ring buffer holds through the decoder, adding each frame to the window average
 void read_mat() {
   const bool connected = mat_serial.connected();
   if (connected != mat_was_connected) {
@@ -176,10 +181,7 @@ void read_mat() {
     while (count < sizeof(chunk) && mat_serial.available() > 0) {
       chunk[count++] = static_cast<uint8_t>(mat_serial.read());
     }
-    decoder.feed(chunk, count, [](const uint8_t* payload) {
-      memcpy(latest_frame, payload, cell_count);
-      frame_is_new = true;
-    });
+    decoder.feed(chunk, count, [](const uint8_t* payload) { accumulator.add(payload); });
   }
 }
 #endif
