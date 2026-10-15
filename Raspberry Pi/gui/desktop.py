@@ -119,6 +119,7 @@ class DesktopApp:
 
         self.source = None
         self._rotation = 0                 # degrees, as last applied (rotation_var is the control)
+        self._grid_rotation = 0            # the rotation the current grid was shaped with (cell_size_mm's axes)
         self._shown_capture = None         # last raw capture result reported in the status line
         self.recorder = None
         self.web_server = None
@@ -802,8 +803,9 @@ class DesktopApp:
 
     @property
     def cell_size_mm(self):
-        """(width, height) mm of one cell of the oriented grid, or None; follows mat size, grid and rotation"""
-        return cell_size_mm(self.mat_size_mm, app_config.TOTAL_ROWS, app_config.TOTAL_COLS, self._rotation)
+        """(width, height) mm of one cell of the oriented grid, or None; follows mat size, grid and rotation.
+        Uses the rotation the grid was shaped with: a turn during playback or with no source reshapes nothing."""
+        return cell_size_mm(self.mat_size_mm, app_config.TOTAL_ROWS, app_config.TOTAL_COLS, self._grid_rotation)
 
     @property
     def cell_area_m2(self):
@@ -864,6 +866,7 @@ class DesktopApp:
         # size wins below. Only the user's size (typed, or already in the profile) is kept for saving.
         self._user_size_mm = None
         self.mat_size_mm = getattr(self.source, "default_size_mm", None) or configured_mat_size()
+        self._grid_rotation = self._rotation  # every connect shapes (or, playback, sizes) the grid at the current rotation
         if mat_id is None:
             recorded = profile_size_mm({"size_mm": (self._playback_metadata or {}).get("mat_size_mm")})
             if recorded:  # the recording's own size (as built); its frames are already oriented
@@ -886,7 +889,7 @@ class DesktopApp:
             except (KeyError, TypeError, ValueError):
                 profile = None
         if profile is not None:
-            self._rotation = rotation
+            self._rotation = self._grid_rotation = rotation
             self.rotation_var.set(str(rotation))
             self.mirror_h_var.set(bool(orientation.get("mirror_h")))
             self.mirror_v_var.set(bool(orientation.get("mirror_v")))
@@ -927,9 +930,10 @@ class DesktopApp:
         if ((rotation - self._rotation) // 90) % 2:
             rows, cols = cols, rows
         self._rotation = rotation
-        self._update_cell_info()
         if live:
+            self._grid_rotation = rotation
             self._apply_grid_shape(rows, cols, force=True)
+        self._update_cell_info()
         note = " 90/270 swaps rows and cols of a non-square mat." if rows != cols else ""
         self.status_var.set("Orientation applies to live data only; analysis state was reset, as when "
                             "switching mats." + note if live else

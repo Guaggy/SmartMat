@@ -121,12 +121,21 @@ class DesktopCellSizeTests(unittest.TestCase):
             app.mat_size_mm = (600.0, 480.0)
             config.TOTAL_ROWS, config.TOTAL_COLS = 16, 15
             self.assertAlmostEqual(app.cell_area_m2, 0.04 * 0.03)
-            app._rotation = 90
+            app._rotation = app._grid_rotation = 90  # as after a live turn
             config.TOTAL_ROWS, config.TOTAL_COLS = 15, 16
             self.assertEqual(app.cell_size_mm, (30.0, 40.0))
             self.assertAlmostEqual(app.cell_area_m2, 0.04 * 0.03)
             app._update_cell_info()
             self.assertEqual(app.cell_info_var.get(), "Cell: 30.0 x 40.0 mm")
+
+    def test_turn_without_a_live_source_does_not_swap_the_cell_label(self):
+        app = self.app
+        app.source = None  # no source (or playback): a turn reshapes nothing
+        app.mat_size_mm = (600.0, 480.0)
+        config.TOTAL_ROWS, config.TOTAL_COLS = 16, 15
+        app.rotation_var.set("90")
+        app._orientation_changed()
+        self.assertEqual(app.cell_info_var.get(), "Cell: 40.0 x 30.0 mm")
 
     def test_bad_mat_size_message_survives_the_next_frame(self):
         app = self.app
