@@ -70,11 +70,15 @@ ESP32 --MQTT/Serial--> sources/*Source (raw 0..value_max -> 0-1000, general.scal
 - `settings.py` - engineering presets, validate/save/load/apply settings for
   temporal + hotspots + motion.
 - `display.py` - plot-only interpolation (does not affect any statistic).
+- `export.py` - pure CSV export: one frame (long, one row per cell; Export snapshot button, which also saves the
+  heatmap PNG) and a recordings/*.json to a wide CSV (Engineering > Session & export). No dependencies.
 - `validation.py` - compares manual "Known reposition" annotations against
   auto-detected repositions/hotspots, for engineering validation.
 
 `gui/` (Tkinter):
-- `desktop.py` - main window, source/device selection, main plot, toggles.
+- `desktop.py` - main window, source/device selection, main plot, toggles. The Data dropdown is
+  `DesktopApp.data_modes` (`DATA_MODES` plus the cell signals and each map index, rebuilt in `_set_indices`);
+  signal/index maps are `_derived_grid(key)`, not frame keys. CoP/ROI/analysis use `_base_key()`, i.e. pressure.
 - One file per tool window: `calibration_window.py`, `analysis_window.py`,
   `diagnostics_window.py`, `temporal_window.py`, `hotspot_window.py`,
   `motion_window.py`, `engineering_window.py`, `annotation_window.py`,

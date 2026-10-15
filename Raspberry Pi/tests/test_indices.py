@@ -427,6 +427,57 @@ class DesktopIndexTests(unittest.TestCase):
         self.assertIn("Index '", window.settings_status.get())
         self.assertEqual(len(self.app.indices.definitions), 4)
 
+    def test_data_dropdown_lists_cell_signals_and_map_indices(self):
+        labels = list(self.app.data_menu.cget("values"))
+        for label in ("Raw / received", "Calibrated pressure", "Exposure", "Burden", "Time since relief",
+                      "Loaded time", "Relieved share of time", "Index: Sustained load"):
+            self.assertIn(label, labels)
+        self.assertNotIn("Index: Mat overview", labels)      # summary indices are numbers, not maps
+        self.app._set_indices([map_index()])
+        labels = list(self.app.data_menu.cget("values"))
+        self.assertIn("Index: Load", labels)
+        self.assertNotIn("Index: Sustained load", labels)
+
+    def test_derived_maps_draw_and_overlays_keep_using_pressure(self):
+        self.frame(1)
+        self.frame(2)
+        self.app._set_indices([map_index(terms=[term(signal="loaded_time", window_min=None, reference=10.0)])])
+        self.frame(3)
+        pressure_cop = self.app.display_cop
+        for label in ("Exposure", "Time since relief", "Index: Load"):
+            self.app.data_mode_var.set(label)
+            self.app._change_data_mode()
+            self.assertEqual(self.app.data_mode_var.get(), label)
+            self.app._update_plot()
+            self.assertEqual(self.app.display_cop, pressure_cop)   # CoP is from pressure, not the shown map
+            self.assertIsNotNone(self.app._analysis_grid()[0])
+        self.app.data_mode_var.set("Exposure")
+        self.app._change_data_mode()
+        self.app.selected_cell = (0, 0)
+        self.app._add_history_sample()                             # selected-cell history and the numbers overlay
+        self.app.numbers_var.set(True)
+        self.app._toggle_numbers()
+        self.app._capture_reference()                              # difference is not offered for these maps
+        self.assertFalse(self.app.difference_var.get())
+        grid = self.app._derived_grid("index:Load")
+        self.assertEqual(grid.shape, SHAPE)
+        self.assertTrue(np.isfinite(grid).any())
+
+    def test_without_pressure_calibration_the_previous_map_stays(self):
+        from processing.calibration import IndividualCalibration
+        self.frame(1)
+        self.app.pressure_calibration.individual = IndividualCalibration()   # nothing calibrated
+        self.app.data_mode_var.set("Exposure")
+        self.app._change_data_mode()                                # must not raise
+        self.assertEqual(self.app.data_mode_var.get(), "Baseline subtracted")
+        self.assertIn("pressure calibration", self.app.status_var.get())
+
+    def test_removing_the_shown_index_falls_back(self):
+        self.app.data_mode_var.set("Index: Sustained load")
+        self.app._change_data_mode()
+        self.app._set_indices([map_index()])
+        self.assertEqual(self.app.data_mode_var.get(), "Baseline subtracted")
+
 
 if __name__ == "__main__":
     unittest.main()

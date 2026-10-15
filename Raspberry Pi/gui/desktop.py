@@ -40,7 +40,7 @@ from processing.motion import MotionAnalyzer
 from processing.occupancy import OccupancyDetector
 from processing.roi import mask_to_cells
 from processing.indices import NEAR, OK, OVER, IndexMonitor
-from processing.signals import Context
+from processing.signals import SIGNALS, Context, read_signal
 from processing.temporal import TemporalAnalysis
 from processing.timeline import EventTimeline
 from processing.statistics import contact_mask, pressure_statistics, weighted_center
@@ -69,6 +69,7 @@ DATA_MODES = {
     "Baseline subtracted": "baseline_subtracted",
     "Calibrated pressure": "pressure",
 }
+# DesktopApp.data_modes adds the cell signals ("signal:<name>") and map indices ("index:<name>") to these
 
 OCCUPANCY_LABELS = {  # muted: this sits on screen all day
     True: ("Patient detected", "#5b9d61"),
@@ -335,10 +336,12 @@ class DesktopApp:
 
         ttk.Label(bar, text="Data:").pack(side=tk.LEFT)
         self.data_mode_var = tk.StringVar(value="Baseline subtracted")
-        data_menu = ttk.Combobox(bar, textvariable=self.data_mode_var, state="readonly",
-                                 values=list(DATA_MODES), width=21)
-        data_menu.pack(side=tk.LEFT, padx=(0, 12))
-        data_menu.bind("<<ComboboxSelected>>", lambda _event: self._change_data_mode())
+        self._data_mode_shown = "Baseline subtracted"  # last mode actually applied (to fall back to)
+        self.data_modes = self._build_data_modes()
+        self.data_menu = ttk.Combobox(bar, textvariable=self.data_mode_var, state="readonly",
+                                      values=list(self.data_modes), width=21)
+        self.data_menu.pack(side=tk.LEFT, padx=(0, 12))
+        self.data_menu.bind("<<ComboboxSelected>>", lambda _event: self._change_data_mode())
 
         self.threshold_var = tk.StringVar(value=str(self.contact_threshold_kpa))
 
@@ -356,6 +359,56 @@ class DesktopApp:
         ttk.Button(bar, text="Analysis...", command=self._open_analysis).pack(side=tk.LEFT, padx=(0, 8))
         ttk.Button(bar, text="Diagnostics...", command=self._open_diagnostics).pack(side=tk.LEFT, padx=(0, 8))
         ttk.Button(bar, text="Temporal...", command=self._open_temporal).pack(side=tk.LEFT)
+
+    def _build_data_modes(self):
+        """Dropdown label -> frame key: the base maps, the cell signals, and each map index"""
+        modes = dict(DATA_MODES)
+        for name, signal in SIGNALS.items():
+            if signal.level == "cell" and name != "pressure":  # pressure is "Calibrated pressure"
+                modes[signal.label] = f"signal:{name}"
+        for definition in self.indices.definitions:
+            if definition["layer"] == "map":
+                modes[f"Index: {definition['name']}"] = f"index:{definition['name']}"
+        return modes
+
+    def _refresh_data_modes(self):
+        """The index list changed: relist the dropdown, and leave a map index that no longer exists"""
+        self.data_modes = self._build_data_modes()
+        self.data_menu.configure(values=list(self.data_modes))
+        if self.data_mode_var.get() not in self.data_modes:
+            self.data_mode_var.set("Baseline subtracted")
+            self._change_data_mode()
+
+    def _data_key(self):
+        return self.data_modes[self.data_mode_var.get()]
+
+    def _base_key(self):
+        """The frame key for everything computed from the shown data (CoP, ROI, analysis): the selected
+        map, or calibrated pressure when a derived signal/index map is shown"""
+        key = self._data_key()
+        return key if key in DATA_MODES.values() else "pressure"
+
+    def _derived_grid(self, key):
+        """Grid of a signal/index map, NaN where unknown; None without a complete pressure calibration"""
+        if self.frame is None or self.frame["pressure"] is None:
+            return None
+        kind, _, name = key.partition(":")
+        if kind == "signal":
+            grid = read_signal(name, self._index_context())
+        else:  # evaluated from the same Context, on the index update interval
+            grid = self.indices.values.get(name)
+        return grid if isinstance(grid, np.ndarray) and grid.shape == self.frame["pressure"].shape else None
+
+    @staticmethod
+    def _data_unit(key):
+        """Colorbar / axis label of a data mode"""
+        kind, _, name = key.partition(":")
+        if kind == "signal":
+            signal = SIGNALS[name]
+            return f"{signal.label} ({signal.unit})" if signal.unit else signal.label
+        if kind == "index":
+            return f"Index: {name} (relative to reference)"
+        return "Pressure (kPa)" if key == "pressure" else "Relative sensor value"
 
     def _build_options_bar(self):
         """On/off checkboxes, separate from the action buttons above"""
@@ -532,7 +585,7 @@ class DesktopApp:
                 vmin=VALUE_MIN_DEFAULT, vmax=VALUE_MAX_DEFAULT,
                 aspect="auto",
             )
-            unit = "Pressure (kPa)" if self.data_mode_var.get() == "Calibrated pressure" else "Relative sensor value"
+            unit = self._data_unit(self._data_key())
             label = f"Difference in {unit}" if self.difference_var.get() else unit
             self.figure.colorbar(self.image, ax=self.axes, label=label)
             self.cop_marker, = self.axes.plot([], [], marker="+", color="blue", markersize=13,
@@ -979,7 +1032,13 @@ class DesktopApp:
         self.calibration.toggle_auto()
 
     def _change_data_mode(self):
-        if self.difference_var.get() and DATA_MODES[self.data_mode_var.get()] != self.reference_mode:
+        if self._data_key() not in DATA_MODES.values() and not self.pressure_calibration.is_complete:
+            self.data_mode_var.set(self._data_mode_shown)
+            self._notify("Signal and index maps need a complete pressure calibration - keeping the "
+                         f"previous map ({self._data_mode_shown})")
+            return
+        self._data_mode_shown = self.data_mode_var.get()
+        if self.difference_var.get() and self._data_key() != self.reference_mode:
             self.difference_var.set(False)
         self.roi_history.clear()
         self._update_stats()
@@ -1089,8 +1148,8 @@ class DesktopApp:
         if self.frame is None:
             self.status_var.set("Connect a source before capturing a reference")
             return
-        key = DATA_MODES[self.data_mode_var.get()]
-        grid = self.frame[key]
+        key = self._data_key()
+        grid = self.frame.get(key)  # signal/index maps are not part of the frame
         if grid is None:
             self.status_var.set("This data mode is unavailable for a reference")
             return
@@ -1102,7 +1161,7 @@ class DesktopApp:
 
     def _toggle_difference(self):
         if self.difference_var.get() and (self.reference_grid is None or
-                                          self.reference_mode != DATA_MODES[self.data_mode_var.get()]):
+                                          self.reference_mode != self._data_key()):
             self.difference_var.set(False)
             self.status_var.set("Capture a reference in the selected data mode first")
         else:
@@ -1222,7 +1281,7 @@ class DesktopApp:
         return state
 
     def _analysis_grid(self):
-        key = DATA_MODES[self.data_mode_var.get()]
+        key = self._base_key()
         grid = self.frame[key]
         if grid is None:
             return self.frame["baseline_subtracted"], "relative sensor value"
@@ -1592,14 +1651,18 @@ class DesktopApp:
         self.indices.set_definitions(definitions)
         self.index_history = {}
         self._build_index_chips()
+        self._refresh_data_modes()
+
+    def _index_context(self):
+        return Context(self.frame["pressure"], self.frame_timestamp, self.contact_threshold_kpa,
+                       self.temporal, self.hotspots, self.motion, self.roi)
 
     def _update_indices(self, force=False):
         now = time.time()
         if self.frame is None or (not force and now - self._last_index_update < INDEX_UPDATE_INTERVAL_S):
             return
         self._last_index_update = now
-        context = Context(self.frame["pressure"], self.frame_timestamp, self.contact_threshold_kpa,
-                          self.temporal, self.hotspots, self.motion, self.roi)
+        context = self._index_context()
         for name, old, new in self.indices.update(context, self.frame_timestamp, self.occupancy.occupied):
             self.add_event(INDEX_EVENTS[new], name, {
                 "index": name, "value": self.indices.compared(name), "previous_state": old})
@@ -1667,11 +1730,14 @@ class DesktopApp:
     def _update_plot(self):
         if self.frame is None:
             return
-        key = DATA_MODES[self.data_mode_var.get()]
-        grid = self.frame[key]
+        key = self._data_key()
+        derived = key not in DATA_MODES.values()  # a signal or index map: own unit, NaN stays blank
+        grid = self._derived_grid(key) if derived else self.frame[key]
         pressure_unavailable = grid is None
         if pressure_unavailable:
             grid = np.zeros((app_config.TOTAL_ROWS, app_config.TOTAL_COLS))
+        elif derived:
+            pass
         elif key != "pressure":
             grid = np.where(np.isfinite(grid) & (grid > self.signal_noise_threshold), grid, 0.0)
         finite_values = grid[np.isfinite(grid)]
@@ -1693,11 +1759,15 @@ class DesktopApp:
             vmin = 0.0
             vmax = (max(1.0, float(finite_values.max())) if finite_values.size else 1.0
                     ) if self.calibration.auto else PRESSURE_DISPLAY_MAX_KPA
+        elif derived:  # units differ per map, so always auto
+            vmin = 0.0
+            vmax = float(finite_values.max()) if finite_values.size and finite_values.max() > 0 else 1.0
         else:
             vmin, vmax = self.calibration.vmin, self.calibration.vmax
         plot_grid = interpolate_grid(grid, self.interpolation_method, self.display_scale)
 
         if self.plot_type_var.get() == "3D Surface":
+            plot_grid = np.nan_to_num(plot_grid)  # a surface cannot leave holes
             self.axes.clear()
             cols, rows = np.meshgrid(np.linspace(0, app_config.TOTAL_COLS - 1, plot_grid.shape[1]),
                                      np.linspace(0, app_config.TOTAL_ROWS - 1, plot_grid.shape[0]))
@@ -1707,7 +1777,8 @@ class DesktopApp:
                 vmin=-vmax, vmax=-vmin,
             )
             self.axes.set_zlim(-vmax, -vmin)
-            self.axes.set_zlabel("-kPa" if key == "pressure" else "Negative sensor value")
+            self.axes.set_zlabel("-kPa" if key == "pressure" else
+                                 "-" + self._data_unit(key) if derived else "Negative sensor value")
         else:
             for collection in list(self.axes.collections):
                 collection.remove()
@@ -1717,7 +1788,7 @@ class DesktopApp:
             self.image.set_cmap("coolwarm" if difference else HEATMAP_COLORS)
             self.axes.set_xlim(-0.5, app_config.TOTAL_COLS - 0.5)
             self.axes.set_ylim(app_config.TOTAL_ROWS - 0.5, -0.5)
-            if self.show_contours and not pressure_unavailable and not difference:
+            if self.show_contours and not pressure_unavailable and not difference and not derived:
                 configured = self.pressure_contour_levels if key == "pressure" else self.relative_contour_levels
                 levels = ([level for level in configured if finite_values.min() < level < finite_values.max()]
                           if finite_values.size else [])
@@ -1773,7 +1844,9 @@ class DesktopApp:
                 for row in range(app_config.TOTAL_ROWS):
                     for col in range(app_config.TOTAL_COLS):
                         value = grid[row, col]
-                        self.cell_labels[row][col].set_text(f"{value:.1f}" if key == "pressure" else f"{value:.0f}")
+                        text = (f"{value:.1f}" if key == "pressure" else
+                                (f"{value:.3g}" if np.isfinite(value) else "") if derived else f"{value:.0f}")
+                        self.cell_labels[row][col].set_text(text)
         self.canvas.draw_idle()
 
         if self.recorder is not None:
@@ -1781,13 +1854,16 @@ class DesktopApp:
             prefix = f"Recording '{self.recorder.name}' - {elapsed:.0f}s, {self.recorder.frame_count} frames   "
         else:
             prefix = ""
-        if pressure_unavailable:
+        if pressure_unavailable and derived and self.frame["pressure"] is not None:
+            status = f"{self.data_mode_var.get()}: no value yet"
+        elif pressure_unavailable:
             status = f"Pressure calibration incomplete ({self.pressure_calibration.calibrated_count}/{app_config.TOTAL_ROWS * app_config.TOTAL_COLS} cells)"
         else:
-            unit = " kPa" if key == "pressure" else ""
+            unit = " kPa" if key == "pressure" else (f" {SIGNALS[key[7:]].unit}" if key.startswith("signal:") else "")
             valid = grid[np.isfinite(grid)]
-            status = (f"avg {valid.mean():.1f}{unit}   max {valid.max():.1f}{unit}   min {valid.min():.1f}{unit}"
-                      if valid.size else "No valid sensor values")
+            number = "{:.3g}" if derived else "{:.1f}"
+            status = (f"avg {number.format(valid.mean())}{unit}   max {number.format(valid.max())}{unit}   "
+                      f"min {number.format(valid.min())}{unit}" if valid.size else "No valid sensor values")
         if time.time() < self._notice_until:
             prefix = self._notice + "   " + prefix
         self.status_var.set(prefix + ("Difference vs reference | " if difference else "") + status)
@@ -1797,7 +1873,7 @@ class DesktopApp:
             self.display_cop = (None, None)
             return
 
-        key = DATA_MODES[self.data_mode_var.get()]
+        key = self._base_key()  # CoP follows pressure while a signal/index map is shown
         selected_grid = self.frame[key]
         if selected_grid is None:
             self.display_cop = (None, None)
@@ -1860,6 +1936,10 @@ class DesktopApp:
         sample = {"time": self.frame_timestamp}
         for key in DATA_MODES.values():
             grid = self.frame[key]
+            sample[key] = None if grid is None else float(grid[row, col])
+        key = self._data_key()
+        if key not in sample:  # only the shown signal/index map is worth computing per frame
+            grid = self._derived_grid(key)
             sample[key] = None if grid is None else float(grid[row, col])
         if self.frame["pressure"] is not None:
             cell = self.temporal.cell(row, col)
@@ -1930,15 +2010,15 @@ class DesktopApp:
     def _update_history_plot(self):
         if self.history_window is None or not self.history_window.winfo_exists():
             return
-        key = DATA_MODES[self.data_mode_var.get()]
-        samples = [item for item in self.cell_history if item[key] is not None]
+        key = self._data_key()
+        samples = [item for item in self.cell_history if item.get(key) is not None]
         self.history_axes.clear()
         if samples:
             start = samples[0]["time"]
             self.history_axes.plot([item["time"] - start for item in samples],
                                    [item[key] for item in samples], color="green")
         self.history_axes.set_xlabel("Time since selection (s)")
-        self.history_axes.set_ylabel("Pressure (kPa)" if key == "pressure" else "Relative sensor value")
+        self.history_axes.set_ylabel(self._data_unit(key))
         if self.selected_cell is not None:
             self.history_axes.set_title(f"Row {self.selected_cell[0]}, column {self.selected_cell[1]}")
         self.history_figure.tight_layout()
