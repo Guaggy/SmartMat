@@ -2,6 +2,7 @@
 
 import copy
 import socket
+import threading
 import time
 import webbrowser
 from pathlib import Path
@@ -669,7 +670,9 @@ class DesktopApp:
         """Drop the device-list listener and the mats it knew; the next _refresh_devices builds a new
         one with the saved broker settings (Engineering > Connection > Save)."""
         if self._discovery is not None:
-            self._discovery.stop()
+            # stop() joins the paho loop and can block for seconds with an unreachable broker: not on the GUI
+            # thread. Nothing reads the old source once self._discovery is replaced, so it cannot feed the new list.
+            threading.Thread(target=self._discovery.stop, daemon=True).start()
             self._discovery = None
         if self.status_var.get() == self._discovery_error:
             self.status_var.set("")
