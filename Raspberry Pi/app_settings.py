@@ -14,7 +14,7 @@ FILE = None  # tests point this at a temp file; None = <paths.APP_DIR>/settings.
 MQTT_DEFAULTS = {"host": "localhost", "port": 1883, "username": "", "password": ""}
 CONFIG_NAMES = {"host": "broker_host", "port": "broker_port",
                 "username": "mqtt_username", "password": "mqtt_password"}
-PLACEHOLDERS = {"192.168.1.50", "your-mqtt-username", "your-mqtt-password"}  # config.example.py: counts as unset
+PLACEHOLDERS = {"your-mqtt-username", "your-mqtt-password"}  # config.example.py credentials: count as unset (the host never does)
 
 
 def settings_path():

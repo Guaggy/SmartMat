@@ -32,11 +32,15 @@ class AppSettingsTests(unittest.TestCase):
         self.assertEqual(app_settings.effective_mqtt(),
                          {"host": "10.0.0.5", "port": 1999, "username": "u", "password": "p"})
 
-    def test_example_placeholders_count_as_unset(self):
-        self.set_config(broker_host="192.168.1.50", broker_port=1883,
+    def test_example_credential_placeholders_count_as_unset(self):
+        self.set_config(broker_host="localhost", broker_port=1883,
                         mqtt_username="your-mqtt-username", mqtt_password="your-mqtt-password")
         self.assertEqual(app_settings.effective_mqtt(),
                          {"host": "localhost", "port": 1883, "username": "", "password": ""})
+
+    def test_config_host_is_never_a_placeholder(self):
+        self.set_config(broker_host="192.168.1.50")
+        self.assertEqual(app_settings.effective_mqtt()["host"], "192.168.1.50")
 
     def test_settings_json_beats_config_py(self):
         self.set_config(broker_host="10.0.0.5", mqtt_username="cfg", mqtt_password="cfgpw")

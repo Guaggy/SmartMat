@@ -5,7 +5,7 @@ pushed to git) and fill in your own values below.
 # NOTE: always read the grid size as config.TOTAL_ROWS / config.TOTAL_COLS. A
 # `from config import TOTAL_ROWS` copy goes stale when an MQTT mat of another size connects.
 
-broker_host = "192.168.1.50"  # static/reserved IP of the Raspberry Pi's Mosquitto broker
+broker_host = "localhost"  # set the Pi/broker address here, or in the app under Engineering > Connection
 broker_port = 1883
 mqtt_username = "your-mqtt-username"
 mqtt_password = "your-mqtt-password"
