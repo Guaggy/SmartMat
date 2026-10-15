@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 
 import config
+import paths
 from config import VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT
 
 def parse_frame_text(text):
@@ -56,7 +57,7 @@ def parse_frame_text_with_reason(text, value_max=VALUE_MAX_DEFAULT, shape=None):
     return grid, None
 
 
-MATS_FILE = Path(__file__).resolve().parent / "mats.json"  # local nicknames, not in git
+MATS_FILE = paths.APP_DIR / "mats.json"  # local nicknames, not in git
 
 
 def load_mat_names(path=MATS_FILE):

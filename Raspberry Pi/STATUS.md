@@ -121,6 +121,13 @@ Recordings store frames after scaling; `metadata.value_max`/`mat_id` say where
 they came from (missing value_max = 1000). `load_session` returns frames at the
 recording's own `grid_shape`, and playback applies that size first.
 
+`paths.py` - `APP_DIR`: the project folder, or the exe's folder when frozen (PyInstaller). `general.MATS_FILE`,
+`processing.recording.RECORDINGS_DIR` and a relative `DEFAULT_PRESSURE_CALIBRATION_FILE` resolve against it;
+`main.py` imports it first so a frozen build puts that folder on `sys.path` (config.py is excluded from the bundle
+and copied from the bundled `config.example.py` on first run). Build: `build_exe.bat` -> `SmartMat.spec`
+(onedir, windowed) -> `dist\SmartMat\SmartMat.exe` + `dist\SmartMat.zip`; `SmartMat.exe --selftest` is a headless
+smoke test (writes `selftest.txt` next to the exe). Source-tree behaviour is unchanged.
+
 `config.py` (gitignored, copy from `config.example.py`) holds every
 threshold/constant used by the modules above, and the default grid size.
 `config.TOTAL_ROWS`/`TOTAL_COLS` are overwritten at runtime when an MQTT mat of

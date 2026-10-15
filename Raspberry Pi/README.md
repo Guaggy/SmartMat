@@ -22,6 +22,15 @@ Use the **Simulated** source to try it without hardware.
 
 Pick a source and device, **Connect**, **Tare** with the mat unloaded, then open **Pressure calibration**. Switch **Data** to **Calibrated pressure** once calibrated, and **Record** to save a session. The in-app **Help** button has a short walkthrough; `notes.md` has the full feature list.
 
+## Build the exe
+
+```powershell
+.venv\Scripts\pip install pyinstaller   # once, next to requirements.txt
+build_exe.bat
+```
+
+Produces `dist\SmartMat\SmartMat.exe` (PyInstaller onedir, windowed) and `dist\SmartMat.zip`. Config, `mats.json`, `recordings\`, calibration files and raw captures live next to the exe; on first run `config.py` is copied there from the bundled `config.example.py`. `SmartMat.exe --selftest` writes `selftest.txt` next to the exe (paths, web API answer) without opening the GUI.
+
 ## Not a medical device
 
 SmartMat is an engineering/research aid. Its metrics support investigating sustained loading - not a diagnosis or a validated bedsore-risk score, and custom indices are user-defined and unvalidated. Use alongside normal clinical assessment, not instead of it.

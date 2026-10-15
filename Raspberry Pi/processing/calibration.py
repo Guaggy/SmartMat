@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 
 import config
+import paths
 from config import VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT
 
 class Calibration:
@@ -124,7 +125,7 @@ class IndividualCalibration:
         if configured_path:
             path = Path(configured_path)
             if not path.is_absolute():
-                path = Path(config.__file__).resolve().parent / path
+                path = paths.APP_DIR / path
             if path.exists():
                 calibration.load(path)
                 return calibration

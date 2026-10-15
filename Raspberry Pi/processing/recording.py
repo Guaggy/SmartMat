@@ -10,8 +10,9 @@ from pathlib import Path
 import numpy as np
 
 import config
+import paths
 
-RECORDINGS_DIR = Path(__file__).resolve().parent.parent / "recordings"
+RECORDINGS_DIR = paths.APP_DIR / "recordings"
 
 class Recorder:
     """Collects grids for one named session until stopped"""
