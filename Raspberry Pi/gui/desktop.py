@@ -167,6 +167,7 @@ class DesktopApp:
         self.contact_threshold_kpa = CONTACT_THRESHOLD_KPA
         self.signal_noise_threshold = float(getattr(app_config, "SIGNAL_NOISE_THRESHOLD", 0.0))
         self.mat_size_mm = configured_mat_size()  # (width, height) sensing size of the connected mat, or None
+        self._pending_mat_size = None  # entered while no real mat was connected; the next Connect applies it
         self.frame = None
         self.raw_grid = None
         self.current_grid = None
@@ -558,6 +559,8 @@ class DesktopApp:
             label.pack(anchor="w")
             if variable not in (self.peak_var, self.load_var, self.hotspots_var):
                 self._adv(label)  # Simple view keeps peak, load and hotspots
+            if variable is self.load_var:  # the load line says "set mat size", so the button sits under it
+                ttk.Button(stats_panel, text="Mat size...", command=self._set_mat_size).pack(anchor="w")
         self._remember_rows(stats_panel)
 
         panel = self._adv(ttk.LabelFrame(sidebar, text="About", padding=8))
@@ -581,7 +584,6 @@ class DesktopApp:
         self._info_line(panel, f"Reconnect every: {RECONNECT_INTERVAL_S}s")
         self.cell_info_var = tk.StringVar()
         ttk.Label(panel, textvariable=self.cell_info_var).pack(anchor="w")
-        ttk.Button(panel, text="Mat size...", command=self._set_mat_size).pack(anchor="w", pady=(4, 0))
         self._update_cell_info()
 
     def _baud_text(self):
@@ -795,6 +797,8 @@ class DesktopApp:
         except ValueError as error:
             self._notify(f"Mat size not changed: {error}")
             return
+        if self._profile_mat_id() is None:  # no real mat yet: keep it for the next Connect
+            self._pending_mat_size = self.mat_size_mm
         self._save_profile()
         self._update_stats()
 
@@ -820,6 +824,11 @@ class DesktopApp:
         mat_id = self._profile_mat_id()
         self.mat_size_mm = configured_mat_size()  # simulated data / recordings and new mats: config default
         if mat_id is None:
+            recorded = profile_size_mm({"size_mm": (self._playback_metadata or {}).get("mat_size_mm")})
+            if recorded:  # the recording's own size (as built); its frames are already oriented
+                turned = ((self._playback_metadata.get("orientation") or {}).get("rotation") in (90, 270)) \
+                    != ((self._rotation // 90) % 2 == 1)  # cell_size_mm swaps on the app's current rotation
+                self.mat_size_mm = recorded[::-1] if turned else recorded
             return ""
         profile = load_profile(mat_id)
         if profile is not None:
@@ -850,6 +859,20 @@ class DesktopApp:
         except ValueError as error:
             return f" | mat profile {mat_id} ignored ({error})"
         return f" | mat profile {mat_id} restored"
+
+    def _apply_pending_size(self, pending):
+        """A size entered before Connect goes to the connecting real mat if its profile has none; else the profile wins"""
+        mat_id = self._profile_mat_id()
+        if pending is None or mat_id is None:
+            return ""
+        own = profile_size_mm(load_profile(mat_id))
+        if own is None:
+            self.mat_size_mm = pending
+            self._save_profile()
+            return f" | mat size {pending[0]:g} x {pending[1]:g} mm applied"
+        if own != pending:
+            return f" | profile mat size {own[0]:g} x {own[1]:g} mm kept, entered size not used"
+        return ""
 
     def _orientation_changed(self):
         """Rotate/mirror changed: cell positions moved, so the analysis state starts over like a new mat"""
@@ -898,6 +921,7 @@ class DesktopApp:
         """Stop the current source and start the selected one"""
         self._close_calibration_windows()
         self._save_profile()  # the mat being left (switch or reconnect)
+        pending_size, self._pending_mat_size = self._pending_mat_size, None
         previous_analysis_settings = self._current_analysis_settings
         if self.source is not None:
             self.source.stop()
@@ -982,7 +1006,7 @@ class DesktopApp:
             self.source.start()
             if source_name == "MQTT":
                 self._apply_grid_shape(*self.source.shape)  # start() only returns once the mat reported it
-            profile_label = self._load_profile()
+            profile_label = self._load_profile() + self._apply_pending_size(pending_size)
             self.last_frame_time = time.time()
             replay_label = f" | {self._replay_policy}" if getattr(self.source, "is_playback", False) else ""
             self.status_var.set(f"Connected via {source_name} ({device}){replay_label}{profile_label}")

@@ -20,7 +20,7 @@ VALUE_MAX_DEFAULT = 1000
 
 # Physical SENSING size of the whole mat, outer edge of the first sensing element to the outer edge
 # of the last (as built, before any rotation). Cell width = width / columns, cell height = height / rows.
-# Default for mats whose profile has no size; each mat's size is set in the app (About > Mat size...)
+# Default for mats whose profile has no size; each mat's size is set in the app (Mat size... under Estimated load)
 # and kept in its profile. Enables area, force and the indicative load estimate (engineering aid only).
 MAT_WIDTH_MM = None
 MAT_HEIGHT_MM = None

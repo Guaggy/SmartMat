@@ -4,6 +4,7 @@ import tempfile
 import tkinter as tk
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import numpy as np
@@ -130,6 +131,53 @@ class DesktopCellSizeTests(unittest.TestCase):
             app._set_mat_size()
         app._handle_new_frame(np.zeros((config.TOTAL_ROWS, config.TOTAL_COLS)))
         self.assertIn("Mat size not changed", app.status_var.get())
+
+    def test_mat_size_button_is_visible_in_simple_view_and_only_once(self):
+        def buttons(widget):
+            found = [widget] if widget.winfo_class() == "TButton" and widget.cget("text") == "Mat size..." else []
+            for child in widget.winfo_children():
+                found += buttons(child)
+            return found
+        app = self.app
+        self.assertEqual(len(buttons(app.root)), 1)
+        app.view_var.set("Simple")
+        app._apply_view()
+        self.assertTrue(buttons(app.root)[0].winfo_manager())
+
+    def test_playback_uses_the_recordings_own_size(self):
+        app = self.app
+        app.source = None  # a recording is not a real mat: no profile
+        app.mat_size_mm = None
+        app._playback_metadata = {"mat_size_mm": [600.0, 480.0], "orientation": {"rotation": 0}}
+        with mock.patch.object(config, "MAT_WIDTH_MM", None, create=True):
+            app._load_profile()
+            self.assertEqual(app.mat_size_mm, (600.0, 480.0))
+            app._playback_metadata = {"mat_size_mm": [600.0, 480.0], "orientation": {"rotation": 90}}
+            app._load_profile()  # recorded turned 90, app at 0: cells must be sized with the axes swapped
+            self.assertEqual(app.mat_size_mm, (480.0, 600.0))
+            app._playback_metadata = {}  # older recording: falls back as before
+            app._load_profile()
+            self.assertIsNone(app.mat_size_mm)
+
+    def test_size_entered_before_connect_goes_to_a_mat_without_one(self):
+        app = self.app
+        folder = self.enterContext(tempfile.TemporaryDirectory())
+        self.enterContext(mock.patch.object(calibration, "PROFILES_DIR", Path(folder)))
+        with mock.patch("gui.desktop.simpledialog.askstring", return_value="600 x 480"):
+            app._set_mat_size()
+        self.assertEqual(app._pending_mat_size, (600.0, 480.0))
+        app.source = SimpleNamespace(mat_id="matA", shape=(16, 15), stop=lambda: None)
+        note = app._apply_pending_size(app._pending_mat_size)
+        self.assertIn("applied", note)
+        self.assertEqual(app.mat_size_mm, (600.0, 480.0))
+        self.assertEqual(profile_size_mm(load_profile("matA")), (600.0, 480.0))
+        # a mat whose profile has its own size keeps it and says so
+        save_profile("matB", None, PressureCalibration.default(), ORIENTATION, (300.0, 200.0))
+        app.source = SimpleNamespace(mat_id="matB", shape=(16, 15), stop=lambda: None)
+        app.mat_size_mm = (300.0, 200.0)
+        self.assertIn("kept", app._apply_pending_size((600.0, 480.0)))
+        self.assertEqual(app.mat_size_mm, (300.0, 200.0))
+        self.assertEqual(profile_size_mm(load_profile("matB")), (300.0, 200.0))
 
 
 if __name__ == "__main__":

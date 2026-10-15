@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-SNAPSHOT_COLUMNS = ("timestamp_iso", "mat_id", "row", "col", "raw", "baseline_subtracted", "pressure_kpa")
+SNAPSHOT_COLUMNS = ("timestamp_iso", "mat_id", "row", "col", "raw_scaled_0_1000", "baseline_subtracted", "pressure_kpa")
 
 
 def _iso(timestamp):

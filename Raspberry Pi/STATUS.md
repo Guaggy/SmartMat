@@ -70,7 +70,7 @@ ESP32 --MQTT/Serial--> sources/*Source (raw 0..value_max -> 0-1000, general.scal
 - `settings.py` - engineering presets, validate/save/load/apply settings for
   temporal + hotspots + motion.
 - `display.py` - plot-only interpolation (does not affect any statistic).
-- `export.py` - pure CSV export: one frame (long, one row per cell; Export snapshot button, which also saves the
+- `export.py` - pure CSV export: one frame (long, one row per cell, `raw_scaled_0_1000` = received value scaled to the app range; Export snapshot button, which also saves the
   heatmap PNG) and a recordings/*.json to a wide CSV (Engineering > Session & export). No dependencies.
 - `validation.py` - compares manual "Known reposition" annotations against
   auto-detected repositions/hotspots, for engineering validation.
@@ -134,7 +134,7 @@ inherits another mat's tare; a mat without a (matching) profile starts clean and
 The profile also carries `size_mm` (the mat's physical sensing size, width x height as built; old profiles without it load
 fine and fall back to `config.MAT_WIDTH_MM/MAT_HEIGHT_MM`, then to the per-cell `CELL_*_MM`). The calibration window shows which profile is active. Design: `docs/superpowers/specs/2026-10-15-per-mat-profiles-design.md`.
 
-Mat size / load estimate: `DesktopApp.mat_size_mm` (About panel > "Mat size...", kept in the mat's profile) feeds ONE
+Mat size / load estimate: `DesktopApp.mat_size_mm` ("Mat size..." button under the Estimated load line, kept in the mat's profile) feeds ONE
 `cell_size_mm` / `cell_area_m2` property (`processing/calibration.cell_size_mm`: width / cols, height / rows of the oriented
 grid, axes swap on a 90/270 rotation). Area, force, hotspots, analysis, calibration-window newtons, the "Cell: W x H mm" line and
 the readiness warning all read it - never `config.CELL_*` directly. "Estimated load: X kg (indicative)" = force_N / 9.81

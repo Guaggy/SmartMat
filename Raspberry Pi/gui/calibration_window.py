@@ -251,7 +251,7 @@ class CalibrationWindow:
         if unit == "N":
             area = self.cell_area_getter()
             if area is None:
-                raise ValueError("Set the mat size (About panel > Mat size...) to use newtons")
+                raise ValueError("Set the mat size (Mat size... under Estimated load) to use newtons")
             pressure = pressure / (area * 1000 * cell_count)
         return pressure
 

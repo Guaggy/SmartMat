@@ -44,6 +44,7 @@ class SnapshotTests(unittest.TestCase):
             self.assertEqual(write_snapshot_csv(path, small_frame(), 1.0, None), 6)
             table = read_csv(path)
         self.assertEqual(tuple(table[0]), SNAPSHOT_COLUMNS)
+        self.assertIn("raw_scaled_0_1000", table[0])
         self.assertEqual(table[1][1:], ["", "0", "0", "10.0", "5.0", "1.0"])
         self.assertEqual(table[5][4:], ["", "", ""])
 

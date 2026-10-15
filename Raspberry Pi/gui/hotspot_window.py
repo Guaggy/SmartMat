@@ -52,7 +52,7 @@ class HotspotWindow:
     def _details(self):
         selected = self.list.selection()
         if not selected:
-            self.details_var.set("Select a hotspot; area needs the mat size (Mat size... in the About panel)")
+            self.details_var.set("Select a hotspot; area needs the mat size (Mat size... under Estimated load)")
             return
         track = self.app.hotspots.tracks.get(int(selected[0]))
         if track is None:
