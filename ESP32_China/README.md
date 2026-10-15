@@ -82,23 +82,24 @@ not for weighing, so treat the values as relative pressure only.
 ## Build (this PC)
 
 Plain `pio` on PATH is too old, and pioarduino 55.x must not run in the global PlatformIO core (it converts
-it). Use a separate core dir and the PlatformIO python (first build downloads ~20 min of toolchains):
+it). Use a separate core dir and the PlatformIO python (the first build downloads about 20 minutes of
+toolchains into the core dir; keep that folder, it is reused):
 
 ```
-cd C:\Users\evenm\Projects\Hardware\SmartMat\ESP32_China
+cd ESP32_China
 copy src\secrets.h.example src\secrets.h          (then edit it)
-set PLATFORMIO_CORE_DIR=C:\Users\evenm\AppData\Local\Temp\claude\c--Users-evenm-Projects-Hardware-SmartMat\27902383-2feb-492a-a8cb-fa892a1b63bc\scratchpad\pio-core
-C:\Users\evenm\.platformio\penv\Scripts\python.exe -m platformio run
+set PLATFORMIO_CORE_DIR=%USERPROFILE%\.pio-core-s3
+%USERPROFILE%\.platformio\penv\Scripts\python.exe -m platformio run
 ```
 
 That builds both `esp32-s3-devkitc-1` (real, USB host) and `esp32-s3-simulate` (`-DSIMULATE_MAT`).
-Single env: add `-e esp32-s3-devkitc-1`. Flash: add `-t upload -e <env>` with the S3 on its UART port.
-Pick a permanent `PLATFORMIO_CORE_DIR` (any folder) if the scratchpad is cleaned.
+Single env: add `-e esp32-s3-devkitc-1`. Flash: add `-t upload -e <env>` (and `--upload-port COMx`) with the
+S3 on its UART port. Monitor: `... -m platformio device monitor -b 115200`.
 
-Decoder test (needs g++ on PATH, `C:\TDT4102-mingw64\bin` here; same core dir):
+Decoder/mailbox/accumulator host tests (needs `g++` on PATH, e.g. a MinGW install; same core dir):
 
 ```
-C:\Users\evenm\.platformio\penv\Scripts\python.exe -m platformio test -e native
+%USERPROFILE%\.platformio\penv\Scripts\python.exe -m platformio test -e native
 ```
 
 ## B3 hardware bring-up checklist

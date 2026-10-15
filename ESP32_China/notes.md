@@ -9,7 +9,7 @@
 # B2 firmware (2026-10-15)
 
 - Built: `src/main.cpp` (USB host -> decoder -> MQTT, `SIMULATE_MAT` blob), `src/maxrays_decoder.h` (header-only, ported from `Raspberry Pi/sources/maxrays.py`, same rules incl. declared+4 and next-header confirmation), `test/test_decoder` (Unity, 7 cases), `README.md` (wiring, power, build, B3 checklist).
-- Envs: `esp32-s3-devkitc-1` (RAM 18.7%, flash 29.9%), `esp32-s3-simulate`, `native` (host test, g++ from `C:\TDT4102-mingw64\bin`). `default_envs` = the two firmware envs, so `pio run` skips native.
+- Envs: `esp32-s3-devkitc-1` (RAM 18.7%, flash 29.9%), `esp32-s3-simulate`, `native` (host test, needs g++ on PATH). `default_envs` = the two firmware envs, so `pio run` skips native.
 - Verified: both firmware envs build; `pio test -e native` 7/7 pass; ESP32_Resistive still builds with the global PlatformIO after B1's repair.
 - Choices: `mqtt_client.setSocketTimeout(2)` (this alone did not stop USB overflow, see N1); decoder reset on mat unplug; a retained frame stays on the broker while the mat is unplugged (no "offline" signal yet - add if the Pi app needs it).
 - Python decoder behaviour kept on purpose: a false header followed by two real frames within 32 bytes can emit one garbage frame; only the capture will tell if that matters.

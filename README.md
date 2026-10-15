@@ -4,6 +4,8 @@ Pressure-sensing smart mat project — resistive sensor firmware, a Raspberry Pi
 
 **Live site (temporary domain):** https://guaggy.github.io/SmartMat/
 
+**Setting up and testing the devices:** see [SETUP_AND_TEST.md](SETUP_AND_TEST.md).
+
 ## Folder structure
 
 - **`ESP32_Resistive/`** — ESP32 firmware for the resistive pressure mat (16 x 15, multiplexed ADC), built with PlatformIO; see `ESP32_Resistive/README.md`.

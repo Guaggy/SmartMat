@@ -1,0 +1,277 @@
+# SmartMat - setup, install and test guide
+
+Read this top to bottom before a hardware session. Engineering aid, not a medical device.
+
+Status key used below: **[verified]** = done and checked on this PC (build, unit tests, exe self-test),
+**[not on hardware yet]** = compiled/simulated only, **[unverified]** = standard commands I have not run on your Pi.
+
+## 1. What is what
+
+| Device | What it is | How it reaches the app |
+|---|---|---|
+| **Maxrays MC266** mat, 20 x 20 | Fabric pressure mat, CH340 USB-serial, 921600 baud, about 60 frames/s, 5 V / 200 mA | **Directly** on a PC or Pi via USB-C to USB-A, or **wirelessly** through the ESP32-S3 bridge |
+| **ESP32-S3 DevKitC-1** (`ESP32_China/`) | USB host: reads the MC266, averages 60 fps to 10 fps, publishes over MQTT | Wi-Fi -> MQTT broker on the Pi |
+| **Resistive mat**, 16 x 15 (`ESP32_Resistive/`) | Home-built FSR matrix, classic ESP32, two multiplexers | Wi-Fi -> MQTT, or USB serial at 115200 |
+| **Raspberry Pi** | Mosquitto broker + the SmartMat desktop app and web dashboard (port 8000) | - |
+| **PC** (Windows) | Same app as `SmartMat.exe` or `python main.py` | USB serial or MQTT |
+
+```
+Maxrays mat --USB-C/A--> PC or Pi (Serial source, "Maxrays 20x20")           (test A)
+Maxrays mat --USB--> ESP32-S3 --Wi-Fi/MQTT--> broker (Pi) --> app            (test E, F)
+Resistive mat --USB serial 115200--> PC (Serial source, "ESP32 text")        (test B)
+Resistive mat --Wi-Fi/MQTT--> broker (Pi) --> app                            (test C)
+```
+
+MQTT contract (all firmware and the app follow it):
+
+| Topic | Payload |
+|---|---|
+| `smartmat/<chip_id>/meta` (retained) | `<id>,<rows>,<cols>` (resistive), or `<id>,20,20,255,MC266,343,358` (S3: rows, cols, value_max, model, width_mm, height_mm) |
+| `smartmat/<chip_id>/frame` (**not** retained) | comma-separated ints, row-major; resistive 0-1000, S3 0-255 |
+| `smartmat/<chip_id>/status` (retained, S3 only) | `online` / `offline` (last will); the app does not read it yet |
+
+The app scales every mat to its internal 0-1000 range once, at ingest, using `value_max`.
+
+## 2. What to install
+
+### Windows PC
+- **Python 3.11+** (3.13 used here), add to PATH. Only needed to run from source, build the exe, or flash.
+- **CH340 driver**, if the mat's port does not appear in Device Manager as `USB-SERIAL CH340 (COMx)`
+  (Windows Update normally supplies it).
+- **VS Code + PlatformIO** (or the PlatformIO CLI) to build/flash the ESP32s. [verified]
+- Optional: **mosquitto clients** (`mosquitto_sub` / `mosquitto_pub`) to inspect the broker from the PC.
+
+### Raspberry Pi [unverified on your Pi]
+```bash
+sudo apt update
+sudo apt install -y mosquitto mosquitto-clients python3-venv python3-tk git
+```
+
+## 3. Install the app
+
+### PC, from the exe [verified]
+`Raspberry Pi\dist\SmartMat.zip` -> unzip anywhere writable -> run `SmartMat.exe`.
+Config, `mats.json`, `recordings\`, `profiles\` and raw captures live **next to the exe**.
+First run copies `config.py` there from the bundled example (edit it for the broker address).
+Headless check: `SmartMat.exe --selftest` writes `selftest.txt` (exit code 0 = OK).
+
+### PC, from source [verified]
+```powershell
+cd "Raspberry Pi"
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+Copy-Item config.example.py config.py        # first time only, then edit
+.venv\Scripts\python main.py
+```
+Use a venv: a global `paho-mqtt` 1.x (pinned by some other tools) breaks MQTT; the app needs 2.x.
+
+### Rebuild the exe [verified]
+```powershell
+cd "Raspberry Pi"
+.venv\Scripts\pip install pyinstaller        # once
+.\build_exe.bat                              # -> dist\SmartMat\SmartMat.exe and dist\SmartMat.zip
+```
+
+### Raspberry Pi [unverified]
+```bash
+git clone https://github.com/Guaggy/SmartMat
+cd "SmartMat/Raspberry Pi"
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+cp config.example.py config.py && nano config.py
+sudo usermod -aG dialout $USER               # serial access for /dev/ttyUSB0; log out and in again
+.venv/bin/python main.py                     # needs a desktop session (VNC / Raspberry Pi Connect screen share)
+```
+
+## 4. Mosquitto broker on the Pi [unverified on your Pi]
+
+Mosquitto 2.x refuses remote clients unless you configure a listener and users.
+
+```bash
+sudo mosquitto_passwd -c /etc/mosquitto/passwd smartmat          # asks for a password
+sudo tee /etc/mosquitto/conf.d/smartmat.conf <<'EOF'
+listener 1883
+allow_anonymous false
+password_file /etc/mosquitto/passwd
+EOF
+sudo systemctl restart mosquitto
+hostname -I                                                       # the Pi's address for the configs below
+```
+
+Same username/password go into three places:
+`Raspberry Pi/config.py` (`broker_host`, `mqtt_username`, `mqtt_password`),
+`ESP32_Resistive/src/secrets.h` and `ESP32_China/src/secrets.h` (copy each from `secrets.h.example`;
+`secrets.h` is gitignored, never commit it).
+
+Use a fixed address: a DHCP reservation on the router, or note `hostname -I` and re-flash if it changes.
+The firmware takes an IP string, not a hostname.
+
+Watch the traffic (from the Pi or any machine with mosquitto-clients):
+```bash
+mosquitto_sub -h <pi> -u smartmat -P '<password>' -t 'smartmat/#' -v
+mosquitto_sub -h <pi> -u smartmat -P '<password>' -t 'smartmat/+/meta' -v -W 3     # known mats
+mosquitto_sub -h <pi> -u smartmat -P '<password>' -t 'smartmat/+/status' -v        # online/offline
+```
+Clear a stale retained message (old pre-multi-mat topic, or a mat you retired):
+```bash
+mosquitto_pub -h <pi> -u smartmat -P '<password>' -t smartmat/frame -r -n
+mosquitto_pub -h <pi> -u smartmat -P '<password>' -t smartmat/<old_chip_id>/meta -r -n
+```
+
+## 5. Flash the firmware
+
+### Resistive (classic ESP32) [compiled; not flashed since the last change]
+```powershell
+cd ESP32_Resistive
+Copy-Item src\secrets.h.example src\secrets.h          # then edit Wi-Fi + MQTT values
+%USERPROFILE%\.platformio\penv\Scripts\python.exe -m platformio run -t upload
+%USERPROFILE%\.platformio\penv\Scripts\python.exe -m platformio device monitor -b 115200
+```
+Test-mode settings are already set in `src/main.cpp`: `send_frame_serial = true`, `serial_debug = false`,
+serial copy limited to 5 fps (the 115200 link cannot carry 10 fps of 240 values), MQTT 10 fps.
+
+### ESP32-S3 bridge [compiles; not on hardware yet]
+Plain `pio` is too old and pioarduino must not touch your global PlatformIO core, so use a separate core dir
+(already downloaded to `%USERPROFILE%\.pio-core-s3`; a fresh one takes about 20 minutes on first build).
+```powershell
+cd ESP32_China
+Copy-Item src\secrets.h.example src\secrets.h          # then edit
+$env:PLATFORMIO_CORE_DIR = "$env:USERPROFILE\.pio-core-s3"
+& "$env:USERPROFILE\.platformio\penv\Scripts\python.exe" -m platformio run                      # both envs
+& "$env:USERPROFILE\.platformio\penv\Scripts\python.exe" -m platformio run -e esp32-s3-simulate -t upload --upload-port COMx
+& "$env:USERPROFILE\.platformio\penv\Scripts\python.exe" -m platformio device monitor -b 115200 --port COMx
+```
+Flash with the S3's **UART** USB port (the one marked UART/COM), not the native USB port.
+Envs: `esp32-s3-simulate` (moving blob, no mat needed) and `esp32-s3-devkitc-1` (real USB host).
+
+## 6. S3 wiring and power
+
+| USB-A **female** breakout | ESP32-S3 DevKitC-1 |
+|---|---|
+| D+ | GPIO20 |
+| D- | GPIO19 |
+| GND | GND |
+| VBUS | 5V pin |
+
+The mat plugs into the breakout with its own USB-C to USB-A cable. Power the S3 from its UART port (power
+bank or 1 A charger), not from the mat. Budget: S3 with Wi-Fi about 0.3 A plus mat 0.2 A = about 0.5 A, so a
+weak laptop port is borderline. Do **not** use a bare USB-C breakout (no CC pull-up, the mat may not power up).
+Measure the mat's real draw with the inline USB-C meter. If you have not wired it yet, test E (simulate) needs
+no breakout and no mat.
+
+## 7. Tests, in this order
+
+Each test: do the steps, compare with "Expect". Note anything that differs.
+
+### Test A - Maxrays mat directly on the PC [first priority]
+1. Close the vendor "FLX Sensor Client" (only one program can hold the COM port).
+2. Plug the mat in. Device Manager shows `USB-SERIAL CH340 (COMx)`.
+3. Start `SmartMat.exe`. Source **Serial**, Protocol **Maxrays 20x20 (921600)**, Device the CH340 port,
+   **Connect**. Switch the view to **Advanced** for the tools below.
+4. Expect: a 20 x 20 heatmap and "Mat: Maxrays MC266" in the About panel, no error text. Unloaded, nothing lights.
+5. **Tare** with nothing on the mat. Press with a hand, then sit/put a weight on it.
+6. **Diagnostics...**: about 60 frames/s "in", about 10 frames/s "out", discarded bytes flat (not climbing),
+   malformed/invalid close to 0.
+7. **Capture raw (5 s)**: once unloaded, once loaded. Files land in `recordings\raw_maxrays_<timestamp>.bin`
+   (next to the exe). Keep both; copy one to `Raspberry Pi\tests\fixtures\maxrays_capture.bin`.
+8. Write down: does pressure make values go **up** or **down**? Do loaded cells **saturate at 255**? Is the
+   picture **mirrored/rotated** (fix with Rotate/Mirror, then re-tare)? Idle noise in counts? Frame rate?
+9. **Mat size...**: the preset is 343 x 358 mm (measured from the datasheet drawing, about +/-5 %). Measure
+   the real sensing area with a ruler and enter it; "Estimated load" then shows a kg value (marked
+   "default curve, not calibrated" until you calibrate; the vendor says the mat is not suitable for weighing).
+10. **Record** 30 s, stop, play it back (Source Simulated, pick the recording). **Export snapshot...** writes
+    a CSV and PNG; Engineering > Session & export > "Recording to CSV...".
+
+### Test B - Resistive mat over USB on the PC
+1. Flash as in section 5, plug it in, wait for boot (three boot lines, then about 5 lines/s of 240 numbers).
+2. App: Source **Serial**, Protocol **ESP32 text (115200)**, its COM port, **Connect**. Open the app after the
+   board has booted (the three boot lines are counted once as malformed).
+3. Expect a 16 x 15 grid; Tare; press; values 0-1000.
+4. Note frame rate and whether mux settling looks right (ghosting / crosstalk between neighbouring cells).
+
+### Test C - Resistive mat over MQTT
+1. Broker running (section 4), `secrets.h` filled in, board flashed and on Wi-Fi.
+2. `mosquitto_sub ... -t 'smartmat/+/meta' -v -W 3` shows `<id>,16,15`.
+3. App: Source **MQTT**; the mat appears in the device list (use **Rename...** to give it a nickname);
+   Connect. Expect 16 x 15 and about 10 fps. Frames are not retained: nothing shows while the board is off.
+
+### Test D - switch between mats
+Connect Maxrays (20 x 20), then resistive (16 x 15), then back. The grid size changes each time, nothing
+crashes, and each mat's tare/calibration/orientation comes back from `profiles\<mat id>.json`.
+
+### Test E - S3 bridge, simulate build (no mat, no breakout)
+1. Flash `esp32-s3-simulate` (section 5). UART log once a second shows stats.
+2. `mosquitto_sub -t 'smartmat/+/status' -v` shows `online`; unplug the S3 and `offline` appears after the
+   keep-alive (about 15 s).
+3. App MQTT source: a 20 x 20 mat appears ("Mat: MC266") with a moving blob, about 10 fps, default size 343 x 358.
+
+### Test F - S3 bridge with the real mat [first hardware run]
+1. Multimeter: S3 powered from the UART port, VBUS on the breakout is about 5 V and not shorted to GND.
+2. Inline meter on the mat: note idle and pressed current.
+3. Flash `esp32-s3-devkitc-1`, mat in the breakout. UART log: mat up, about 60 frames/s decoded, discarded and
+   invalid flat, `net stack free` above about 1 KB (if it is lower, raise `network_stack_bytes`).
+4. App sees the mat via MQTT; compare frame by frame with test A (same orientation, same range).
+5. Pull/replug the mat and the Wi-Fi: recovers without reset, status back to `online`.
+6. Stop the broker for 30 s: decoded frames/s stays about 60 and discarded/invalid do not grow, only
+   `net dropped` does.
+
+### Test G - web dashboard
+App: enable **Web UI**; open the two links in the About panel (hostname.local:8000 and the IP) from a phone
+or another PC on the same network. Only the mat currently open in the desktop app is live.
+
+## 8. What to bring back
+
+| Item | Why |
+|---|---|
+| Both raw `.bin` captures (unloaded, loaded) | Decode the 2 trailer bytes (checksum?), real frame rate, noise, saturation; becomes the test fixture |
+| Polarity, saturation, orientation, idle noise in counts | Health-threshold retune for the 8-bit mat; orientation default |
+| Measured mat sensing size | Replace the +/-5 % preset estimate |
+| Inline-meter currents (idle / pressed) | Confirms the 5V pin can feed the mat |
+| S3 UART log lines during the outage test | Confirms the two-core fix |
+| Anything odd in Diagnostics (malformed/dropped) | Source-quality problems |
+
+## 9. Troubleshooting
+
+| Symptom | Likely cause / fix |
+|---|---|
+| No CH340 port | Wrong cable (charge-only), missing driver, vendor client holding the port |
+| Maxrays: connects, no frames | Wrong protocol in the dropdown (text vs Maxrays), baud must be 921600; capture raw and check for `A5 5A` |
+| "discarded bytes" keeps climbing | Stream differs from the spec (filler/other packet): send the raw capture |
+| Picture mirrored/rotated | Rotate/Mirror controls; re-tare afterwards (changing them resets that mat's tare) |
+| Mat missing from MQTT list | Broker address/user/password wrong in `secrets.h`; Wi-Fi 5 GHz (ESP32 is 2.4 GHz only); check `mosquitto_sub` |
+| MQTT: "refused" in the app log | Wrong `mqtt_username`/`mqtt_password` in `config.py`; paho 1.x installed (use the venv) |
+| Old mats stay in the device list | Retained `meta`: clear with `mosquitto_pub ... -t smartmat/<id>/meta -r -n` |
+| S3: nothing from the mat, status online | Breakout wiring (D+/D- swapped), VBUS missing, mat draws too much, wrong cable |
+| S3 resets when Wi-Fi starts | Weak supply: use a power bank or 1 A charger |
+| App says "Estimated load: set mat size" | Use "Mat size..." (now also reachable in Simple view) |
+| `pio` errors about platform | Use the explicit penv python and `PLATFORMIO_CORE_DIR` from section 5 |
+
+## 10. Command cheat sheet
+
+```powershell
+# app tests (from "Raspberry Pi")
+.venv\Scripts\python -m unittest discover -s tests -v
+# firmware host tests (g++ on PATH, S3 core dir set)
+& "$env:USERPROFILE\.platformio\penv\Scripts\python.exe" -m platformio test -e native
+# raw capture without the GUI (921600 baud, 5 s)
+.venv\Scripts\python tools\capture_raw.py --port COM5 --seconds 5
+# exe
+.\build_exe.bat ; dist\SmartMat\SmartMat.exe --selftest
+```
+
+## 11. Parked / after the test
+
+- Decode the raw capture: trailer/checksum, then decide whether to validate frames; retune the health
+  thresholds for 8-bit counts; guided known-weight calibration (the vendor says the mat is for trends, about
+  +/-10 % at best, so the kg readout stays "indicative").
+- Ask the vendor (amy@maxrays.cn) for the protocol document and what "Send to Serial Port" does.
+- Product work for the S3: Wi-Fi provisioning (captive portal instead of `secrets.h`), OTA updates.
+- Contact email shown in the app is `hello@verdian.medical` (the address the site lists), set in
+  `Raspberry Pi/branding.py`; change it if another is right.
+- **Remote access to the Pi** (Trinity network), after the test [unverified commands]:
+  Raspberry Pi Connect for desktop/shell access (`sudo apt install rpi-connect`, then `rpi-connect on` and
+  `rpi-connect signin`; see the Raspberry Pi docs), and Tailscale for the tailnet:
+  `curl -fsSL https://tailscale.com/install.sh | sh` then `sudo tailscale up --ssh`;
+  reach the dashboard at `http://<pi-tailnet-name>:8000` and Mosquitto on the Pi's `100.x` tailnet address.
+  Check that the broker and the dashboard listen on the Tailscale interface before relying on it.
+- A headless Pi (no screen) needs the app run as a service; today the desktop app needs a display.
