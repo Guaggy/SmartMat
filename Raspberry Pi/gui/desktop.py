@@ -28,7 +28,7 @@ from processing.session_events import STATE_EVENTS, apply_state_event, event_is_
 from processing.session_state import initial_session_state
 from processing.settings import apply_settings, capture_settings, default_settings
 from processing.display import interpolate_grid
-from processing.frames import process_frame, update_pressure
+from processing.frames import orient_grid, process_frame, update_pressure
 from processing.modes import MODES
 from processing.recording import RECORDINGS_DIR, Recorder, load_session
 from processing.sensor_health import SensorHealth
@@ -42,7 +42,7 @@ from processing.temporal import TemporalAnalysis
 from processing.timeline import EventTimeline
 from processing.statistics import contact_mask, pressure_statistics, weighted_center
 from sources.mqtt_source import MqttSource
-from sources.serial_source import PROFILES, TEXT_PROFILE, SerialSource, list_ports
+from sources.serial_source import PROFILES, RAW_CAPTURE_S, TEXT_PROFILE, SerialSource, list_ports
 from sources.simulated_source import SCENARIOS, SimulatedSource
 from gui import web
 from gui.calibration_window import CalibrationWindow
@@ -109,6 +109,8 @@ class DesktopApp:
         self.root.geometry("1150x750")
 
         self.source = None
+        self._rotation = 0                 # degrees, as last applied (rotation_var is the control)
+        self._shown_capture = None         # last raw capture result reported in the status line
         self.recorder = None
         self.web_server = None
         self.mat_names = load_mat_names()  # chip id -> nickname
@@ -250,6 +252,7 @@ class DesktopApp:
         self.protocol_menu = ttk.Combobox(bar, textvariable=self.protocol_var, state="readonly",
                                           values=list(PROFILES), width=22)
         self.protocol_menu.bind("<<ComboboxSelected>>", lambda _event: self.baud_var.set(self._baud_text()))
+        self.capture_button = ttk.Button(bar, text="Capture raw (5 s)", command=self._capture_raw, state="disabled")
         self.rename_button = ttk.Button(bar, text="Rename...", command=self._rename_mat)
         self.rename_button.pack(side=tk.LEFT, padx=(0, 8))
 
@@ -308,7 +311,17 @@ class DesktopApp:
         ttk.Button(bar, text="View tare", command=self._view_baseline).pack(side=tk.LEFT, padx=(0, 12))
 
         self.record_button = ttk.Button(bar, text="Record", command=self._toggle_recording)
-        self.record_button.pack(side=tk.LEFT)
+        self.record_button.pack(side=tk.LEFT, padx=(0, 12))
+
+        # Orientation of live data, applied at ingest (not to recordings, which are saved already oriented)
+        ttk.Label(bar, text="Rotate:").pack(side=tk.LEFT)
+        self.rotation_var = tk.StringVar(value="0")
+        rotation_menu = ttk.Combobox(bar, textvariable=self.rotation_var, state="readonly",
+                                     values=["0", "90", "180", "270"], width=4)
+        rotation_menu.pack(side=tk.LEFT, padx=(0, 4))
+        rotation_menu.bind("<<ComboboxSelected>>", lambda _event: self._orientation_changed())
+        self.mirror_h_var = self._checkbox(bar, "Mirror H", self._orientation_changed)
+        self.mirror_v_var = self._checkbox(bar, "Mirror V", self._orientation_changed)
 
     def _build_data_bar(self):
         bar = ttk.Frame(self.root, padding=(8, 0, 8, 8))
@@ -421,10 +434,12 @@ class DesktopApp:
         if source != "Serial":
             self.protocol_label.pack_forget()
             self.protocol_menu.pack_forget()
+            self.capture_button.pack_forget()
 
         if source == "Serial":
             self.protocol_label.pack(side=tk.LEFT, after=self.device_menu)
             self.protocol_menu.pack(side=tk.LEFT, padx=(0, 8), after=self.protocol_label)
+            self.capture_button.pack(side=tk.LEFT, padx=(0, 8), after=self.protocol_menu)
             self._port_devices = {port.label: port.device for port in list_ports()}  # label -> device
             values = list(self._port_devices)
             default = values[0] if values else ""
@@ -536,9 +551,10 @@ class DesktopApp:
 
     # ---- source lifecycle
 
-    def _apply_grid_shape(self, rows, cols):
-        """Switch the app to a mat's grid size; everything sized to the old grid starts over"""
-        if (rows, cols) == (app_config.TOTAL_ROWS, app_config.TOTAL_COLS):
+    def _apply_grid_shape(self, rows, cols, force=False):
+        """Switch the app to a mat's grid size; everything sized to the old grid starts over
+        (force: start over even at the same size, e.g. after a mirror)"""
+        if not force and (rows, cols) == (app_config.TOTAL_ROWS, app_config.TOTAL_COLS):
             return
         if self.recorder is not None:
             self._toggle_recording()  # a recording cannot span two grid sizes: save it at the old one
@@ -573,6 +589,48 @@ class DesktopApp:
         self._build_plot()
         if self.roi_window is not None and self.roi_window.window.winfo_exists():
             self.roi_window.reset()
+
+    def _orientation_changed(self):
+        """Rotate/mirror changed: cell positions moved, so the analysis state starts over like a new mat"""
+        rotation = int(self.rotation_var.get())
+        rows, cols = app_config.TOTAL_ROWS, app_config.TOTAL_COLS
+        live = self.source is not None and not getattr(self.source, "is_playback", False)
+        if ((rotation - self._rotation) // 90) % 2:
+            rows, cols = cols, rows
+        self._rotation = rotation
+        if live:
+            self._apply_grid_shape(rows, cols, force=True)
+        note = " 90/270 swaps rows and cols of a non-square mat." if rows != cols else ""
+        self.status_var.set("Orientation applies to live data only; analysis state was reset, as when "
+                            "switching mats." + note if live else
+                            "Orientation applies to live sources (recordings are saved already oriented)." + note)
+
+    def _orient(self, grid):
+        """Orient a live grid; if its size no longer matches the app's grid (a 90/270 turn of a
+        non-square mat, or a fresh connection), switch the app to it"""
+        grid = orient_grid(grid, self._rotation, self.mirror_h_var.get(), self.mirror_v_var.get())
+        if grid.shape != (app_config.TOTAL_ROWS, app_config.TOTAL_COLS):
+            self._apply_grid_shape(*grid.shape)
+        return grid
+
+    def _capture_raw(self):
+        """Tee the next RAW_CAPTURE_S seconds of the serial port's bytes to recordings/raw_<profile>_<time>.bin"""
+        source = self.source
+        if not isinstance(source, SerialSource) or source.capturing:
+            return
+        path = RECORDINGS_DIR / f"raw_{source.profile.split()[0].lower()}_{time.strftime('%Y%m%d_%H%M%S')}.bin"
+        source.start_raw_capture(path)
+        self.status_var.set(f"Capturing raw bytes for {RAW_CAPTURE_S:g} s to {path}")
+
+    def _update_capture_button(self):
+        """Enabled only while a Serial source is connected and no capture is running; reports a finished one"""
+        source = self.source if isinstance(self.source, SerialSource) else None
+        self.capture_button.state(["!disabled" if source is not None and not source.capturing else "disabled"])
+        result = source.capture_result if source is not None else None
+        if result is not None and result is not self._shown_capture:
+            self._shown_capture = result
+            self.status_var.set(f"Raw capture failed: {result.error}" if result.error else
+                                f"Raw capture: {result.path} ({result.size:,} bytes, {result.headers} x A5 5A)")
 
     def _connect(self):
         """Stop the current source and start the selected one"""
@@ -996,7 +1054,8 @@ class DesktopApp:
         else:
             self.diagnostics_window = DiagnosticsWindow(
                 self.root, self.sensor_health, lambda: self.selected_cell, self._select_cell,
-                lambda: self.source.quality.snapshot() if self.source is not None else None)
+                lambda: self.source.quality.snapshot() if self.source is not None else None,
+                lambda: self.source.serial_stats() if isinstance(self.source, SerialSource) else None)
 
     def _open_temporal(self):
         if self.temporal_window is not None and self.temporal_window.window.winfo_exists():
@@ -1238,6 +1297,8 @@ class DesktopApp:
                 # frames are stored scaled to 0-1000; value_max is the raw full scale they came from
                 "value_max": getattr(self.source, "value_max", VALUE_MAX_DEFAULT),
                 "mat_id": getattr(self.source, "mat_id", None),
+                "orientation": {"rotation": self._rotation, "mirror_h": self.mirror_h_var.get(),
+                                "mirror_v": self.mirror_v_var.get()},
             }
             self.recorder = Recorder(name, source=source_name, metadata=metadata)
             self.add_event("recording_started")
@@ -1292,6 +1353,7 @@ class DesktopApp:
     def _poll(self):
         """Check for a new frame and update everything, then reschedule"""
         self._sync_mats()
+        self._update_capture_button()
         if self.source is not None:
             quality = self.source.quality.snapshot()
             if quality["malformed"] > self._last_malformed:
@@ -1310,8 +1372,11 @@ class DesktopApp:
             else:
                 grid = self.source.latest.take()
                 grids = [] if grid is None else [grid]
+            live = not getattr(self.source, "is_playback", False)
             for item in grids:
                 grid, sample_time = item if isinstance(item, tuple) else (item, None)
+                if live:
+                    grid = self._orient(grid)
                 self._handle_new_frame(grid, sample_time)
             self._check_connection_health()
             if (self.diagnostics_window is not None and self.diagnostics_window.window.winfo_exists()

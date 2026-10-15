@@ -3,6 +3,7 @@
 import threading
 import time
 from collections import namedtuple
+from pathlib import Path
 
 import serial
 import serial.tools.list_ports
@@ -13,6 +14,7 @@ from processing.source_quality import SourceQuality
 from config import BAUD_RATE, VALUE_MAX_DEFAULT
 from sources.maxrays import MaxraysDecoder
 
+RAW_CAPTURE_S = 5.0  # default length of a raw byte capture
 POLL_INTERVAL_S = 0.02  # How often the background thread checks for new bytes
 MAX_RECEIVE_BUFFER_BYTES = 16 * 1024  # Guards against no new line
 
@@ -26,6 +28,7 @@ PROFILES = {
 }
 
 Port = namedtuple("Port", "device label")
+RawCapture = namedtuple("RawCapture", "path size headers error")  # headers = count of A5 5A seen
 
 
 def list_ports():
@@ -49,7 +52,7 @@ def parse_frame(raw_line):
     return parse_frame_text(text)
 
 
-def _read_latest_frame(connection, receive_buffer, quality=None):
+def _read_latest_frame(connection, receive_buffer, quality=None, shape=None):
     """Empty serial data, keep any partial line, and return the newest grid"""
 
     available = connection.in_waiting
@@ -70,7 +73,7 @@ def _read_latest_frame(connection, receive_buffer, quality=None):
     newest = None
     for raw_line in complete_data.split(b"\n"):
         try:
-            grid, reason = parse_frame_text_with_reason(raw_line.decode("ascii"))
+            grid, reason = parse_frame_text_with_reason(raw_line.decode("ascii"), shape=shape)
         except UnicodeDecodeError:
             grid, reason = None, "malformed"
         if quality is not None:
@@ -98,6 +101,22 @@ def _read_latest_maxrays(connection, decoder, quality):
     return frames[-1] if frames else None
 
 
+class _Tap:
+    """What the read helpers see as the connection: passes reads through and feeds them to the capture/counter"""
+
+    def __init__(self, source):
+        self._source = source
+
+    @property
+    def in_waiting(self):
+        return self._source._connection.in_waiting
+
+    def read(self, count):
+        data = self._source._connection.read(count)
+        self._source._capture_step(data)
+        return data
+
+
 class SerialSource:
     """Grids from a USB-serial mat on a background thread, decoded per protocol profile"""
 
@@ -113,6 +132,12 @@ class SerialSource:
         self.quality = SourceQuality()
         self.decoder = MaxraysDecoder(*self.shape) if profile == MAXRAYS_PROFILE else None
         self._connection = None
+        self._tap = _Tap(self)
+        self._lock = threading.Lock()
+        self._bytes = 0  # every byte read from the port, for bytes/s
+        self._rate_mark, self._bytes_per_s = (time.monotonic(), 0), 0.0
+        self._capture = None  # running raw capture: [path, end time, bytearray, clock]
+        self.capture_result = None  # RawCapture of the last finished capture
         self._receive_buffer = bytearray()
         self._thread = None
         self._running = False
@@ -124,11 +149,55 @@ class SerialSource:
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
+    def start_raw_capture(self, path, seconds=RAW_CAPTURE_S, clock=time.monotonic):
+        """Copy the exact bytes read from the port to path for `seconds`, then write the file"""
+        with self._lock:
+            self.capture_result = None
+            self._capture = [Path(path), clock() + seconds, bytearray(), clock]
+
+    @property
+    def capturing(self):
+        return self._capture is not None
+
+    def _capture_step(self, data=b""):
+        """Add bytes to the running capture and finish it once its time is up"""
+        with self._lock:
+            self._bytes += len(data)
+            capture = self._capture
+            if capture is None:
+                return
+            capture[2].extend(data)
+            if capture[3]() < capture[1]:
+                return
+            self._capture = None
+            path, _, raw, _ = capture
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(raw)
+                error = None
+            except OSError as exc:
+                error = str(exc)
+            self.capture_result = RawCapture(path, len(raw), raw.count(MaxraysDecoder.HEADER), error)
+
+    def serial_stats(self):
+        """Protocol, bytes/s, frames/s and the decoder's discarded/invalid counts (None = not applicable)"""
+        now = time.monotonic()
+        mark_time, mark_bytes = self._rate_mark
+        if now - mark_time >= 1.0:
+            self._bytes_per_s = (self._bytes - mark_bytes) / (now - mark_time)
+            self._rate_mark = (now, self._bytes)
+        quality = self.quality.snapshot()
+        stats = self.decoder.stats if self.decoder is not None else None
+        return {"protocol": self.profile, "bytes_per_s": self._bytes_per_s, "frames_per_s": quality["rate_hz"],
+                "discarded_bytes": stats.bytes_discarded if stats else None,
+                "invalid_frames": stats.invalid_frames if stats else quality["malformed"]}
+
     def _poll_once(self):
         if self.decoder is not None:
-            grid = _read_latest_maxrays(self._connection, self.decoder, self.quality)
+            grid = _read_latest_maxrays(self._tap, self.decoder, self.quality)
         else:
-            grid = _read_latest_frame(self._connection, self._receive_buffer, self.quality)
+            grid = _read_latest_frame(self._tap, self._receive_buffer, self.quality, self.shape)
+        self._capture_step()  # also ends a capture when the port went quiet
         if grid is not None:
             if self.latest.set(scale_to_app_range(grid, self.value_max)):
                 self.quality.drop()

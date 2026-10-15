@@ -22,11 +22,12 @@ def _value(value):
 
 
 class DiagnosticsWindow:
-    def __init__(self, parent, health, selected_cell_getter, on_select, quality_getter=None):
+    def __init__(self, parent, health, selected_cell_getter, on_select, quality_getter=None, serial_stats_getter=None):
         self.health = health
         self.selected_cell_getter = selected_cell_getter
         self.on_select = on_select
         self.quality_getter = quality_getter
+        self.serial_stats_getter = serial_stats_getter
         self.window = tk.Toplevel(parent)
         self.window.title("Sensor diagnostics")
         self.window.geometry("760x650")
@@ -67,14 +68,22 @@ class DiagnosticsWindow:
         if not self.window.winfo_exists():
             return
         quality = self.quality_getter() if self.quality_getter is not None else None
+        text = ""
         if quality is not None:
             age = quality["age_s"]
-            self.source_var.set(
+            text = (
                 f"Source: {quality['received']} received, {quality['valid']} valid, "
                 f"{quality['malformed']} malformed, {quality['dropped']} dropped | "
                 f"grid size {quality['unexpected_grid_size']}, range {quality['out_of_range']}, "
                 f"no source timestamp {quality['missing_timestamps']} | "
                 f"{quality['rate_hz']:.1f} frames/s, last valid {'-' if age is None else f'{age:.1f}s ago'}")
+        serial = self.serial_stats_getter() if self.serial_stats_getter is not None else None
+        if serial is not None:
+            text += ("\n" if text else "") + (
+                f"Serial: {serial['protocol']} | {serial['bytes_per_s']:.0f} bytes/s, {serial['frames_per_s']:.1f} frames/s | "
+                f"discarded bytes {'-' if serial['discarded_bytes'] is None else serial['discarded_bytes']}, "
+                f"invalid frames {serial['invalid_frames']}")
+        self.source_var.set(text)
         view = self.view_var.get()
         self.figure.clear()
         self.axes = self.figure.add_subplot()

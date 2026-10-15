@@ -108,10 +108,10 @@ class MqttSource:
                 if meta[0] == self.chip_id:
                     self._meta_seen.set()
             return
-        if self.shape != (config.TOTAL_ROWS, config.TOTAL_COLS):
-            return  # the app has not switched to this mat's grid size yet
+        if self.shape is None:
+            return  # no metadata for this mat yet
         grid, reason = ((None, "malformed") if text is None
-                        else parse_frame_text_with_reason(text, self.value_max))
+                        else parse_frame_text_with_reason(text, self.value_max, self.shape))
         self.quality.packet(reason, timestamp=False)
         if grid is not None:
             if self.latest.set(scale_to_app_range(grid, self.value_max)):

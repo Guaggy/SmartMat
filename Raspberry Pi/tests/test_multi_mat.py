@@ -155,17 +155,16 @@ class MqttSourceTests(unittest.TestCase):
         source._client.subscribe.assert_not_called()
         self.assertEqual(source.state, "connecting")
 
-    def test_frames_wait_until_the_app_uses_the_mats_shape(self):
+    def test_frames_use_the_mats_own_shape_not_the_apps_grid(self):
+        # the app grid may be oriented (rotated) differently from the mat, so parsing must not depend on it
         source = make_source("bbb222")
         connect(source)
         frame = message("smartmat/bbb222/frame", ",".join(["5"] * 240))
         source._on_message(None, None, frame)  # before meta
-        source._on_message(None, None, message("smartmat/bbb222/meta", "bbb222,20,12"))
-        source._on_message(None, None, frame)  # meta known, app still on 16x15: same 240 values
         self.assertIsNone(source.latest.take())
         self.assertEqual(source.quality.snapshot()["received"], 0)
-        use_shape(self, 20, 12)
-        source._on_message(None, None, frame)
+        source._on_message(None, None, message("smartmat/bbb222/meta", "bbb222,20,12"))
+        source._on_message(None, None, frame)  # app still on 16x15: same 240 values
         self.assertEqual(source.latest.take().shape, (20, 12))
         source._on_message(None, None, message("smartmat/bbb222/frame", "1,2,3"))
         self.assertEqual(source.quality.snapshot()["unexpected_grid_size"], 1)

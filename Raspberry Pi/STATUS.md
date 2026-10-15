@@ -104,6 +104,15 @@ with no chip ID only listens on `smartmat/+/meta` to fill the device list.
 desktop shows a Protocol dropdown for Serial and applies the source's shape
 before connecting; `list_ports()` returns `Port(device, label)`.
 
+`SerialSource.start_raw_capture(path, seconds)` tees the exact port bytes to
+`recordings/raw_<profile>_<time>.bin` (desktop "Capture raw (5 s)" button, shown for Serial, enabled while
+connected; `tools/capture_raw.py` does the same without the GUI). `serial_stats()` (protocol, bytes/s,
+frames/s, discarded bytes, invalid frames) feeds the Diagnostics window. Orientation (Rotate 0/90/180/270,
+Mirror H/V; `frames.orient_grid`) is applied in `DesktopApp._poll` to live grids only (recordings are
+already oriented), before `process_frame`; a change or a 90/270 turn of a non-square mat goes through
+`_apply_grid_shape` (analysis state resets). So `config.TOTAL_*` is the *oriented* grid and sources must not
+read it: MQTT/Serial pass the mat's own shape to `parse_frame_text_with_reason(..., shape)`.
+
 `general.py` - frame parsing (`parse_frame_text_with_reason(text, value_max)`),
 `scale_to_app_range(grid, value_max)`, plus the mat nickname registry
 (`mats.json`, gitignored, `{chip_id: nickname}`).

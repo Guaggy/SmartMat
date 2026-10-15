@@ -20,18 +20,21 @@ def scale_to_app_range(grid, value_max):
     return np.clip(scaled, VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT)
 
 
-def parse_frame_text_with_reason(text, value_max=VALUE_MAX_DEFAULT):
+def parse_frame_text_with_reason(text, value_max=VALUE_MAX_DEFAULT, shape=None):
     """Return a raw (unscaled) grid and a packet-level rejection reason.
 
-    value_max is the mat's own full scale; the range check runs on raw units.
+    value_max is the mat's own full scale; the range check runs on raw units. shape is the mat's
+    (rows, cols); default = the app's current grid (config.TOTAL_*, which orientation may swap).
     """
+
+    rows, cols = shape or (config.TOTAL_ROWS, config.TOTAL_COLS)
 
     text = text.strip()
     if text.endswith(","):
         text = text[:-1]
 
     pieces = text.split(",")
-    if len(pieces) != config.TOTAL_ROWS * config.TOTAL_COLS:
+    if len(pieces) != rows * cols:
         return None, "grid_size"
     # Check if  empty cells
     if any(piece.strip() == "" for piece in pieces):
@@ -49,7 +52,7 @@ def parse_frame_text_with_reason(text, value_max=VALUE_MAX_DEFAULT):
     if np.any(values < VALUE_MIN_DEFAULT) or np.any(values > value_max):
         return None, "out_of_range"
 
-    grid = values.reshape(config.TOTAL_ROWS, config.TOTAL_COLS)
+    grid = values.reshape(rows, cols)
     return grid, None
 
 

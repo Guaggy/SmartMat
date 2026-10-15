@@ -5,6 +5,16 @@ import numpy as np
 from config import VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT
 
 
+def orient_grid(grid, rotation=0, mirror_h=False, mirror_v=False):
+    """Rotate clockwise by 0/90/180/270 degrees, then mirror left-right (H) and/or top-bottom (V)"""
+    oriented = np.rot90(grid, k=-(rotation // 90) % 4)
+    if mirror_h:
+        oriented = np.fliplr(oriented)
+    if mirror_v:
+        oriented = np.flipud(oriented)
+    return oriented
+
+
 def process_frame(grid, mode, calibration, pressure_calibration=None):
     raw = grid.copy()
     valid = np.isfinite(raw) & (raw >= VALUE_MIN_DEFAULT) & (raw <= VALUE_MAX_DEFAULT)
