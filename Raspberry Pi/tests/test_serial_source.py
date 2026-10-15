@@ -110,6 +110,15 @@ class SerialSourceTest(unittest.TestCase):
         self.assertFalse(source.capturing)
         self.assertEqual(path.read_bytes(), maxrays_packet(7))
 
+    def test_start_asks_for_a_large_driver_buffer(self):
+        with mock.patch("serial.Serial") as port:
+            port.return_value.in_waiting = 0
+            source = SerialSource("COM9", MAXRAYS_PROFILE)
+            source.start()
+            source.stop()
+        port.assert_called_once_with("COM9", 921600, timeout=0)
+        port.return_value.set_buffer_size.assert_called_once_with(rx_size=256 * 1024)
+
     def test_serial_stats(self):
         source = self.make(MAXRAYS_PROFILE)
         source._connection.data.extend(b"" + maxrays_packet(1))

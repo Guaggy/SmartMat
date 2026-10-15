@@ -17,6 +17,7 @@ from sources.maxrays import MaxraysDecoder
 RAW_CAPTURE_S = 5.0  # default length of a raw byte capture
 POLL_INTERVAL_S = 0.02  # How often the background thread checks for new bytes
 MAX_RECEIVE_BUFFER_BYTES = 16 * 1024  # Guards against no new line
+RX_BUFFER_BYTES = 256 * 1024  # driver receive buffer asked for (Windows), ~2.8 s at 921600 baud
 
 TEXT_PROFILE = "ESP32 text (115200)"
 MAXRAYS_PROFILE = "Maxrays 20x20 (921600)"
@@ -145,6 +146,9 @@ class SerialSource:
     def start(self):
         """Open the port and start reading (raises if the port can't open)"""
         self._connection = serial.Serial(self.port, self.baud, timeout=0)  # 8-N-1
+        if hasattr(self._connection, "set_buffer_size"):
+            # Windows' default 4 KB driver buffer holds only ~45 ms at 921600 baud; a busy GUI overruns it
+            self._connection.set_buffer_size(rx_size=RX_BUFFER_BYTES)
         self._running = True
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
