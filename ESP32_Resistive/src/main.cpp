@@ -258,6 +258,7 @@ void print_fps(uint32_t loop_time_ms) {
 }
 
 void setup() {
+  Serial.setTxBufferSize(2048); // default 0 = println() blocks until the whole ~1.2 KB frame is on the wire (~100 ms)
   Serial.begin(115200);
   delay(500);
   Serial.println("Smartmat Resistive V1");
