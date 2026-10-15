@@ -1,11 +1,15 @@
-ESP32/.pio/
-ESP32/CLAUDE.local.md
-ESP32/src/secrets.h
+# Firmware build output, machine-local context and Wi-Fi/MQTT secrets in any ESP32_* folder
+# (generic on purpose: path-specific entries went stale when ESP32/ was renamed)
+**/.pio/
+**/CLAUDE.local.md
+**/secrets.h
 Raspberry Pi/config.py
 Raspberry Pi/mats.json
 Raspberry Pi/recordings/
 **/__pycache__/
 *.pyc
 node_modules/
+
 # Local design docs/plans
 docs/
+Archived/
