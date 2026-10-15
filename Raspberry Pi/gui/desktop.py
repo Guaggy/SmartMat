@@ -793,7 +793,7 @@ class DesktopApp:
         try:
             self.mat_size_mm = parse_mat_size(text)
         except ValueError as error:
-            self.status_var.set(f"Mat size not changed: {error}")
+            self._notify(f"Mat size not changed: {error}")
             return
         self._save_profile()
         self._update_stats()

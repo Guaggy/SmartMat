@@ -124,6 +124,13 @@ class DesktopCellSizeTests(unittest.TestCase):
             app._update_cell_info()
             self.assertEqual(app.cell_info_var.get(), "Cell: 30.0 x 40.0 mm")
 
+    def test_bad_mat_size_message_survives_the_next_frame(self):
+        app = self.app
+        with mock.patch("gui.desktop.simpledialog.askstring", return_value="abc"):
+            app._set_mat_size()
+        app._handle_new_frame(np.zeros((config.TOTAL_ROWS, config.TOTAL_COLS)))
+        self.assertIn("Mat size not changed", app.status_var.get())
+
 
 if __name__ == "__main__":
     unittest.main()
