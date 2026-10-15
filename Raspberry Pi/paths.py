@@ -3,6 +3,7 @@
 import os
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 USER_DATA = ("config.py", "mats.json", "recordings", "profiles")  # next to the exe = an older install that keeps its data there
@@ -21,6 +22,20 @@ def choose_data_dir(frozen, base_dir, local_appdata, exists):
     return Path(local_appdata) / "SmartMat", "user"
 
 
+def config_dir(app_dir, example):
+    """The folder that holds config.py: app_dir (the example is copied there on first run), or, when app_dir
+    is not writable (exe folder in Program Files), a fresh temp folder with the example so the app uses defaults."""
+    if (app_dir / "config.py").exists():
+        return app_dir
+    try:
+        shutil.copy(example, app_dir / "config.py")
+        return app_dir
+    except OSError:
+        fallback = Path(tempfile.mkdtemp(prefix="smartmat_cfg_"))
+        shutil.copy(example, fallback / "config.py")
+        return fallback
+
+
 FROZEN = getattr(sys, "frozen", False)
 _BASE_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
 APP_DIR, DATA_MODE = choose_data_dir(FROZEN, _BASE_DIR, os.environ.get("LOCALAPPDATA"), Path.exists)
@@ -32,9 +47,7 @@ if FROZEN:
         except OSError:  # cannot create the per-user folder: keep the data next to the exe
             APP_DIR, DATA_MODE = _BASE_DIR, "legacy"
     # config.py lives in APP_DIR (user-editable); first run copies the bundled example there
-    if not (APP_DIR / "config.py").exists():
-        shutil.copy(Path(sys._MEIPASS) / "config.example.py", APP_DIR / "config.py")
-    sys.path.insert(0, str(APP_DIR))
+    sys.path.insert(0, str(config_dir(APP_DIR, Path(sys._MEIPASS) / "config.example.py")))
 
 RESOURCE_DIR = Path(sys._MEIPASS) if FROZEN else APP_DIR  # bundled read-only data (assets/); APP_DIR is user data
 
