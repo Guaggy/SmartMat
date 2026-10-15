@@ -104,6 +104,9 @@ class DesktopCellSizeTests(unittest.TestCase):
         for name in ("TOTAL_ROWS", "TOTAL_COLS"):
             self.addCleanup(setattr, config, name, getattr(config, name))
         self.enterContext(mock.patch.object(desktop, "save_mat_names"))
+        # entered before the _on_close cleanup is registered, so it is still active when that saves the profile
+        folder = self.enterContext(tempfile.TemporaryDirectory())
+        self.enterContext(mock.patch.object(calibration, "PROFILES_DIR", Path(folder)))
         try:
             self.app = desktop.DesktopApp()
         except tk.TclError:
