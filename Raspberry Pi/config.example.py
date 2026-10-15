@@ -14,6 +14,8 @@ mqtt_password = "your-mqtt-password"
 TOTAL_ROWS = 16
 TOTAL_COLS = 15
 BAUD_RATE = 115200
+# Maxrays USB mats stream ~60 frames/s; frames are averaged down to this rate for the analysis (0 = off).
+SERIAL_TARGET_FPS = 10
 
 VALUE_MIN_DEFAULT = 0
 VALUE_MAX_DEFAULT = 1000

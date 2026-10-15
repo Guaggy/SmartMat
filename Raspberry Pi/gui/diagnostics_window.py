@@ -80,7 +80,8 @@ class DiagnosticsWindow:
         serial = self.serial_stats_getter() if self.serial_stats_getter is not None else None
         if serial is not None:
             text += ("\n" if text else "") + (
-                f"Serial: {serial['protocol']} | {serial['bytes_per_s']:.0f} bytes/s, {serial['frames_per_s']:.1f} frames/s | "
+                f"Serial: {serial['protocol']} | {serial['bytes_per_s']:.0f} bytes/s, {serial['frames_per_s']:.1f} frames/s in, "
+                f"{serial['output_per_s']:.1f}/s out | "
                 f"discarded bytes {'-' if serial['discarded_bytes'] is None else serial['discarded_bytes']}, "
                 f"invalid frames {serial['invalid_frames']}")
         self.source_var.set(text)

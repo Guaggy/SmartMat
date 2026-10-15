@@ -36,8 +36,9 @@ def maxrays_packet(fill):
 
 
 class SerialSourceTest(unittest.TestCase):
-    def make(self, profile):
-        source = SerialSource("COM9", profile)
+    def make(self, profile, target_fps=0, clock=None):
+        source = SerialSource("COM9", profile, **({"clock": clock} if clock else {}))
+        source.target_fps = target_fps  # averaging off unless a test asks for it
         source._connection = FakeConnection()
         return source
 
@@ -98,6 +99,38 @@ class SerialSourceTest(unittest.TestCase):
         source._poll_once()
         self.assertEqual(source.quality.snapshot()["valid"], 2)
         self.assertEqual(source.quality.snapshot()["dropped"], 1)
+
+    def test_default_target_rate_is_ten_for_maxrays_only(self):
+        self.assertEqual(SerialSource("COM9", MAXRAYS_PROFILE).target_fps, 10)
+        self.assertEqual(SerialSource("COM9", TEXT_PROFILE).target_fps, 0)
+
+    def test_maxrays_frames_are_averaged_per_window_without_counting_drops(self):
+        now = [10.0]
+        source = self.make(MAXRAYS_PROFILE, target_fps=8, clock=lambda: now[0])  # 0.125 s = 8 steps of 1/64 s
+        outputs = []
+        for step in range(18):  # a fast stream: one frame per poll, 0..255 raw values 10 then 20
+            source._connection.data.extend(maxrays_packet(10 if step < 8 else 20))
+            source._poll_once()
+            grid = source.latest.take()
+            if grid is not None:
+                outputs.append((step, grid[0, 0]))
+            now[0] += 1 / 64
+        self.assertEqual([step for step, _ in outputs], [8, 17])  # one grid per window, not per frame
+        self.assertAlmostEqual(outputs[0][1], (8 * 10 + 20) / 9 * 1000 / 255)  # float mean of frames 0..8
+        quality = source.quality.snapshot()
+        self.assertEqual((quality["valid"], quality["malformed"], quality["dropped"]), (18, 0, 0))
+        self.assertEqual(source._out, 2)
+
+    def test_average_is_a_float_mean_of_the_window(self):
+        now = [0.0]
+        source = self.make(MAXRAYS_PROFILE, target_fps=10, clock=lambda: now[0])
+        source._connection.data.extend(maxrays_packet(10) + maxrays_packet(21))
+        source._poll_once()
+        self.assertIsNone(source.latest.take())
+        now[0] = 0.1
+        source._poll_once()  # no new bytes, the window just ran out
+        np.testing.assert_allclose(source.latest.take(), 15.5 * 1000 / 255)  # not rounded to a uint8
+        self.assertEqual(source.serial_stats()["output_per_s"], 0.0)  # rates update at most once a second
 
     def test_raw_capture_writes_the_exact_bytes_and_stops_after_the_duration(self):
         source = self.make(MAXRAYS_PROFILE)

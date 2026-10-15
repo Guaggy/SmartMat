@@ -86,12 +86,12 @@ def _read_latest_frame(connection, receive_buffer, quality=None, shape=None):
     return newest
 
 
-def _read_latest_maxrays(connection, decoder, quality):
-    """Feed waiting bytes to the decoder and return the newest raw grid (earlier ones count as dropped)"""
+def _read_maxrays_frames(connection, decoder, quality):
+    """Feed waiting bytes to the decoder and return every decoded raw grid (each counts as received/valid)"""
 
     available = connection.in_waiting
     if not available:
-        return None
+        return []
     invalid = decoder.stats.invalid_frames
     frames = decoder.feed(connection.read(available))
     # only a false header / truncated packet is malformed; filler or idle bytes between frames are not
@@ -100,8 +100,7 @@ def _read_latest_maxrays(connection, decoder, quality):
         quality.packet("malformed", timestamp=False)
     for _ in frames:
         quality.packet(None, timestamp=False)
-    quality.drop(max(len(frames) - 1, 0))
-    return frames[-1] if frames else None
+    return frames
 
 
 class _Tap:
@@ -123,7 +122,7 @@ class _Tap:
 class SerialSource:
     """Grids from a USB-serial mat on a background thread, decoded per protocol profile"""
 
-    def __init__(self, port, profile=TEXT_PROFILE):
+    def __init__(self, port, profile=TEXT_PROFILE, clock=time.monotonic):
         self.port = port
         self.profile = profile
         spec = PROFILES[profile]
@@ -134,11 +133,16 @@ class SerialSource:
         self.latest = LatestFrame()
         self.quality = SourceQuality()
         self.decoder = MaxraysDecoder(*self.shape) if profile == MAXRAYS_PROFILE else None
+        # Maxrays streams ~60 fps but the analysis windows are tuned for ~10: average down to this (0 = off)
+        self.target_fps = getattr(config, "SERIAL_TARGET_FPS", 10) if self.decoder is not None else 0
+        self._clock = clock
+        self._window = [None, 0.0, 0]  # averaging window: [start time, running sum of raw grids, frame count]
         self._connection = None
         self._tap = _Tap(self)
         self._lock = threading.Lock()
         self._bytes = 0  # every byte read from the port, for bytes/s
-        self._rate_mark, self._bytes_per_s = (time.monotonic(), 0), 0.0
+        self._out = 0  # grids handed to `latest` (after averaging), for the output rate
+        self._rate_mark, self._bytes_per_s, self._out_per_s = (time.monotonic(), 0, 0), 0.0, 0.0
         self._capture = None  # running raw capture: [path, end time, bytearray, clock]
         self.capture_result = None  # RawCapture of the last finished capture
         self._receive_buffer = bytearray()
@@ -188,23 +192,45 @@ class SerialSource:
     def serial_stats(self):
         """Protocol, bytes/s, frames/s and the decoder's discarded/invalid counts (None = not applicable)"""
         now = time.monotonic()
-        mark_time, mark_bytes = self._rate_mark
+        mark_time, mark_bytes, mark_out = self._rate_mark
         if now - mark_time >= 1.0:
             self._bytes_per_s = (self._bytes - mark_bytes) / (now - mark_time)
-            self._rate_mark = (now, self._bytes)
+            self._out_per_s = (self._out - mark_out) / (now - mark_time)
+            self._rate_mark = (now, self._bytes, self._out)
         quality = self.quality.snapshot()
         stats = self.decoder.stats if self.decoder is not None else None
         return {"protocol": self.profile, "bytes_per_s": self._bytes_per_s, "frames_per_s": quality["rate_hz"],
+                "output_per_s": self._out_per_s,  # grids per second after averaging (frames_per_s = decoded)
                 "discarded_bytes": stats.bytes_discarded if stats else None,
                 "invalid_frames": stats.invalid_frames if stats else quality["malformed"]}
 
+    def _average(self, frames):
+        """Add decoded grids to the window; return its mean once it is 1/target_fps s old, else None"""
+        now = self._clock()
+        if frames and not self._window[2]:
+            self._window[0] = now  # the window starts with its first frame
+        for grid in frames:
+            self._window[1] = self._window[1] + grid  # float after the first add
+            self._window[2] += 1
+        if self._window[2] and now - self._window[0] >= 1.0 / self.target_fps:
+            mean = self._window[1] / self._window[2]
+            self._window = [None, 0.0, 0]
+            return mean
+        return None
+
     def _poll_once(self):
         if self.decoder is not None:
-            grid = _read_latest_maxrays(self._tap, self.decoder, self.quality)
+            frames = _read_maxrays_frames(self._tap, self.decoder, self.quality)
+            if self.target_fps > 0:
+                grid = self._average(frames)  # merged frames are not drops
+            else:
+                self.quality.drop(max(len(frames) - 1, 0))
+                grid = frames[-1] if frames else None
         else:
             grid = _read_latest_frame(self._tap, self._receive_buffer, self.quality, self.shape)
         self._capture_step()  # also ends a capture when the port went quiet
         if grid is not None:
+            self._out += 1
             if self.latest.set(scale_to_app_range(grid, self.value_max)):
                 self.quality.drop()
 
