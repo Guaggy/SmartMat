@@ -291,10 +291,16 @@ class DesktopApp:
         ttk.Label(frame, text=PRODUCT_NAME, font=("", 14, "bold")).pack(anchor="w")
         ttk.Label(frame, text=f"by {COMPANY_NAME}").pack(anchor="w", pady=(0, 8))
         for text, url in ((WEBSITE_URL, WEBSITE_URL), (CONTACT_EMAIL, f"mailto:{CONTACT_EMAIL}")):
-            link = ttk.Label(frame, text=text, foreground=ACCENT, cursor="hand2")
-            link.pack(anchor="w")
-            link.bind("<Button-1>", lambda _event, url=url: webbrowser.open(url))
+            self._link(frame, text, url)
         ttk.Label(frame, text=DISCLAIMER, wraplength=340).pack(anchor="w", pady=(12, 0))
+
+    @staticmethod
+    def _link(parent, text, url, **options):
+        """A label that opens url in the browser when clicked, styled as a link"""
+        link = ttk.Label(parent, text=text, foreground=ACCENT, cursor="hand2", font=("", 9, "underline"), **options)
+        link.pack(anchor="w")
+        link.bind("<Button-1>", lambda _event: webbrowser.open(url))
+        return link
 
     def _adv(self, widget):
         """Mark a widget as Advanced-only (hidden in Simple view); returns it"""
@@ -580,8 +586,10 @@ class DesktopApp:
         self._info_line(panel, f"Value range: {VALUE_MIN_DEFAULT}-{VALUE_MAX_DEFAULT}")
 
         self._info_line(panel, "App", header=True, top_pad=8)
-        self.web_address_var = tk.StringVar(value="Web UI:\n{}\nor {}".format(*_web_address()))
-        ttk.Label(panel, textvariable=self.web_address_var, wraplength=190).pack(anchor="w")
+        self._info_line(panel, "Web UI:")
+        self.web_address_var, self.web_ip_var = (tk.StringVar(value=address) for address in _web_address())
+        for variable in (self.web_address_var, self.web_ip_var):  # hostname.local first, the IP as fallback
+            self._link(panel, variable.get(), variable.get(), wraplength=190)
         self._info_line(panel, f"Stale after: {STALE_AFTER_S}s")
         self._info_line(panel, f"Reconnect every: {RECONNECT_INTERVAL_S}s")
         self.cell_info_var = tk.StringVar()

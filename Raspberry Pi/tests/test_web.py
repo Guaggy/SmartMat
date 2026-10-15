@@ -163,6 +163,20 @@ class DesktopFeedTests(unittest.TestCase):
         self.assertIn(f"http://{socket.gethostname()}.local:{web.WEB_PORT}", self.app.web_address_var.get())
         self.assertIn(f"{socket.gethostname()}.local", self.app.status_var.get())
 
+    def test_both_addresses_are_clickable_links(self):
+        def labels(widget):
+            found = [widget] if widget.winfo_class() == "TLabel" else []
+            for child in widget.winfo_children():
+                found += labels(child)
+            return found
+        urls = (self.app.web_address_var.get(), self.app.web_ip_var.get())
+        links = [label for label in labels(self.app.root) if label.cget("text") in urls]
+        self.assertEqual(sorted(label.cget("text") for label in links), sorted(urls))
+        with mock.patch("gui.desktop.webbrowser.open") as opened:
+            for label in links:
+                label.event_generate("<Button-1>")
+        self.assertEqual(sorted(call.args[0] for call in opened.call_args_list), sorted(urls))
+
 
 if __name__ == "__main__":
     unittest.main()

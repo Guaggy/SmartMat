@@ -94,7 +94,8 @@ ESP32 --MQTT/Serial--> sources/*Source (raw 0..value_max -> 0-1000, general.scal
   `help_window.py`.
 - `web.py` - local read-only Flask dashboard toggled from the desktop app
   ("Web UI"). The desktop is the only producer: `_publish_web()` calls
-  `web.update(mats, live_id, snapshot)` about once a second. Addresses: `/`
+  `web.update(mats, live_id, snapshot)` about once a second. The About panel shows the two addresses as clickable links
+  (`DesktopApp._link`, webbrowser.open). Addresses: `/`
   (static page that polls), `/api/mats`, `/api/mats/<id>`. Only the mat the
   desktop is connected to has data; non-MQTT sources appear as id `local`.
 
@@ -110,7 +111,11 @@ start without that mat's retained meta message
 with no chip ID only listens on `smartmat/+/meta` to fill the device list.
 `SerialSource(port, profile)` picks a `PROFILES` entry: "ESP32 text (115200)"
 (config grid, value_max 1000, mat_id = port) or "Maxrays 20x20 (921600)"
-(`sources/maxrays.py` decoder, 20x20, value_max 255, mat_id `maxrays-usb`). The
+(`sources/maxrays.py` decoder, 20x20, value_max 255, mat_id `maxrays-usb`, preset model "MC266" + default sensing
+size 343 x 358 mm; datasheet facts in `notes.md`). The Maxrays stream (~60 fps) is averaged (float) over
+1/`config.SERIAL_TARGET_FPS` s (default 10, 0 = off) into ONE scaled grid per window; merged frames are not drops,
+`serial_stats` has `frames_per_s` (decoded) and `output_per_s`. `MqttSource` ignores frame messages with the retain
+flag (stale after a reconnect); retained meta is still used. The
 desktop shows a Protocol dropdown for Serial and applies the source's shape
 before connecting; `list_ports()` returns `Port(device, label)`.
 
@@ -132,7 +137,8 @@ the orientation, applies the *oriented* shape (so the first frame through `_orie
 always `_reset_calibration()` and, if the file's grid shape matches, puts its state back. So a real mat never
 inherits another mat's tare; a mat without a (matching) profile starts clean and keeps the current orientation.
 The profile also carries `size_mm` (the mat's physical sensing size, width x height as built; old profiles without it load
-fine and fall back to `config.MAT_WIDTH_MM/MAT_HEIGHT_MM`, then to the per-cell `CELL_*_MM`). The calibration window shows which profile is active. Design: `docs/superpowers/specs/2026-10-15-per-mat-profiles-design.md`.
+fine and fall back to the source's preset `default_size_mm` (Maxrays MC266), then `config.MAT_WIDTH_MM/MAT_HEIGHT_MM`, then
+the per-cell `CELL_*_MM`). The calibration window shows which profile is active. Design: `docs/superpowers/specs/2026-10-15-per-mat-profiles-design.md`.
 
 Mat size / load estimate: `DesktopApp.mat_size_mm` ("Mat size..." button under the Estimated load line, kept in the mat's profile) feeds ONE
 `cell_size_mm` / `cell_area_m2` property (`processing/calibration.cell_size_mm`: width / cols, height / rows of the oriented
@@ -202,7 +208,7 @@ features, what's still to build, and what's already shipped). Don't copy
 that list into this file - it drifts. As of 2026-10-08: multi-mat MQTT,
 custom indices, patient-detected, the ROI rework, the web dashboard, and the
 Tier 1/2 bounded-polish + calibration-rework batch are all built and tested
-(147 tests passing at the time; 201 now). Open: the "Ignore signal" display bug, the
+(147 tests passing at the time; 218 now). Open: the "Ignore signal" display bug, the
 `user_guide.md` decision, the web dashboard's per-mat background listener,
 body-part recognition (deliberately not
 started).
