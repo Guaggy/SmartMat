@@ -167,6 +167,7 @@ class DesktopApp:
         self.contact_threshold_kpa = CONTACT_THRESHOLD_KPA
         self.signal_noise_threshold = float(getattr(app_config, "SIGNAL_NOISE_THRESHOLD", 0.0))
         self.mat_size_mm = configured_mat_size()  # (width, height) sensing size of the connected mat, or None
+        self._user_size_mm = None  # the part of mat_size_mm that is the user's (typed or from the profile): the only part saved
         self._pending_mat_size = None  # entered while no real mat was connected; the next Connect applies it
         self.frame = None
         self.raw_grid = None
@@ -792,7 +793,8 @@ class DesktopApp:
         self.cell_info_var.set("Cell area: not configured" if size is None else
                                f"Cell: {size[0]:.1f} x {size[1]:.1f} mm")
         model = getattr(self.source, "model", None)
-        self.model_var.set(f"Mat: Maxrays {model}" if model else "")
+        vendor = getattr(self.source, "vendor", None)
+        self.model_var.set(f"Mat: {vendor + ' ' if vendor else ''}{model}" if model else "")
 
     def _set_mat_size(self):
         """Ask for the mat's physical sensing size (outer edge of the first to the last sensing element)"""
@@ -805,7 +807,7 @@ class DesktopApp:
         if text is None:
             return
         try:
-            self.mat_size_mm = parse_mat_size(text)
+            self.mat_size_mm = self._user_size_mm = parse_mat_size(text)
         except ValueError as error:
             self._notify(f"Mat size not changed: {error}")
             return
@@ -826,7 +828,7 @@ class DesktopApp:
             return
         try:
             save_profile(mat_id, self.calibration.baseline, self.pressure_calibration, self._orientation(),
-                         self.mat_size_mm)
+                         self._user_size_mm)  # a preset size is not written: later preset changes must still apply
         except OSError as error:
             self.status_var.set(f"Could not save the mat profile for {mat_id}: {error}")
 
@@ -834,7 +836,9 @@ class DesktopApp:
         """A real mat just connected: restore its orientation, tare and calibration, or start it clean.
         Applies the *oriented* shape first so the first live frame (_orient) does not reset it again."""
         mat_id = self._profile_mat_id()
-        # new mats: the source's preset size (e.g. Maxrays MC266), else the config default; a profile's own size wins below
+        # new mats: the source's preset size (Maxrays MC266, or an MQTT meta), else the config default; a profile's own
+        # size wins below. Only the user's size (typed, or already in the profile) is kept for saving.
+        self._user_size_mm = None
         self.mat_size_mm = getattr(self.source, "default_size_mm", None) or configured_mat_size()
         if mat_id is None:
             recorded = profile_size_mm({"size_mm": (self._playback_metadata or {}).get("mat_size_mm")})
@@ -845,7 +849,8 @@ class DesktopApp:
             return ""
         profile = load_profile(mat_id)
         if profile is not None:
-            self.mat_size_mm = profile_size_mm(profile) or self.mat_size_mm  # the size is the mat's, whatever its grid
+            self._user_size_mm = profile_size_mm(profile)  # the size is the mat's, whatever its grid
+            self.mat_size_mm = self._user_size_mm or self.mat_size_mm
         rows, cols = self.source.shape
         if profile is not None:
             try:
@@ -880,7 +885,7 @@ class DesktopApp:
             return ""
         own = profile_size_mm(load_profile(mat_id))
         if own is None:
-            self.mat_size_mm = pending
+            self.mat_size_mm = self._user_size_mm = pending
             self._save_profile()
             return f" | mat size {pending[0]:g} x {pending[1]:g} mm applied"
         if own != pending:

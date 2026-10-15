@@ -161,12 +161,10 @@ class DesktopCellSizeTests(unittest.TestCase):
 
     def test_preset_size_sits_between_the_profile_and_the_config_default(self):
         app = self.app
-        folder = self.enterContext(tempfile.TemporaryDirectory())
-        self.enterContext(mock.patch.object(calibration, "PROFILES_DIR", Path(folder)))
         self.enterContext(mock.patch.object(config, "MAT_WIDTH_MM", 500.0, create=True))
         self.enterContext(mock.patch.object(config, "MAT_HEIGHT_MM", 400.0, create=True))
         grid = (config.TOTAL_ROWS, config.TOTAL_COLS)
-        preset = dict(shape=grid, stop=lambda: None, model="MC266", default_size_mm=(343.0, 358.0))
+        preset = dict(shape=grid, stop=lambda: None, vendor="Maxrays", model="MC266", default_size_mm=(343.0, 358.0))
         app.source = SimpleNamespace(mat_id="presetA", **preset)  # no profile file: the preset
         app._load_profile()
         self.assertEqual(app.mat_size_mm, (343.0, 358.0))
@@ -182,10 +180,54 @@ class DesktopCellSizeTests(unittest.TestCase):
         app._update_cell_info()
         self.assertEqual(app.model_var.get(), "")
 
+    def test_mqtt_preset_has_no_vendor_in_the_label(self):
+        app = self.app
+        app.source = SimpleNamespace(mat_id="mqttA", shape=(20, 20), stop=lambda: None, model="MC266",
+                                     default_size_mm=(343.0, 358.0))
+        app._load_profile()
+        self.assertEqual(app.mat_size_mm, (343.0, 358.0))
+        app._update_cell_info()
+        self.assertEqual(app.model_var.get(), "Mat: MC266")
+
+    def test_preset_size_is_not_saved_so_a_preset_change_propagates(self):
+        app = self.app
+        grid = (config.TOTAL_ROWS, config.TOTAL_COLS)
+        app.source = SimpleNamespace(mat_id="presetC", shape=grid, stop=lambda: None, default_size_mm=(343.0, 358.0))
+        app._load_profile()
+        app._save_profile()
+        self.assertTrue(profile_path("presetC").exists())
+        self.assertIsNone(profile_size_mm(load_profile("presetC")))  # preset not persisted
+        app.source = SimpleNamespace(mat_id="presetC", shape=grid, stop=lambda: None, default_size_mm=(300.0, 300.0))
+        app._load_profile()  # firmware / Python preset changed
+        self.assertEqual(app.mat_size_mm, (300.0, 300.0))
+
+    def test_user_size_wins_over_the_preset_and_is_saved(self):
+        app = self.app
+        grid = (config.TOTAL_ROWS, config.TOTAL_COLS)
+        source = SimpleNamespace(mat_id="presetD", shape=grid, stop=lambda: None, default_size_mm=(343.0, 358.0))
+        app.source = source
+        app._load_profile()
+        with mock.patch("gui.desktop.simpledialog.askstring", return_value="600 x 480"):
+            app._set_mat_size()
+        self.assertEqual(profile_size_mm(load_profile("presetD")), (600.0, 480.0))
+        source.default_size_mm = (300.0, 300.0)
+        app._load_profile()
+        self.assertEqual(app.mat_size_mm, (600.0, 480.0))
+        app._save_profile()  # reconnect / close keeps the user's size
+        self.assertEqual(profile_size_mm(load_profile("presetD")), (600.0, 480.0))
+
+    def test_old_profile_that_already_holds_a_size_keeps_it(self):
+        app = self.app
+        grid = (config.TOTAL_ROWS, config.TOTAL_COLS)
+        save_profile("presetE", None, PressureCalibration.default(), ORIENTATION, (343.0, 358.0))  # an old preset copy
+        app.source = SimpleNamespace(mat_id="presetE", shape=grid, stop=lambda: None, default_size_mm=(300.0, 300.0))
+        app._load_profile()
+        self.assertEqual(app.mat_size_mm, (343.0, 358.0))
+        app._save_profile()
+        self.assertEqual(profile_size_mm(load_profile("presetE")), (343.0, 358.0))
+
     def test_size_entered_before_connect_goes_to_a_mat_without_one(self):
         app = self.app
-        folder = self.enterContext(tempfile.TemporaryDirectory())
-        self.enterContext(mock.patch.object(calibration, "PROFILES_DIR", Path(folder)))
         with mock.patch("gui.desktop.simpledialog.askstring", return_value="600 x 480"):
             app._set_mat_size()
         self.assertEqual(app._pending_mat_size, (600.0, 480.0))

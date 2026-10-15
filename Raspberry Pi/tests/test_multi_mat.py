@@ -110,15 +110,23 @@ def connect(source, failed=False):
 
 class MetaParsingTests(unittest.TestCase):
     def test_valid_payload(self):
-        self.assertEqual(parse_meta("a1b2c3d4e5f6,16,15"), ("a1b2c3d4e5f6", 16, 15, 1000))
-        self.assertEqual(parse_meta(" a1b2 , 20 ,12\n"), ("a1b2", 20, 12, 1000))
-        self.assertEqual(parse_meta("a1b2c3d4e5f6,20,20,255"), ("a1b2c3d4e5f6", 20, 20, 255))
+        self.assertEqual(parse_meta("a1b2c3d4e5f6,16,15"), ("a1b2c3d4e5f6", 16, 15, 1000, None, None))
+        self.assertEqual(parse_meta(" a1b2 , 20 ,12\n"), ("a1b2", 20, 12, 1000, None, None))
+        self.assertEqual(parse_meta("a1b2c3d4e5f6,20,20,255"), ("a1b2c3d4e5f6", 20, 20, 255, None, None))
+        self.assertEqual(parse_meta("a1b2c3d4e5f6,20,20,255,MC266,343,358.5"),
+                         ("a1b2c3d4e5f6", 20, 20, 255, "MC266", (343.0, 358.5)))
 
     def test_malformed_payloads(self):
         for text in ("", "a1b2", "a1b2,16", "a1b2,16,15,0", "a1b2,16,15,x", "a1b2,16,15,255,1",
                      "a1b2,x,15", "a1b2,16,1.5",
                      "a1b2,0,15", "a1b2,16,-1", "a1b2,16,999", ",16,15",
-                     "a/b,16,15", "+,16,15", "#,16,15"):
+                     "a/b,16,15", "+,16,15", "#,16,15",
+                     "a1b2,20,20,255,MC266", "a1b2,20,20,255,MC266,343",  # 5 and 6 fields
+                     "a1b2,20,20,255,MC266,343,358,1",                      # 8 fields
+                     "a1b2,20,20,255,MC 266,343,358", "a1b2,20,20,255,MC.266,343,358",
+                     "a1b2,20,20,255,,343,358", "a1b2,20,20,255,MC266,0,358",
+                     "a1b2,20,20,255,MC266,343,-1", "a1b2,20,20,255,MC266,x,358",
+                     "a1b2,20,20,255,MC266,nan,358", "a1b2,20,20,255,MC266,inf,358"):
             with self.subTest(text=text):
                 self.assertIsNone(parse_meta(text))
 
@@ -148,6 +156,16 @@ class MqttSourceTests(unittest.TestCase):
         source._on_message(None, None, message("smartmat/bbb222/meta", "bbb222,20,12"))
         self.assertEqual(source.state, "ready")
         self.assertEqual(source.shape, (20, 12))
+
+    def test_meta_preset_is_kept_apart_and_follows_the_latest_meta(self):
+        source = make_source("bbb222")
+        self.assertEqual((source.model, source.default_size_mm), (None, None))
+        source._on_message(None, None, message("smartmat/bbb222/meta", "bbb222,20,20,255,MC266,343,358"))
+        source._on_message(None, None, message("smartmat/aaa111/meta", "aaa111,16,15"))
+        self.assertEqual(source.mats, {"bbb222": (20, 20), "aaa111": (16, 15)})
+        self.assertEqual((source.model, source.default_size_mm), ("MC266", (343.0, 358.0)))
+        source._on_message(None, None, message("smartmat/bbb222/meta", "bbb222,20,20,255"))  # preset dropped
+        self.assertEqual((source.model, source.default_size_mm), (None, None))
 
     def test_refused_connection_does_not_subscribe(self):
         source = make_source("bbb222")

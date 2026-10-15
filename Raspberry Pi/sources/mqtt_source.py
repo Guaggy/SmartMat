@@ -1,5 +1,7 @@
 """Reads frames from the ESP32 mats over MQTT"""
 
+import math
+import re
 import threading
 
 import paho.mqtt.client as mqtt
@@ -23,22 +25,32 @@ def parse_frame(payload):
 
 
 def parse_meta(text):
-    """Convert "<chip_id>,<rows>,<cols>[,<value_max>]" to (chip_id, rows, cols, value_max), None if invalid.
+    """Convert a meta message to (chip_id, rows, cols, value_max, model, size_mm); None if invalid.
 
-    Without value_max (the resistive firmware) the mat already sends 0-1000.
+    Accepted forms: "<chip_id>,<rows>,<cols>" (resistive firmware, value_max 1000),
+    "<chip_id>,<rows>,<cols>,<value_max>" and
+    "<chip_id>,<rows>,<cols>,<value_max>,<model>,<width_mm>,<height_mm>".
+    model / size_mm are None for the shorter forms (a preset the mat does not announce).
     """
 
     pieces = [piece.strip() for piece in text.split(",")]
-    if len(pieces) not in (3, 4) or not pieces[0].isalnum():  # isalnum also keeps topic wildcards out
+    if len(pieces) not in (3, 4, 7) or not pieces[0].isalnum():  # isalnum also keeps topic wildcards out
         return None
+    model = size_mm = None
     try:
         rows, cols = int(pieces[1]), int(pieces[2])
-        value_max = int(pieces[3]) if len(pieces) == 4 else VALUE_MAX_DEFAULT
+        value_max = int(pieces[3]) if len(pieces) > 3 else VALUE_MAX_DEFAULT
+        if len(pieces) == 7:
+            model = pieces[4]
+            size_mm = (float(pieces[5]), float(pieces[6]))
     except ValueError:
         return None
     if not (1 <= rows <= MAX_GRID_SIDE and 1 <= cols <= MAX_GRID_SIDE) or value_max < 1:
         return None
-    return pieces[0], rows, cols, value_max
+    if model is not None and (not re.fullmatch(r"[A-Za-z0-9_-]+", model)
+                              or not all(math.isfinite(side) and side > 0 for side in size_mm)):
+        return None
+    return pieces[0], rows, cols, value_max, model, size_mm
 
 
 class MqttSource:
@@ -51,6 +63,7 @@ class MqttSource:
         self.chip_id = chip_id
         self.mats = {}  # chip_id -> (rows, cols) for every mat the broker has metadata for
         self.value_maxes = {}  # chip_id -> raw full scale (kept apart so mats stays (rows, cols))
+        self.presets = {}  # chip_id -> (model, (width_mm, height_mm)) for mats whose meta announces one
         self.latest = LatestFrame()
         self.quality = SourceQuality()
         self._connected = False
@@ -71,6 +84,16 @@ class MqttSource:
     def value_max(self):
         """Raw full scale reported by the selected mat"""
         return self.value_maxes.get(self.chip_id, VALUE_MAX_DEFAULT)
+
+    @property
+    def model(self):
+        """Model name the selected mat announces in its meta, None if it does not"""
+        return self.presets.get(self.chip_id, (None, None))[0]
+
+    @property
+    def default_size_mm(self):
+        """Sensing size (width, height) mm the selected mat announces, None if it does not"""
+        return self.presets.get(self.chip_id, (None, None))[1]
 
     @property
     def mat_id(self):
@@ -105,6 +128,10 @@ class MqttSource:
             if meta is not None and message.topic == f"{TOPIC_PREFIX}/{meta[0]}/meta":
                 self.value_maxes[meta[0]] = meta[3]
                 self.mats[meta[0]] = meta[1:3]
+                if meta[4] is None:
+                    self.presets.pop(meta[0], None)  # newer meta without a preset replaces an older one
+                else:
+                    self.presets[meta[0]] = meta[4:6]
                 if meta[0] == self.chip_id:
                     self._meta_seen.set()
             return

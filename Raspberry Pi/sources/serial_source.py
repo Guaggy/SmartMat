@@ -28,9 +28,9 @@ DEFAULT_SHAPE = (config.TOTAL_ROWS, config.TOTAL_COLS)  # config.py's own size (
 # +/-15 %), not suitable for weighing. size_mm was measured from the datasheet drawing (see notes.md), approximate.
 PROFILES = {
     TEXT_PROFILE: {"baud": BAUD_RATE, "shape": None, "value_max": VALUE_MAX_DEFAULT, "mat_id": None,
-                   "model": None, "size_mm": None},
+                   "vendor": None, "model": None, "size_mm": None},
     MAXRAYS_PROFILE: {"baud": 921600, "shape": (20, 20), "value_max": 255, "mat_id": "maxrays-usb",
-                      "model": "MC266", "size_mm": (343.0, 358.0)},
+                      "vendor": "Maxrays", "model": "MC266", "size_mm": (343.0, 358.0)},
 }
 
 Port = namedtuple("Port", "device label")
@@ -135,7 +135,7 @@ class SerialSource:
         self.shape = spec["shape"] or DEFAULT_SHAPE
         self.value_max = spec["value_max"]
         self.mat_id = spec["mat_id"] or port
-        self.model, self.default_size_mm = spec["model"], spec["size_mm"]  # preset (None for the text profile)
+        self.vendor, self.model, self.default_size_mm = spec["vendor"], spec["model"], spec["size_mm"]  # preset (None for the text profile)
         self.latest = LatestFrame()
         self.quality = SourceQuality()
         self.decoder = MaxraysDecoder(*self.shape) if profile == MAXRAYS_PROFILE else None

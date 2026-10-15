@@ -106,8 +106,11 @@ range-checks raw units against its own `value_max` and scales to 0-1000 once,
 right before `latest.set` (the app range stays 0-1000 everywhere after that).
 `MqttSource(chip_id)` streams one mat (`smartmat/<chip_id>/frame`) and will not
 start without that mat's retained meta message
-(`<chip_id>,<rows>,<cols>[,<value_max>]`, 3 fields = 1000); `mats` stays
-`{chip_id: (rows, cols)}`, value_max lives in `value_maxes`. `MqttSource()`
+(`parse_meta` accepts exactly three forms: `<chip_id>,<rows>,<cols>` (value_max 1000, resistive firmware),
+`...,<value_max>` and `<chip_id>,<rows>,<cols>,<value_max>,<model>,<width_mm>,<height_mm>`, e.g.
+`a1b2c3d4e5f6,20,20,255,MC266,343,358`; 5, 6 or 8+ fields, bad numbers, a model with anything but
+letters/digits/`_`/`-`, or non-positive sizes are invalid); `mats` stays `{chip_id: (rows, cols)}`, value_max lives in
+`value_maxes`, the announced preset in `presets` (`model` / `default_size_mm` properties, same names as SerialSource). `MqttSource()`
 with no chip ID only listens on `smartmat/+/meta` to fill the device list.
 `SerialSource(port, profile)` picks a `PROFILES` entry: "ESP32 text (115200)"
 (config grid, value_max 1000, mat_id = port) or "Maxrays 20x20 (921600)"
@@ -137,8 +140,10 @@ the orientation, applies the *oriented* shape (so the first frame through `_orie
 always `_reset_calibration()` and, if the file's grid shape matches, puts its state back. So a real mat never
 inherits another mat's tare; a mat without a (matching) profile starts clean and keeps the current orientation.
 The profile also carries `size_mm` (the mat's physical sensing size, width x height as built; old profiles without it load
-fine and fall back to the source's preset `default_size_mm` (Maxrays MC266), then `config.MAT_WIDTH_MM/MAT_HEIGHT_MM`, then
-the per-cell `CELL_*_MM`). The calibration window shows which profile is active. Design: `docs/superpowers/specs/2026-10-15-per-mat-profiles-design.md`.
+fine and fall back to the source's preset `default_size_mm` (Maxrays MC266, or the MQTT meta's size), then `config.MAT_WIDTH_MM/MAT_HEIGHT_MM`, then
+the per-cell `CELL_*_MM`). Only a size the user typed ("Mat size...") or that is already in the profile is saved
+(`DesktopApp._user_size_mm`); a preset size is never written, so a later firmware/Python preset change takes effect.
+The About panel shows "Mat: <vendor> <model>" (MQTT: just the model). The calibration window shows which profile is active. Design: `docs/superpowers/specs/2026-10-15-per-mat-profiles-design.md`.
 
 Mat size / load estimate: `DesktopApp.mat_size_mm` ("Mat size..." button under the Estimated load line, kept in the mat's profile) feeds ONE
 `cell_size_mm` / `cell_area_m2` property (`processing/calibration.cell_size_mm`: width / cols, height / rows of the oriented
@@ -208,7 +213,7 @@ features, what's still to build, and what's already shipped). Don't copy
 that list into this file - it drifts. As of 2026-10-08: multi-mat MQTT,
 custom indices, patient-detected, the ROI rework, the web dashboard, and the
 Tier 1/2 bounded-polish + calibration-rework batch are all built and tested
-(147 tests passing at the time; 218 now). Open: the "Ignore signal" display bug, the
+(147 tests passing at the time; 223 now). Open: the "Ignore signal" display bug, the
 `user_guide.md` decision, the web dashboard's per-mat background listener,
 body-part recognition (deliberately not
 started).
