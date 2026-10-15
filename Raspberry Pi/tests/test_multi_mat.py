@@ -135,7 +135,8 @@ class MqttSourceTests(unittest.TestCase):
     def test_discovery_lists_every_mat_with_valid_meta(self):
         source = make_source()
         connect(source)
-        source._client.subscribe.assert_called_once_with("smartmat/+/meta")
+        self.assertEqual([call.args[0] for call in source._client.subscribe.call_args_list],
+                         ["smartmat/+/meta", "smartmat/+/status"])
         source._on_message(None, None, message("smartmat/aaa111/meta", "aaa111,16,15"))
         source._on_message(None, None, message("smartmat/bbb222/meta", "bbb222,20,12"))
         source._on_message(None, None, message("smartmat/ccc333/meta", "garbage"))
@@ -148,7 +149,7 @@ class MqttSourceTests(unittest.TestCase):
         self.assertEqual(source.state, "connecting")
         connect(source)
         self.assertEqual([call.args[0] for call in source._client.subscribe.call_args_list],
-                         ["smartmat/+/meta", "smartmat/bbb222/frame"])
+                         ["smartmat/+/meta", "smartmat/+/status", "smartmat/bbb222/frame"])
         self.assertEqual(source.state, "awaiting_meta")
         self.assertIsNone(source.shape)
         source._on_message(None, None, message("smartmat/aaa111/meta", "aaa111,16,15"))
@@ -166,6 +167,17 @@ class MqttSourceTests(unittest.TestCase):
         self.assertEqual((source.model, source.default_size_mm), ("MC266", (343.0, 358.0)))
         source._on_message(None, None, message("smartmat/bbb222/meta", "bbb222,20,20,255"))  # preset dropped
         self.assertEqual((source.model, source.default_size_mm), (None, None))
+
+    def test_status_topic_tracks_online_offline_and_ignores_anything_else(self):
+        source = make_source()
+        source._on_message(None, None, message("smartmat/aaa111/status", "online", retain=True))
+        source._on_message(None, None, message("smartmat/bbb222/status", "offline", retain=True))
+        source._on_message(None, None, message("smartmat/ccc333/status", "rebooting"))
+        source._on_message(None, None, message("smartmat/a/b/status", "online"))
+        self.assertEqual(source.status, {"aaa111": "online", "bbb222": "offline"})
+        source._on_message(None, None, message("smartmat/bbb222/status", "online"))
+        self.assertEqual(source.status["bbb222"], "online")
+        self.assertEqual(source.mats, {})
 
     def test_refused_connection_does_not_subscribe(self):
         source = make_source("bbb222")
@@ -262,6 +274,7 @@ class FakeMqttSource:
     """Stands in for MqttSource so the GUI tests need no broker"""
 
     mats = {"aaa111": (20, 12), "bbb222": (16, 15)}
+    status = {}
 
     def __init__(self, chip_id=None):
         self.chip_id = chip_id
@@ -302,6 +315,16 @@ class DesktopMatTests(unittest.TestCase):
         self.show_mats()
         self.assertEqual(list(self.app.device_menu.cget("values")), ["aaa111", "Bed"])
         self.assertEqual(self.app.device_var.get(), "aaa111")
+
+    def test_offline_mat_is_marked_in_the_list_and_still_selectable(self):
+        self.show_mats()
+        FakeMqttSource.status = {"aaa111": "offline", "bbb222": "online"}
+        self.addCleanup(FakeMqttSource.status.clear)
+        self.app._sync_mats()
+        self.assertEqual(list(self.app.device_menu.cget("values")), ["aaa111 (offline)", "Bed"])
+        self.assertEqual(self.app.device_var.get(), "aaa111 (offline)")   # same mat stays selected
+        self.app._connect()
+        self.assertEqual(self.app.source.chip_id, "aaa111")
 
     def test_rename_relabels_at_once_and_is_saved(self):
         self.show_mats()

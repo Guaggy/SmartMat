@@ -64,6 +64,7 @@ class MqttSource:
         self.mats = {}  # chip_id -> (rows, cols) for every mat the broker has metadata for
         self.value_maxes = {}  # chip_id -> raw full scale (kept apart so mats stays (rows, cols))
         self.presets = {}  # chip_id -> (model, (width_mm, height_mm)) for mats whose meta announces one
+        self.status = {}  # chip_id -> "online" / "offline" (retained status topic; resistive boards have none)
         self.latest = LatestFrame()
         self.quality = SourceQuality()
         self._connected = False
@@ -115,6 +116,7 @@ class MqttSource:
         self._connected = True
         print(f"Connected to {config.broker_host}:{config.broker_port}")
         client.subscribe(f"{TOPIC_PREFIX}/+/meta")  # retained, so known mats arrive right away
+        client.subscribe(f"{TOPIC_PREFIX}/+/status")  # retained online/offline (ESP32_China firmware)
         if self.chip_id is not None:
             client.subscribe(f"{TOPIC_PREFIX}/{self.chip_id}/frame")
 
@@ -123,6 +125,12 @@ class MqttSource:
             text = message.payload.decode("ascii")
         except UnicodeDecodeError:
             text = None
+        if message.topic.endswith("/status"):
+            parts = message.topic.split("/")
+            if len(parts) == 3 and parts[0] == TOPIC_PREFIX and parts[1].isalnum() and text is not None:
+                if text.strip() in ("online", "offline"):
+                    self.status[parts[1]] = text.strip()
+            return
         if message.topic.endswith("/meta"):
             meta = parse_meta(text or "")
             if meta is not None and message.topic == f"{TOPIC_PREFIX}/{meta[0]}/meta":

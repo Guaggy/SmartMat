@@ -125,6 +125,7 @@ class DesktopApp:
         self.mat_names = load_mat_names()  # chip id -> nickname
         self._mats = {}                    # chip id -> (rows, cols), as last shown in the device list
         self._mat_ids = {}                 # device-list label -> chip id
+        self._status = {}                  # chip id -> "online" / "offline", as last shown in the device list
         self._discovery = None             # MqttSource that only listens for mats' metadata
         self.calibration = Calibration()
         self.pressure_calibration = PressureCalibration.default()
@@ -630,7 +631,8 @@ class DesktopApp:
                 except Exception as error:
                     self.status_var.set(f"Could not look for mats: {error}")
             selected = self._mat_ids.get(previous)
-            self._mat_ids = mat_labels(self._mats, self.mat_names)
+            self._mat_ids = {label + (" (offline)" if self._status.get(chip_id) == "offline" else ""): chip_id
+                             for label, chip_id in mat_labels(self._mats, self.mat_names).items()}
             values = list(self._mat_ids)
             # keep the same mat selected even if it was just renamed
             default = next((label for label, chip_id in self._mat_ids.items() if chip_id == selected),
@@ -648,8 +650,10 @@ class DesktopApp:
 
     def _sync_mats(self):
         """Relist the MQTT devices when the broker has reported a new or changed mat"""
-        if self._discovery is not None and self._discovery.mats != self._mats:
+        if self._discovery is not None and (self._discovery.mats != self._mats
+                                            or self._discovery.status != self._status):
             self._mats = dict(self._discovery.mats)
+            self._status = dict(self._discovery.status)
             self._publish_web(force=True)
             if self.source_var.get() == "MQTT":
                 self._refresh_devices()
