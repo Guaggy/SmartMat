@@ -98,6 +98,11 @@ start without that mat's retained meta message
 (`<chip_id>,<rows>,<cols>[,<value_max>]`, 3 fields = 1000); `mats` stays
 `{chip_id: (rows, cols)}`, value_max lives in `value_maxes`. `MqttSource()`
 with no chip ID only listens on `smartmat/+/meta` to fill the device list.
+`SerialSource(port, profile)` picks a `PROFILES` entry: "ESP32 text (115200)"
+(config grid, value_max 1000, mat_id = port) or "Maxrays 20x20 (921600)"
+(`sources/maxrays.py` decoder, 20x20, value_max 255, mat_id `maxrays-usb`). The
+desktop shows a Protocol dropdown for Serial and applies the source's shape
+before connecting; `list_ports()` returns `Port(device, label)`.
 
 `general.py` - frame parsing (`parse_frame_text_with_reason(text, value_max)`),
 `scale_to_app_range(grid, value_max)`, plus the mat nickname registry

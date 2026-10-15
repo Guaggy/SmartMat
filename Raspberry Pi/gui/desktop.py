@@ -16,7 +16,7 @@ from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 - registers the 3D project
 
 from config import (
     VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT,
-    BAUD_RATE, WEB_PORT, STALE_AFTER_S, RECONNECT_INTERVAL_S,
+    WEB_PORT, STALE_AFTER_S, RECONNECT_INTERVAL_S,
     CELL_WIDTH_MM, CELL_HEIGHT_MM, CONTACT_THRESHOLD_KPA,
     PRESSURE_DISPLAY_MAX_KPA, HISTORY_MAX_FRAMES,
     DISPLAY_SCALE, PRESSURE_CONTOUR_LEVELS_KPA, RELATIVE_CONTOUR_LEVELS,
@@ -42,7 +42,7 @@ from processing.temporal import TemporalAnalysis
 from processing.timeline import EventTimeline
 from processing.statistics import contact_mask, pressure_statistics, weighted_center
 from sources.mqtt_source import MqttSource
-from sources.serial_source import SerialSource, list_ports
+from sources.serial_source import PROFILES, TEXT_PROFILE, SerialSource, list_ports
 from sources.simulated_source import SCENARIOS, SimulatedSource
 from gui import web
 from gui.calibration_window import CalibrationWindow
@@ -244,6 +244,12 @@ class DesktopApp:
         self.device_var = tk.StringVar()
         self.device_menu = ttk.Combobox(bar, textvariable=self.device_var, state="readonly", width=22)
         self.device_menu.pack(side=tk.LEFT, padx=(0, 8))
+        # Serial only: shown by _refresh_devices, packed between the device menu and Rename
+        self.protocol_label = ttk.Label(bar, text="Protocol:")
+        self.protocol_var = tk.StringVar(value=TEXT_PROFILE)
+        self.protocol_menu = ttk.Combobox(bar, textvariable=self.protocol_var, state="readonly",
+                                          values=list(PROFILES), width=22)
+        self.protocol_menu.bind("<<ComboboxSelected>>", lambda _event: self.baud_var.set(self._baud_text()))
         self.rename_button = ttk.Button(bar, text="Rename...", command=self._rename_mat)
         self.rename_button.pack(side=tk.LEFT, padx=(0, 8))
 
@@ -385,7 +391,8 @@ class DesktopApp:
         self._info_line(panel, "ESP32", header=True)
         self.grid_info_var = tk.StringVar(value=f"Grid: {app_config.TOTAL_ROWS} x {app_config.TOTAL_COLS}")
         ttk.Label(panel, textvariable=self.grid_info_var).pack(anchor="w")
-        self._info_line(panel, f"Baud rate: {BAUD_RATE}")
+        self.baud_var = tk.StringVar(value=self._baud_text())
+        ttk.Label(panel, textvariable=self.baud_var).pack(anchor="w")
         self._info_line(panel, f"Value range: {VALUE_MIN_DEFAULT}-{VALUE_MAX_DEFAULT}")
 
         self._info_line(panel, "App", header=True, top_pad=8)
@@ -398,6 +405,9 @@ class DesktopApp:
         else:
             self._info_line(panel, f"Cell: {CELL_WIDTH_MM} x {CELL_HEIGHT_MM} mm")
 
+    def _baud_text(self):
+        return f"Baud rate: {PROFILES[self.protocol_var.get()]['baud']}"
+
     @staticmethod
     def _info_line(parent, text, header=False, top_pad=0):
         kwargs = {"font": ("", 9, "bold")} if header else {}
@@ -408,9 +418,15 @@ class DesktopApp:
         source = self.source_var.get()
         previous = self.device_var.get()
         self.rename_button.state(["!disabled" if source == "MQTT" else "disabled"])
+        if source != "Serial":
+            self.protocol_label.pack_forget()
+            self.protocol_menu.pack_forget()
 
         if source == "Serial":
-            values = [port.device for port in list_ports()]
+            self.protocol_label.pack(side=tk.LEFT, after=self.device_menu)
+            self.protocol_menu.pack(side=tk.LEFT, padx=(0, 8), after=self.protocol_label)
+            self._port_devices = {port.label: port.device for port in list_ports()}  # label -> device
+            values = list(self._port_devices)
             default = values[0] if values else ""
         elif source == "MQTT":
             if self._discovery is None:
@@ -588,13 +604,17 @@ class DesktopApp:
 
         try:
             recording = None
+            serial_source = None
             if source_name == "Simulated" and device and not device.startswith("Synthetic:"):
                 recording = load_session(RECORDINGS_DIR / device, with_timestamps=True, with_details=True)
-            if source_name != "MQTT":
-                # MQTT mats report their size after start(); a recording carries its own
-                self._apply_grid_shape(*(recording[0][0].shape if recording else DEFAULT_SHAPE))
             if source_name == "Serial":
-                self.source = SerialSource(device)
+                serial_source = SerialSource(self._port_devices.get(device, device), self.protocol_var.get())
+            if source_name != "MQTT":
+                # MQTT mats report their size after start(); a recording carries its own; Serial's profile does
+                self._apply_grid_shape(*(serial_source.shape if serial_source else
+                                         recording[0][0].shape if recording else DEFAULT_SHAPE))
+            if serial_source:
+                self.source = serial_source
             elif source_name == "MQTT":
                 if device not in self._mat_ids:
                     raise ValueError("no mat selected (none has reported to the broker yet)")
