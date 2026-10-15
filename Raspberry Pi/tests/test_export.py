@@ -69,6 +69,22 @@ class RecordingTests(unittest.TestCase):
         self.assertEqual(table[1][1:], ["0.0", "1.0", "2.0", "3.0", "4.0", "", "6.0"])
         self.assertEqual(table[2][1:], ["0.5", "7.0", "8.0", "9.0", "10.0", "11.0", "12.0"])
 
+    def test_frames_without_timestamps_and_legacy_files_still_export(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source, target = self.write(folder, frames=[{"timestamp": 100.0, "raw": [[1, 2, 3], [4, 5, 6]]},
+                                                        {"raw": [[7, 8, 9], [10, 11, 12]]}])
+            self.assertEqual(recording_to_csv(source, target), 2)
+            table = read_csv(target)
+            self.assertNotEqual(table[1][0], "")
+            self.assertEqual(table[2][:3], ["", "0.1", "7.0"])
+            source.write_text(json.dumps({"frames": [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]}),
+                              encoding="utf-8")  # legacy: no format, bare grids
+            self.assertEqual(recording_to_csv(source, target), 2)
+            table = read_csv(target)
+        self.assertEqual(len(table[0]), 8)
+        self.assertEqual(table[1][:3], ["", "0.0", "1.0"])
+        self.assertEqual(table[2][:3], ["", "0.1", "7.0"])
+
     def test_other_files_are_rejected(self):
         with tempfile.TemporaryDirectory() as folder:
             source, target = self.write(folder, format="something_else")
