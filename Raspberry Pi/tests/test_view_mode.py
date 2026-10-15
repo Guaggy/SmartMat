@@ -75,7 +75,7 @@ class ViewModeTests(unittest.TestCase):
 
     def test_header_title_and_about_links(self):
         app = self.app
-        self.assertEqual(app.root.title(), "SmartMat")
+        self.assertEqual(app.root.title(), f"SmartMat {branding.VERSION}")
         self.assertTrue((resource_path("assets/logo.png")).is_file())
         self.assertTrue(app.header.winfo_manager())                 # visible in both views
         self.show("Simple")

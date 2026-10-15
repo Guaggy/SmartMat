@@ -17,7 +17,7 @@ from matplotlib.figure import Figure
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 - registers the 3D projection
 
 from branding import (ACCENT, COMPANY_NAME, CONTACT_EMAIL, DARK, DISCLAIMER, HEADER_BG, MUTED, PRODUCT_NAME,
-                      WEBSITE_URL)
+                      VERSION, WEBSITE_URL)
 from paths import resource_path
 from config import (
     VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT,
@@ -114,7 +114,7 @@ class DesktopApp:
 
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title(PRODUCT_NAME)
+        self.root.title(f"{PRODUCT_NAME} {VERSION}")
         self.root.geometry("1150x750")
 
         self.source = None
@@ -290,6 +290,7 @@ class DesktopApp:
         frame = ttk.Frame(window, padding=16)
         frame.pack()
         ttk.Label(frame, text=PRODUCT_NAME, font=("", 14, "bold")).pack(anchor="w")
+        ttk.Label(frame, text=f"Version {VERSION}").pack(anchor="w")
         ttk.Label(frame, text=f"by {COMPANY_NAME}").pack(anchor="w", pady=(0, 8))
         for text, url in ((WEBSITE_URL, WEBSITE_URL), (CONTACT_EMAIL, f"mailto:{CONTACT_EMAIL}")):
             self._link(frame, text, url)

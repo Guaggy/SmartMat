@@ -5,6 +5,7 @@ from gui.desktop import DesktopApp
 
 def selftest():
     """Headless smoke test of a frozen build: `SmartMat.exe --selftest` writes selftest.txt next to the exe."""
+    import branding
     import config
     import general
     from gui import web
@@ -19,7 +20,7 @@ def selftest():
     finally:
         server.stop()
     (paths.APP_DIR / "selftest.txt").write_text(
-        f"frozen={paths.FROZEN}\nconfig={config.__file__}\nmats={general.MATS_FILE}\n"
+        f"version={branding.VERSION}\nfrozen={paths.FROZEN}\nconfig={config.__file__}\nmats={general.MATS_FILE}\n"
         f"recordings={RECORDINGS_DIR}\nweb /api/mats={api}\n", encoding="utf-8")
 
 def main():

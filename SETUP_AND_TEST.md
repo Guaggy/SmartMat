@@ -266,8 +266,8 @@ or another PC on the same network. Only the mat currently open in the desktop ap
   +/-10 % at best, so the kg readout stays "indicative").
 - Ask the vendor (amy@maxrays.cn) for the protocol document and what "Send to Serial Port" does.
 - Product work for the S3: Wi-Fi provisioning (captive portal instead of `secrets.h`), OTA updates.
-- Contact email shown in the app is `hello@verdian.medical` (the address the site lists), set in
-  `Raspberry Pi/branding.py`; change it if another is right.
+- Contact email shown in the app is `contact@verdianmedical.com` (confirmed), set in
+  `Raspberry Pi/branding.py` together with `VERSION` (shown in About, the window title and `selftest.txt`).
 - **Remote access to the Pi** (Trinity network), after the test [unverified commands]:
   Raspberry Pi Connect for desktop/shell access (`sudo apt install rpi-connect`, then `rpi-connect on` and
   `rpi-connect signin`; see the Raspberry Pi docs), and Tailscale for the tailnet:
