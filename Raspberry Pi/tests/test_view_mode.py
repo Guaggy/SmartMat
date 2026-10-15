@@ -4,7 +4,9 @@ import tkinter as tk
 import unittest
 from unittest import mock
 
+import branding
 import config
+from paths import resource_path
 
 
 class ViewModeTests(unittest.TestCase):
@@ -70,6 +72,25 @@ class ViewModeTests(unittest.TestCase):
 
     def test_hotspot_text(self):
         self.assertEqual(self.app._hotspot_text(), "Hotspots: -")
+
+    def test_header_title_and_about_links(self):
+        app = self.app
+        self.assertEqual(app.root.title(), "SmartMat")
+        self.assertTrue((resource_path("assets/logo.png")).is_file())
+        self.assertTrue(app.header.winfo_manager())                 # visible in both views
+        self.show("Simple")
+        self.assertTrue(app.header.winfo_manager())
+        app._open_about()
+        texts = [w.cget("text") for w in app.about_window.winfo_children()[0].winfo_children()]
+        self.assertIn(branding.WEBSITE_URL, texts)
+        self.assertIn(branding.CONTACT_EMAIL, texts)
+        self.assertIn(branding.DISCLAIMER, texts)
+        link = next(w for w in app.about_window.winfo_children()[0].winfo_children()
+                    if w.cget("text") == branding.CONTACT_EMAIL)
+        with mock.patch("gui.desktop.webbrowser.open") as opened:
+            link.event_generate("<Button-1>")
+            app.root.update()
+        opened.assert_called_once_with("mailto:" + branding.CONTACT_EMAIL)
 
 
 if __name__ == "__main__":

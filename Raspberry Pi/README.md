@@ -29,7 +29,7 @@ The **View: Simple | Advanced** switch (top right) hides everything but connect,
 build_exe.bat
 ```
 
-Produces `dist\SmartMat\SmartMat.exe` (PyInstaller onedir, windowed) and `dist\SmartMat.zip`. Config, `mats.json`, `recordings\`, calibration files and raw captures live next to the exe; on first run `config.py` is copied there from the bundled `config.example.py`. `SmartMat.exe --selftest` writes `selftest.txt` next to the exe (paths, web API answer) without opening the GUI.
+Produces `dist\SmartMat\SmartMat.exe` (PyInstaller onedir, windowed) and `dist\SmartMat.zip`. The logo in `assets\` is bundled into the exe. Config, `mats.json`, `recordings\`, calibration files and raw captures live next to the exe; on first run `config.py` is copied there from the bundled `config.example.py`. `SmartMat.exe --selftest` writes `selftest.txt` next to the exe (paths, web API answer) without opening the GUI.
 
 ## Not a medical device
 

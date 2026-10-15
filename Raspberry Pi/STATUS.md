@@ -156,6 +156,13 @@ and copied from the bundled `config.example.py` on first run). Build: `build_exe
 (onedir, windowed) -> `dist\SmartMat\SmartMat.exe` + `dist\SmartMat.zip`; `SmartMat.exe --selftest` is a headless
 smoke test (writes `selftest.txt` next to the exe). Source-tree behaviour is unchanged.
 
+`branding.py` - product/company names, website, contact address (the one the site lists), disclaimer text and the accent
+colours taken from verdianmedical.com; `assets/logo.png` is the site's header icon. The header strip (logo, "SmartMat - by
+Verdian Medical", About button, View switch) is `DesktopApp._build_header`; the accent colours only touch the header, the
+Connect/Record buttons (`Accent.TButton`) and the View switch - never the heatmap or index/occupancy colours. Bundled read-only
+files (`assets/`) are found with `paths.resource_path()` (frozen: inside the PyInstaller bundle; `SmartMat.spec` datas), user
+data still goes through `APP_DIR`. Missing logo = text-only header.
+
 `config.py` (gitignored, copy from `config.example.py`) holds every
 threshold/constant used by the modules above, and the default grid size.
 `config.TOTAL_ROWS`/`TOTAL_COLS` are overwritten at runtime when an MQTT mat of

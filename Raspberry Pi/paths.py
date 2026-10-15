@@ -12,3 +12,10 @@ if FROZEN:
     if not (APP_DIR / "config.py").exists():
         shutil.copy(Path(sys._MEIPASS) / "config.example.py", APP_DIR / "config.py")
     sys.path.insert(0, str(APP_DIR))
+
+RESOURCE_DIR = Path(sys._MEIPASS) if FROZEN else APP_DIR  # bundled read-only data (assets/); APP_DIR is user data
+
+
+def resource_path(name):
+    """A file shipped with the app (not user data): next to the sources, or inside the frozen bundle"""
+    return RESOURCE_DIR / name

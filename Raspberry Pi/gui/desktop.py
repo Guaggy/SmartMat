@@ -3,6 +3,7 @@
 import copy
 import socket
 import time
+import webbrowser
 from pathlib import Path
 import tkinter as tk
 from collections import deque
@@ -15,6 +16,9 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.figure import Figure
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 - registers the 3D projection
 
+from branding import (ACCENT, COMPANY_NAME, CONTACT_EMAIL, DARK, DISCLAIMER, HEADER_BG, MUTED, PRODUCT_NAME,
+                      WEBSITE_URL)
+from paths import resource_path
 from config import (
     VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT,
     WEB_PORT, STALE_AFTER_S, RECONNECT_INTERVAL_S,
@@ -110,7 +114,7 @@ class DesktopApp:
 
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("SmartMat")
+        self.root.title(PRODUCT_NAME)
         self.root.geometry("1150x750")
 
         self.source = None
@@ -152,6 +156,7 @@ class DesktopApp:
         self.show_hotspot_threshold = False
         self.engineering_window = None
         self.help_window = None
+        self.about_window = None
         self._current_analysis_settings = None
         self._replay_policy = "Reproduce recording"
         self.timeline = EventTimeline()
@@ -243,17 +248,52 @@ class DesktopApp:
     # ---- window layout
 
     def _build_header(self):
-        """Top strip: the Simple / Advanced switch (Simple hides everything registered with _adv)"""
-        self.header = ttk.Frame(self.root, padding=(8, 4, 8, 0))
+        """Top strip: logo and name, About, and the Simple / Advanced switch (Simple hides what _adv registered)"""
+        style = ttk.Style(self.root)
+        style.configure("Header.TFrame", background=HEADER_BG)
+        style.configure("Header.TLabel", background=HEADER_BG, foreground=DARK)
+        style.configure("Accent.TButton", foreground=ACCENT, font=("", 9, "bold"))  # primary actions
+        style.configure("View.Toolbutton", foreground=MUTED)
+        style.map("View.Toolbutton", foreground=[("selected", ACCENT)])
+
+        self.header = ttk.Frame(self.root, style="Header.TFrame", padding=(8, 4))
         self.header.pack(side=tk.TOP, fill=tk.X)
-        switch = ttk.Frame(self.header)
+        try:
+            self._logo = tk.PhotoImage(file=str(resource_path("assets/logo.png")))
+            self.root.iconphoto(True, self._logo)
+            self._header_logo = self._logo.subsample(2)
+            ttk.Label(self.header, image=self._header_logo, style="Header.TLabel").pack(side=tk.LEFT, padx=(0, 6))
+        except tk.TclError:
+            pass  # no logo file: the text header still works
+        ttk.Label(self.header, text=f"{PRODUCT_NAME} - by {COMPANY_NAME}", style="Header.TLabel",
+                  font=("", 11, "bold")).pack(side=tk.LEFT)
+
+        switch = ttk.Frame(self.header, style="Header.TFrame")
         switch.pack(side=tk.RIGHT)
-        ttk.Label(switch, text="View:").pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Button(switch, text="About", command=self._open_about).pack(side=tk.LEFT, padx=(0, 12))
+        ttk.Label(switch, text="View:", style="Header.TLabel").pack(side=tk.LEFT, padx=(0, 4))
         self.view_var = tk.StringVar(
             value="Simple" if getattr(app_config, "START_IN_SIMPLE_MODE", False) else "Advanced")
         for label in ("Simple", "Advanced"):
-            ttk.Radiobutton(switch, text=label, value=label, variable=self.view_var, style="Toolbutton",
+            ttk.Radiobutton(switch, text=label, value=label, variable=self.view_var, style="View.Toolbutton",
                             command=self._apply_view).pack(side=tk.LEFT)
+
+    def _open_about(self):
+        if self.about_window is not None and self.about_window.winfo_exists():
+            self.about_window.lift()
+            return
+        window = self.about_window = tk.Toplevel(self.root)
+        window.title(f"About {PRODUCT_NAME}")
+        window.resizable(False, False)
+        frame = ttk.Frame(window, padding=16)
+        frame.pack()
+        ttk.Label(frame, text=PRODUCT_NAME, font=("", 14, "bold")).pack(anchor="w")
+        ttk.Label(frame, text=f"by {COMPANY_NAME}").pack(anchor="w", pady=(0, 8))
+        for text, url in ((WEBSITE_URL, WEBSITE_URL), (CONTACT_EMAIL, f"mailto:{CONTACT_EMAIL}")):
+            link = ttk.Label(frame, text=text, foreground=ACCENT, cursor="hand2")
+            link.pack(anchor="w")
+            link.bind("<Button-1>", lambda _event, url=url: webbrowser.open(url))
+        ttk.Label(frame, text=DISCLAIMER, wraplength=340).pack(anchor="w", pady=(12, 0))
 
     def _adv(self, widget):
         """Mark a widget as Advanced-only (hidden in Simple view); returns it"""
@@ -320,7 +360,7 @@ class DesktopApp:
         self.rename_button.pack(side=tk.LEFT, padx=(0, 8))
         self._adv(self.rename_button)
 
-        ttk.Button(bar, text="Connect", command=self._connect).pack(side=tk.LEFT, padx=(0, 12))
+        ttk.Button(bar, text="Connect", command=self._connect, style="Accent.TButton").pack(side=tk.LEFT, padx=(0, 12))
         ttk.Button(bar, text="Disconnect", command=self._disconnect).pack(side=tk.LEFT, padx=(0, 12))
 
         self.playback_speed_label = ttk.Label(bar, text="Playback:")
@@ -374,7 +414,7 @@ class DesktopApp:
         ttk.Button(bar, text="Tare", command=self._capture_baseline).pack(side=tk.LEFT, padx=(0, 4))
         self._adv(ttk.Button(bar, text="View tare", command=self._view_baseline)).pack(side=tk.LEFT, padx=(0, 12))
 
-        self.record_button = ttk.Button(bar, text="Record", command=self._toggle_recording)
+        self.record_button = ttk.Button(bar, text="Record", command=self._toggle_recording, style="Accent.TButton")
         self.record_button.pack(side=tk.LEFT, padx=(0, 4))
         ttk.Button(bar, text="Export snapshot...", command=self._export_snapshot).pack(side=tk.LEFT, padx=(0, 12))
 
