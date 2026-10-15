@@ -20,3 +20,4 @@
 - Make it possible to save the raw/calibrated/pressure data in a csv or excell file for education or later analysis. Or is this already implemented by the record function.Maybe be able to save png of heatmaps and a snapshot of the current data to cvs or something. 
 - Improove the UI looks and feel. Implement the colours and logo etc from our website: www.verdianmedical.com. Maybe add a link to it and a contact mail etc in the program.  
 - implement method of weighing patient
+- Add clickable link to both web UI links in app
