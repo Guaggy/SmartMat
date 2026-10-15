@@ -110,6 +110,11 @@ class SerialSourceTest(unittest.TestCase):
         self.assertEqual(SerialSource("COM9", MAXRAYS_PROFILE).target_fps, 10)
         self.assertEqual(SerialSource("COM9", TEXT_PROFILE).target_fps, 0)
 
+    def test_bad_target_rate_in_config_falls_back_or_turns_averaging_off(self):
+        for value, expected in [(None, 10), ("abc", 10), (float("nan"), 10), ("5", 5), (0, 0), (-3, 0)]:
+            with mock.patch.object(config, "SERIAL_TARGET_FPS", value, create=True):
+                self.assertEqual(SerialSource("COM9", MAXRAYS_PROFILE).target_fps, expected, value)
+
     def test_maxrays_frames_are_averaged_per_window_without_counting_drops(self):
         now = [10.0]
         source = self.make(MAXRAYS_PROFILE, target_fps=8, clock=lambda: now[0])  # 0.125 s = 8 steps of 1/64 s

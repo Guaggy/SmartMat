@@ -1,5 +1,6 @@
 """Reads frames from a USB-serial mat (resistive ESP32 text, or the Maxrays 20x20 binary stream)"""
 
+import math
 import threading
 import time
 from collections import namedtuple
@@ -124,6 +125,15 @@ class _Tap:
         return data
 
 
+def _target_fps(value, default=10.0):
+    """Config value -> averaging rate: None / not a number -> default, 0 or negative -> 0 (off)"""
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(value, 0.0) if math.isfinite(value) else default
+
+
 class SerialSource:
     """Grids from a USB-serial mat on a background thread, decoded per protocol profile"""
 
@@ -140,7 +150,7 @@ class SerialSource:
         self.quality = SourceQuality()
         self.decoder = MaxraysDecoder(*self.shape) if profile == MAXRAYS_PROFILE else None
         # Maxrays streams ~60 fps but the analysis windows are tuned for ~10: average down to this (0 = off)
-        self.target_fps = getattr(config, "SERIAL_TARGET_FPS", 10) if self.decoder is not None else 0
+        self.target_fps = _target_fps(getattr(config, "SERIAL_TARGET_FPS", 10)) if self.decoder is not None else 0
         self._clock = clock
         self._window = [None, 0.0, 0]  # averaging window: [start time, running sum of raw grids, frame count]
         self._connection = None
