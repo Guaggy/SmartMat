@@ -3,9 +3,10 @@
 import copy
 import socket
 import time
+from pathlib import Path
 import tkinter as tk
 from collections import deque
-from tkinter import simpledialog, ttk
+from tkinter import filedialog, simpledialog, ttk
 
 import numpy as np
 import config as app_config
@@ -29,6 +30,7 @@ from processing.session_events import STATE_EVENTS, apply_state_event, event_is_
 from processing.session_state import initial_session_state
 from processing.settings import apply_settings, capture_settings, default_settings
 from processing.display import interpolate_grid
+from processing.export import write_snapshot_csv
 from processing.frames import orient_grid, process_frame, update_pressure
 from processing.modes import MODES
 from processing.recording import RECORDINGS_DIR, Recorder, load_session
@@ -209,6 +211,7 @@ class DesktopApp:
         self._build_data_bar()
         self._build_options_bar()
         self.status_var = tk.StringVar(value="Not connected")
+        self._notice, self._notice_until = "", 0.0  # one-off message that the live status line must not wipe
         status_bar = ttk.Frame(self.root)
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
         self.occupancy_label = tk.Label(status_bar, fg="white", padx=10)
@@ -313,7 +316,8 @@ class DesktopApp:
         ttk.Button(bar, text="View tare", command=self._view_baseline).pack(side=tk.LEFT, padx=(0, 12))
 
         self.record_button = ttk.Button(bar, text="Record", command=self._toggle_recording)
-        self.record_button.pack(side=tk.LEFT, padx=(0, 12))
+        self.record_button.pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Button(bar, text="Export snapshot...", command=self._export_snapshot).pack(side=tk.LEFT, padx=(0, 12))
 
         # Orientation of live data, applied at ingest (not to recordings, which are saved already oriented)
         ttk.Label(bar, text="Rotate:").pack(side=tk.LEFT)
@@ -1384,6 +1388,25 @@ class DesktopApp:
                 self.recorder = None
                 self.record_button.configure(text="Record")
 
+    def _export_snapshot(self):
+        """Save the current frame as a long-format CSV, plus a PNG of the heatmap beside it"""
+        if self.frame is None:
+            self._notify("No frame yet - nothing to export")
+            return
+        path = filedialog.asksaveasfilename(
+            parent=self.root, title="Export snapshot", defaultextension=".csv",
+            initialfile=f"snapshot_{time.strftime('%Y%m%d_%H%M%S')}.csv", filetypes=[("CSV", "*.csv")])
+        if not path:
+            return
+        png = Path(path).with_suffix(".png")
+        try:
+            write_snapshot_csv(path, self.frame, self.frame_timestamp, getattr(self.source, "mat_id", None))
+            self.figure.savefig(png, dpi=150)
+        except (OSError, ValueError) as error:
+            self._notify(f"Could not export snapshot: {error}")
+            return
+        self._notify(f"Exported snapshot to {path} and {png}")
+
     # ---- local web server
 
     def _toggle_web_ui(self):
@@ -1540,6 +1563,11 @@ class DesktopApp:
         if now - self._last_analysis_draw >= 0.5:
             self._last_analysis_draw = now
             self._refresh_analysis()
+
+    def _notify(self, text, seconds=8.0):
+        """Status-line message that stays in front of the live numbers for a few seconds"""
+        self._notice, self._notice_until = text, time.time() + seconds
+        self.status_var.set(text)
 
     def _update_occupancy(self):
         text, color = OCCUPANCY_LABELS[self.occupancy.occupied]
@@ -1760,6 +1788,8 @@ class DesktopApp:
             valid = grid[np.isfinite(grid)]
             status = (f"avg {valid.mean():.1f}{unit}   max {valid.max():.1f}{unit}   min {valid.min():.1f}{unit}"
                       if valid.size else "No valid sensor values")
+        if time.time() < self._notice_until:
+            prefix = self._notice + "   " + prefix
         self.status_var.set(prefix + ("Difference vs reference | " if difference else "") + status)
 
     def _update_stats(self):

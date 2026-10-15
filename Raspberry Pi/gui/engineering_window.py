@@ -5,6 +5,10 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, ttk
 
+from pathlib import Path
+
+from processing.export import recording_to_csv
+from processing.recording import RECORDINGS_DIR
 from processing.session_summary import session_summary
 from processing.reanalysis import compare_recording
 from gui.index_editor import IndexEditor
@@ -218,6 +222,9 @@ class EngineeringWindow:
         ttk.Button(parent, text="Export analysis summary...", command=self._export).pack(anchor="w", pady=4)
         ttk.Button(parent, text="Compare recorded and current settings",
                    command=self._compare).pack(anchor="w", pady=4)
+        ttk.Button(parent, text="Recording to CSV...", command=self._recording_to_csv).pack(anchor="w", pady=4)
+        self.export_var = tk.StringVar(value="Converts a saved recordings\*.json to a CSV, one row per frame")
+        ttk.Label(parent, textvariable=self.export_var, justify=tk.LEFT, wraplength=790).pack(anchor="w")
         self.compare_var = tk.StringVar(value="Load a recording to compare event counts")
         ttk.Label(parent, textvariable=self.compare_var, justify=tk.LEFT).pack(anchor="w")
         self.session_var = tk.StringVar()
@@ -235,6 +242,24 @@ class EngineeringWindow:
                 self.session_var.set(f"Exported analysis summary to {path}")
             except (OSError, TypeError, ValueError) as error:
                 self.session_var.set(f"Could not export: {error}")
+
+    def _recording_to_csv(self):
+        source = filedialog.askopenfilename(
+            parent=self.window, title="Recording to convert", initialdir=RECORDINGS_DIR,
+            filetypes=[("SmartMat recording", "*.json")])
+        if not source:
+            return
+        path = filedialog.asksaveasfilename(
+            parent=self.window, title="Save CSV as", defaultextension=".csv",
+            initialfile=Path(source).with_suffix(".csv").name, filetypes=[("CSV", "*.csv")])
+        if not path:
+            return
+        try:
+            count = recording_to_csv(source, path)
+        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
+            self.export_var.set(f"Could not convert: {error}")
+            return
+        self.export_var.set(f"Wrote {count} frames to {path} (values as recorded, 0-1000 scale, not kPa)")
 
     def _compare(self):
         source = self.app.source
