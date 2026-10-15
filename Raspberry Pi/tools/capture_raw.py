@@ -5,10 +5,17 @@ from __future__ import annotations
 import argparse
 from datetime import datetime
 from pathlib import Path
+import sys
 import time
 
 import serial
 from serial.tools import list_ports
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # the app folder, so paths imports from anywhere
+try:
+    from paths import APP_DIR  # the app's own data folder, where the desktop app keeps recordings/
+except ImportError:
+    APP_DIR = Path.cwd()
 
 
 def main() -> None:
@@ -28,7 +35,7 @@ def main() -> None:
             print(f"  {port.device}: {port.description}")
         raise SystemExit("Run again with --port COMx")
 
-    output = args.output or Path("recordings") / f"raw_{datetime.now():%Y%m%d_%H%M%S}.bin"
+    output = args.output or APP_DIR / "recordings" / f"raw_{datetime.now():%Y%m%d_%H%M%S}.bin"
     output.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"Capturing {args.seconds:g} s from {args.port} at {args.baud} baud ...")
