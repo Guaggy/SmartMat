@@ -54,6 +54,9 @@ from processing.statistics import (contact_mask, load_estimate_text, pressure_st
 from sources.mqtt_source import MqttSource
 from sources.serial_source import PROFILES, RAW_CAPTURE_S, TEXT_PROFILE, SerialSource, list_ports
 from sources.simulated_source import SCENARIOS, SimulatedSource
+
+DEMO_DEVICE = "Demo: seat take 1"  # entry in the Simulated device list, played from the bundled sample
+DEMO_RECORDING = "samples/seat_take1.json"
 from gui import web
 from gui.calibration_window import CalibrationWindow
 from gui.analysis_window import AnalysisWindow
@@ -164,6 +167,7 @@ class DesktopApp:
         self.about_window = None
         self._current_analysis_settings = None
         self._replay_policy = "Reproduce recording"
+        self._demo_playback = False        # the bundled demo recording is playing (labelled DEMO)
         self.timeline = EventTimeline()
         self.temporal_window = None
         self._source_was_stale = False
@@ -377,6 +381,7 @@ class DesktopApp:
 
         ttk.Button(bar, text="Connect", command=self._connect, style="Accent.TButton").pack(side=tk.LEFT, padx=(0, 12))
         ttk.Button(bar, text="Disconnect", command=self._disconnect).pack(side=tk.LEFT, padx=(0, 12))
+        ttk.Button(bar, text="Load demo recording", command=self._load_demo).pack(side=tk.LEFT, padx=(0, 12))
 
         self.playback_speed_label = ttk.Label(bar, text="Playback:")
         self.playback_speed_var = tk.StringVar(value="1x")
@@ -641,14 +646,16 @@ class DesktopApp:
                 except Exception as error:
                     self.status_var.set(f"Could not look for mats: {error}")
             selected = self._mat_ids.get(previous)
-            self._mat_ids = {label + (" (offline)" if self._status.get(chip_id) == "offline" else ""): chip_id
+            demo_prefix = getattr(app_config, "DEMO_PREFIX", "demo-")  # an older config.py may lack it
+            self._mat_ids = {label + (" (offline)" if self._status.get(chip_id) == "offline" else "")
+                             + (" (demo)" if demo_prefix and chip_id.startswith(demo_prefix) else ""): chip_id
                              for label, chip_id in mat_labels(self._mats, self.mat_names).items()}
             values = list(self._mat_ids)
             # keep the same mat selected even if it was just renamed
             default = next((label for label, chip_id in self._mat_ids.items() if chip_id == selected),
                            values[0] if values else "")
         else:
-            values = [f"Synthetic: {name}" for name in SCENARIOS]
+            values = [f"Synthetic: {name}" for name in SCENARIOS] + [DEMO_DEVICE]
             if RECORDINGS_DIR.exists():
                 values += [path.name for path in RECORDINGS_DIR.iterdir()
                            if path.suffix in (".csv", ".json")]
@@ -1010,7 +1017,8 @@ class DesktopApp:
             recording = None
             serial_source = None
             if source_name == "Simulated" and device and not device.startswith("Synthetic:"):
-                recording = load_session(RECORDINGS_DIR / device, with_timestamps=True, with_details=True)
+                path = resource_path(DEMO_RECORDING) if device == DEMO_DEVICE else RECORDINGS_DIR / device
+                recording = load_session(path, with_timestamps=True, with_details=True)
             if source_name == "Serial":
                 serial_source = SerialSource(self._port_devices.get(device, device), self.protocol_var.get())
             if source_name != "MQTT":
@@ -1068,6 +1076,9 @@ class DesktopApp:
             profile_label = self._load_profile() + self._apply_pending_size(pending_size)
             self.last_frame_time = time.time()
             replay_label = f" | {self._replay_policy}" if getattr(self.source, "is_playback", False) else ""
+            self._demo_playback = device == DEMO_DEVICE and source_name == "Simulated"
+            if self._demo_playback:
+                replay_label += " | DEMO: bundled sample recording, not live data"
             self.status_var.set(f"Connected via {source_name} ({device}){replay_label}{profile_label}")
             self._reconnect_since = None
             self._publish_web(force=True)
@@ -1077,6 +1088,13 @@ class DesktopApp:
             self._applying_playback_event = False
             self.status_var.set(f"Could not connect: {error}")
             self._publish_web(force=True)
+
+    def _load_demo(self):
+        """Play the bundled seat recording through the normal Simulated playback path"""
+        self.source_var.set("Simulated")
+        self._refresh_devices()
+        self.device_var.set(DEMO_DEVICE)
+        self._connect()
 
     def _disconnect(self):
         self._reconnect_since = None  # a manual Disconnect stops auto-reconnect retries
@@ -1916,10 +1934,13 @@ class DesktopApp:
             self._fps_frame_count = 0
             self._fps_last_check = now
 
+    def _demo_tag(self):
+        return " | DEMO" if self._demo_playback and self.source is not None else ""
+
     def _check_connection_health(self):
         """Flag a stale connection, and optionally auto-reconnect"""
         if getattr(self.source, "is_playback", False) and self.source.paused:
-            self.connection_var.set("Playback paused")
+            self.connection_var.set("Playback paused" + self._demo_tag())
             return
         if self.last_frame_time is None:
             return
@@ -1928,7 +1949,7 @@ class DesktopApp:
             if self._source_was_stale:
                 self.add_event("source_reconnected")
                 self._source_was_stale = False
-            self.connection_var.set("Connected")
+            self.connection_var.set("Connected" + self._demo_tag())
             return
 
         self.connection_var.set(f"No data for {stale_for:.0f}s")

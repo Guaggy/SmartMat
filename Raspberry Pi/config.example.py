@@ -129,3 +129,7 @@ START_IN_SIMPLE_MODE = True
 # Saturation warning
 # Warn (and read the load as a lower bound) when at least this many cells are at the sensor limit
 SATURATION_WARN_CELLS = 1
+
+# Demo mats
+# Chip ids starting with this are replayed recordings (tools/publish_demo_mat.py); the app labels them "(demo)".
+DEMO_PREFIX = "demo-"
