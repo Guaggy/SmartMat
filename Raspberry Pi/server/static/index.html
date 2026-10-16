@@ -1,26 +1,116 @@
 <!doctype html>
-<html lang="en">
+<html lang="nb" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SmartMat server</title>
-  <style>
-    body { margin: 0; padding: 16px; background: #E9EDF1; color: #10182B; font-family: "Segoe UI", system-ui, sans-serif; }
-    main { max-width: 640px; margin: 0 auto; }
-    a { color: #2F7A62; }
-    footer { margin-top: 24px; font-size: 0.85rem; color: #586377; }
-  </style>
+  <title>SmartMat</title>
+  <meta name="theme-color" content="#FFFFFF">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="img/icon-192.png">
+  <link rel="apple-touch-icon" href="img/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    // Apply the saved theme before first paint (light unless the user chose dark).
+    try { document.documentElement.dataset.theme = localStorage.getItem("sm.theme") === "dark" ? "dark" : "light"; } catch (e) {}
+  </script>
 </head>
 <body>
-<main>
-  <h1>SmartMat server</h1>
-  <p>The dashboard is not built yet. The data is available as JSON:</p>
-  <ul>
-    <li><a href="/api/overview">/api/overview</a> - every mat, worst risk first</li>
-    <li><a href="/api/alerts">/api/alerts</a> - open alerts</li>
-    <li><a href="/api/health">/api/health</a></li>
-  </ul>
-  <footer>An engineering aid, not a medical device: posture and risk are heuristics for testing the pipeline.</footer>
+<header class="top">
+  <a class="brand" href="./" aria-label="SmartMat">
+    <img class="lockup" id="logo" src="img/logo_lockup_light.png" alt="Verdian Medical">
+    <img class="mark" id="logoMark" src="img/logo_mark_light.png" alt="Verdian Medical">
+  </a>
+  <select id="unit" data-i-label="unitFilter"><option value="" data-i="allUnits"></option></select>
+  <label><span data-i="sortBy"></span>
+    <select id="sort">
+      <option value="risk" data-i="sortRisk"></option>
+      <option value="room" data-i="sortRoom"></option>
+      <option value="device" data-i="sortDevice"></option>
+      <option value="time" data-i="sortTime"></option>
+    </select>
+  </label>
+  <input id="search" type="search" data-i-ph="searchPh" data-i-label="searchPh" autocomplete="off">
+  <span class="grow"></span>
+  <button class="btn bell" id="bell" type="button" aria-expanded="false" aria-controls="bellpanel">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 17V11a6 6 0 0 1 12 0v6l2 2H4zM10 21h4"/></svg>
+    <span data-i="alerts"></span><span class="badge" id="badge" hidden></span>
+  </button>
+  <button class="btn" id="helpBtn" type="button" data-i="help"></button>
+  <button class="btn" id="langBtn" type="button"></button>
+  <button class="btn" id="themeBtn" type="button"></button>
+</header>
+
+<div id="banner" class="banner" role="alert" hidden></div>
+
+<section id="bellpanel" class="bellpanel" aria-label="Alerts" hidden>
+  <h2 data-i="alerts"></h2>
+  <ul id="alertList"></ul>
+</section>
+
+<main id="dash" class="layout">
+  <section class="panel" id="list" aria-label="Mats">
+    <div class="cols" aria-hidden="true">
+      <span data-i="colDevice"></span><span data-i="colRoom"></span><span data-i="colSeat"></span>
+      <span data-i="colOk"></span><span data-i="colStatus"></span>
+    </div>
+    <div id="rows"></div>
+    <p class="empty muted" id="empty" hidden></p>
+  </section>
+
+  <aside class="panel pm" id="pm" aria-live="off">
+    <div class="pm-head">
+      <h2 data-i="pressureMap"></h2>
+      <span>
+        <button class="link only-narrow" id="toList" type="button" data-i="toList"></button>
+        <button class="link" id="editBtn" type="button" data-i="edit" hidden></button>
+      </span>
+    </div>
+    <p class="pm-sub" id="pmSub"></p>
+    <div id="pmBody" hidden>
+      <p class="note bad" id="pmStale" hidden></p>
+      <div class="chair">
+        <div class="back"></div>
+        <div class="seat"><canvas id="map" width="160" height="160"></canvas></div>
+        <div class="front" data-i="front"></div>
+      </div>
+      <div class="ramp" id="ramp"></div>
+      <div class="ramp-l"><span data-i="low"></span><span id="rampUnit"></span><span data-i="high"></span></div>
+      <p class="note warn" id="pmSat" hidden></p>
+      <p class="note" id="pmUncal" hidden></p>
+      <div class="tiles">
+        <div class="tile"><div class="k" id="peakK"></div><div class="v" id="peakV"></div></div>
+        <div class="tile"><div class="k" data-i="sinceRelief"></div><div class="v" id="reliefV"></div></div>
+      </div>
+      <dl class="kv" id="pmKv"></dl>
+      <h3 data-i="hotspots"></h3>
+      <dl class="kv" id="pmSpots"></dl>
+      <h3 data-i="indices"></h3>
+      <dl class="kv" id="pmIdx"></dl>
+    </div>
+  </aside>
 </main>
+
+<main id="help" class="panel help" hidden></main>
+
+<p class="foot" id="foot"></p>
+
+<dialog id="dlg">
+  <form id="dlgForm">
+    <h2 id="dlgTitle"></h2>
+    <div id="dlgFields"></div>
+    <label><span data-i="pin"></span>
+      <input id="pin" type="password" inputmode="numeric" autocomplete="off" required>
+    </label>
+    <p class="err" id="dlgErr" role="alert"></p>
+    <div class="actions">
+      <button class="btn" id="dlgCancel" type="button" data-i="cancel"></button>
+      <button class="btn primary" id="dlgOk" type="submit" data-i="ok"></button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="app.js"></script>
 </body>
 </html>
