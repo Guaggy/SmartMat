@@ -223,14 +223,18 @@ class SerialSource:
     def _average(self, frames):
         """Add decoded grids to the window; return its mean once it is 1/target_fps s old, else None"""
         now = self._clock()
-        if frames and not self._window[2]:
+        period = 1.0 / self.target_fps
+        if frames and self._window[0] is None:
             self._window[0] = now  # the window starts with its first frame
         for grid in frames:
             self._window[1] = self._window[1] + grid  # float after the first add
             self._window[2] += 1
-        if self._window[2] and now - self._window[0] >= 1.0 / self.target_fps:
+        if self._window[2] and now - self._window[0] >= period:
             mean = self._window[1] / self._window[2]
-            self._window = [None, 0.0, 0]
+            # the next window starts where this one was due to end, not at the next poll with a frame:
+            # restarting from the next frame added a poll (+ sleep jitter) to every window, ~7.7 fps for 10
+            start = self._window[0] + period
+            self._window = [start if now - start < period else None, 0.0, 0]
             return mean
         return None
 
