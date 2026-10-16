@@ -82,7 +82,8 @@ class SnapshotTests(unittest.TestCase):
         self.pressure = np.zeros(SHAPE)
         self.pressure[0, 0] = 31.239
         self.pressure[1, 1] = np.nan
-        self.frame = {"pressure": self.pressure, "baseline_subtracted": np.full(SHAPE, 123.0)}
+        self.raw = np.full(SHAPE, 100.0)
+        self.frame = {"pressure": self.pressure, "baseline_subtracted": np.full(SHAPE, 123.0), "raw": self.raw}
         self.monitor = IndexMonitor()
 
     def test_pressure_grid_with_unknown_cells(self):
@@ -91,6 +92,12 @@ class SnapshotTests(unittest.TestCase):
         self.assertEqual((len(data["grid"]), len(data["grid"][0])), SHAPE)
         self.assertEqual((data["grid"][0][0], data["grid"][1][1], data["grid"][2][2]), (31.24, None, 0.0))
         web.app.json.dumps(data)   # must be valid JSON as it stands
+
+    def test_snapshot_counts_saturated_cells_from_the_received_grid(self):
+        self.assertEqual(web.build_snapshot(self.frame, [], True, self.monitor)["saturated_cells"], 0)
+        self.raw[0, :3] = web.VALUE_MAX_DEFAULT
+        self.raw[1, 1] = np.nan
+        self.assertEqual(web.build_snapshot(self.frame, [], True, self.monitor)["saturated_cells"], 3)
 
     def test_falls_back_to_the_relative_signal_without_calibration(self):
         self.frame["pressure"] = None
@@ -151,6 +158,20 @@ class DesktopFeedTests(unittest.TestCase):
         self.assertEqual(len(data["snapshot"]["indices"]), 2)
         self.app._disconnect()
         self.assertEqual(self.client.get("/api/mats").get_json(), {"mats": []})
+
+    def test_saturation_note_shows_in_both_views_and_hides_again(self):
+        self.app._connect()
+        grid = np.zeros(SHAPE)
+        grid[:2, :2] = web.VALUE_MAX_DEFAULT
+        self.app._handle_new_frame(grid, sample_time=1)
+        self.assertEqual(self.app.saturation_var.get(), "4 cells at sensor limit: load and peak read low")
+        for view in ("Advanced", "Simple"):
+            self.app.view_var.set(view)
+            self.app._apply_view()
+            self.assertTrue(self.app.saturation_label.winfo_manager())
+        self.app._handle_new_frame(np.zeros(SHAPE), sample_time=2)
+        self.assertFalse(self.app.saturation_label.winfo_manager())
+        self.app._disconnect()
 
     def test_known_mqtt_mats_are_listed_by_nickname(self):
         self.app._mats = {"aaa111": (16, 15), "bbb222": (20, 12)}

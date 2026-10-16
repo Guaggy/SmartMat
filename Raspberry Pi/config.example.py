@@ -125,3 +125,7 @@ RECONNECT_INTERVAL_S = 3  # how often to retry when auto-reconnect is on
 
 # Start with the reduced Simple view (connect, tare, record, export, heatmap, key numbers); Advanced shows everything.
 START_IN_SIMPLE_MODE = False
+
+# Saturation warning
+# Warn (and read the load as a lower bound) when at least this many cells are at the sensor limit
+SATURATION_WARN_CELLS = 1

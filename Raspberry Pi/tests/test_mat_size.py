@@ -1,5 +1,6 @@
 """Mat size: per-cell dimensions, rotation swap, profile round trip and the indicative load text."""
 
+import json
 import tempfile
 import tkinter as tk
 import unittest
@@ -13,8 +14,9 @@ import config
 from processing import calibration
 from processing.calibration import (PressureCalibration, cell_size_mm, load_profile, parse_mat_size,
                                     profile_path, profile_size_mm, save_profile)
-from processing.statistics import load_estimate_text, pressure_statistics
+from processing.statistics import load_estimate_text, pressure_statistics, saturated_cells
 
+SEAT_TAKE = Path(__file__).resolve().parent.parent / "samples" / "seat_take1.json"
 ORIENTATION = {"rotation": 0, "mirror_h": False, "mirror_v": False}
 
 
@@ -90,12 +92,12 @@ class LoadEstimateTests(unittest.TestCase):
         area = width * height / 1_000_000
         stats = pressure_statistics(np.full((16, 15), 1.0), 0.5, area)  # 1 kPa over 0.288 m2 = 288 N
         self.assertAlmostEqual(stats["force_n"], 288.0)
-        self.assertEqual(load_estimate_text(stats["force_n"]), "Estimated load: 29.4 kg (indicative)")
+        self.assertEqual(load_estimate_text(stats["force_n"]), "Estimated load: ~29 kg (rough)")
 
     def test_states(self):
         self.assertEqual(load_estimate_text(None), "Estimated load: set mat size")
         self.assertEqual(load_estimate_text(98.1, default_curve=True),
-                         "Estimated load: 10.0 kg (indicative) - default curve, not calibrated")
+                         "Estimated load: ~10 kg (rough) - default curve, not calibrated")
 
 
 class DesktopCellSizeTests(unittest.TestCase):
@@ -259,3 +261,26 @@ class DesktopCellSizeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SaturationTests(unittest.TestCase):
+    def test_counts_finite_cells_at_the_limit_only(self):
+        edge = config.VALUE_MAX_DEFAULT - config.HEALTH_SATURATION_MARGIN
+        grid = np.array([[edge, edge - 0.1, config.VALUE_MAX_DEFAULT], [np.nan, np.inf, 0.0]])
+        self.assertEqual(saturated_cells(grid), 2)       # margin edge counts, one below it does not
+        self.assertEqual(saturated_cells(grid, value_max=500), 3)   # edge 490: the three large finite cells
+        self.assertEqual(saturated_cells(np.full((2, 2), np.nan)), 0)
+
+    def test_load_text_is_a_lower_bound_when_saturated(self):
+        self.assertEqual(load_estimate_text(570.0, saturated=0), "Estimated load: ~58 kg (rough)")
+        self.assertEqual(load_estimate_text(570.0, saturated=config.SATURATION_WARN_CELLS), "Estimated load: >= 58 kg (rough)")
+        self.assertEqual(load_estimate_text(570.0, True, 3),
+                         "Estimated load: >= 58 kg (rough) - default curve, not calibrated")
+        self.assertEqual(load_estimate_text(None, saturated=5), "Estimated load: set mat size")
+
+    @unittest.skipUnless(SEAT_TAKE.exists(), "samples/seat_take1.json not present")
+    def test_seat_take_replay_saturates_only_while_seated(self):
+        frames = json.loads(SEAT_TAKE.read_text(encoding="utf-8"))["frames"]
+        counts = [saturated_cells(np.array(frame["raw"], dtype=float)) for frame in frames]
+        self.assertEqual(counts[0], 0)             # idle mat
+        self.assertGreater(max(counts), 0)         # seated peak reaches the sensor limit

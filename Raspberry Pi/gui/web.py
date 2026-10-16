@@ -13,6 +13,7 @@ from flask import Flask, jsonify
 from werkzeug.serving import make_server
 
 from config import PRESSURE_DISPLAY_MAX_KPA, STALE_AFTER_S, VALUE_MAX_DEFAULT, WEB_PORT
+from processing.statistics import saturated_cells
 
 app = Flask(__name__)
 
@@ -54,6 +55,7 @@ def build_snapshot(frame, hotspot_tracks, occupied, monitor):
         "unit": unit, "scale_max": float(scale_max),
         "grid": [[round(float(value), 2) if np.isfinite(value) else None for value in row] for row in grid],
         "occupied": occupied,
+        "saturated_cells": saturated_cells(frame["raw"]),
         "hotspots": [{"id": track["id"], "peak_kpa": round(track["peak_kpa"], 1),
                       "cells": sorted([int(row), int(col)] for row, col in track["cells"]),
                       "active_s": round(track["active_s"], 1), "persistent": bool(track["persistent"])}
@@ -124,7 +126,7 @@ _PAGE = """<!doctype html>
     .ok { background: #777777; } .near { background: #b8862f; } .over { background: #bd5555; }
     .inactive, .unknown { background: #5a626b; } .present { background: #5b9d61; }
     ul { list-style: none; padding: 0; margin: 0; } li { padding: 3px 0; }
-    #freshness.stale { color: #e8b04e; font-weight: 600; }
+    #freshness.stale, #saturation { color: #e8b04e; font-weight: 600; }
     footer { margin-top: 24px; font-size: 0.8rem; color: #808891; }
   </style>
 </head>
@@ -137,6 +139,7 @@ _PAGE = """<!doctype html>
     <span id="patient" class="chip unknown"></span><span id="freshness"></span>
     <canvas id="heatmap" width="480" height="512"></canvas>
     <p id="unit"></p>
+    <p id="saturation" hidden></p>
     <h2>Active hotspots</h2><ul id="hotspots"></ul>
     <h2>Indices</h2><ul id="indices"></ul>
   </div>
@@ -202,6 +205,9 @@ _PAGE = """<!doctype html>
     fresh.textContent = mat.stale ? "No new data for " + Math.round(mat.age_s) + " s - this picture is old" : "updated " + Math.round(mat.age_s) + " s ago";
     fresh.className = mat.stale ? "stale" : "";
     byId("unit").textContent = snap.unit === "kPa" ? "Pressure in kPa, full colour at " + snap.scale_max + " kPa." : "Not calibrated: relative sensor signal, not pressure.";
+    var sat = byId("saturation");
+    sat.hidden = !(snap.saturated_cells > 0);
+    sat.textContent = snap.saturated_cells + " cells at sensor limit: load and peak read low";
     drawGrid(mat, snap);
     fillList("hotspots", snap.hotspots.map(function (spot) {
       return { text: "#" + spot.id + ": peak " + spot.peak_kpa + " kPa, active " + Math.round(spot.active_s) + " s" + (spot.persistent ? " (persistent)" : "") };
