@@ -101,7 +101,14 @@ ESP32 --MQTT/Serial--> sources/*Source (raw 0..value_max -> 0-1000, general.scal
   `roi_window.py` (ROI selection on a frozen snapshot + all ROI output),
   `indices_window.py` (live index values), `index_editor.py` (the Indices tab
   inside the Engineering window),
-  `help_window.py`.
+  `help_window.py`, `reposition_window.py`.
+- `page.py` - tool windows as tabs. Each class does `self.window = make_window(parent)`: a `ttk.Notebook` parent
+  gives a `Page` tab (answers title/geometry/protocol/lift/destroy like a Toplevel), anything else a Toplevel.
+  `DesktopApp.open_tool(attr, name, factory)` opens or selects the tab after Live; `tab_actions` puts Pop out /
+  Close at the right end of the tab strip (Pop out rebuilds the tool in a Toplevel). Hidden tabs skip refresh
+  (`is_shown`); selecting one refreshes it. Simple view uses the `Bare.TNotebook` style (no tab strip, Live only;
+  open tabs stay). About, annotation, mat size, plot options, cell history, hotspot debug and the server log stay
+  dialogs. Tests: `tests/test_tabs.py`.
 - `web.py` - local read-only Flask dashboard toggled from the desktop app
   ("Web UI"). The desktop is the only producer: `_publish_web()` calls
   `web.update(mats, live_id, snapshot)` about once a second. The About panel shows the two addresses as clickable links

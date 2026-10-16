@@ -64,6 +64,7 @@ from gui.hotspot_window import HotspotWindow
 from gui.motion_window import MotionWindow
 from gui.indices_window import IndicesWindow
 from gui.roi_window import RoiWindow
+from gui.page import Page, is_shown, tab_actions
 from gui.annotation_window import AnnotationWindow
 from gui.engineering_window import EngineeringWindow
 from gui.help_window import HelpWindow
@@ -163,6 +164,8 @@ class DesktopApp:
         self.validation_match_window_s = VALIDATION_MATCH_WINDOW_S
         self.show_hotspot_threshold = False
         self.engineering_window = None
+        self.reposition_window = None
+        self.calibration_window = None
         self.help_window = None
         self.about_window = None
         self._current_analysis_settings = None
@@ -239,8 +242,15 @@ class DesktopApp:
         self._toggle_web_ui()  # Web UI defaults to on
         self._refresh_devices()
 
-        self.content = ttk.Frame(self.root)
-        self.content.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        # Layout B: the live view is the first tab; the tool windows open as closable tabs after it (gui/page.py)
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        self.notebook.bind("<<NotebookTabChanged>>", lambda _event: self._tab_changed())
+        self.tab_actions = tab_actions(self.notebook, self._pop_out)  # Pop out / Close at the strip's end
+        self.content = ttk.Frame(self.notebook)
+        self.notebook.add(self.content, text="Live")
+        self._advanced_tab = None  # the tab that was selected when Simple view hid the tab strip
+        self._tools = {}           # window attribute -> factory(parent), for Pop out
 
         self._build_about_panel()
         self._build_plot_area()
@@ -359,6 +369,15 @@ class DesktopApp:
                     else:
                         where = {"before": parent.pack_slaves()[0]}  # still packed siblings (e.g. the plot)
                     widget.pack(**options, **where)
+        if simple:  # Live only: the open tabs stay, just out of sight
+            if str(self.notebook.cget("style")) != "Bare.TNotebook":
+                self._advanced_tab = self.notebook.select()
+            self.notebook.configure(style="Bare.TNotebook")
+            self.notebook.select(self.content)
+        else:
+            self.notebook.configure(style="TNotebook")
+            if self._advanced_tab in self.notebook.tabs():
+                self.notebook.select(self._advanced_tab)
         self._place_capture_button()
 
     def _place_capture_button(self):
@@ -893,7 +912,7 @@ class DesktopApp:
         self._publish_web(force=True)
         self._update_stats()
         self._build_plot()
-        if self.roi_window is not None and self.roi_window.window.winfo_exists():
+        if self.roi_window is not None and self.roi_window.window.winfo_exists():  # grid changed, even if hidden
             self.roi_window.reset()
 
     def _reset_calibration(self):
@@ -1404,16 +1423,6 @@ class DesktopApp:
             self.noise_threshold_var.set(str(self.signal_noise_threshold))
             self.status_var.set("Signal noise threshold must be a nonnegative number")
 
-    def _open_calibration(self):
-        mat_id = self._profile_mat_id()
-        profile_text = (f"Mat profile: {mat_id} (saved automatically on disconnect, mat switch and close)"
-                        if mat_id else "No mat profile: simulated data, a recording or not connected - "
-                                       "changes here are not saved per mat")
-        editor = CalibrationWindow(self.root, self.pressure_calibration,
-                                   lambda: self.pre_baseline_grid, self._refresh_calibration, profile_text,
-                                   lambda: self.cell_area_m2)
-        self.calibration_windows.append(editor)
-
     def _open_plot_options(self):
         if self.plot_options_window is not None and self.plot_options_window.winfo_exists():
             self.plot_options_window.lift()
@@ -1497,65 +1506,89 @@ class DesktopApp:
         else:
             self._build_plot()
 
+    # ---- tool tabs
+
+    def open_tool(self, attr, name, factory, replace=False):
+        """Select the tool's tab (or raise its popped-out window), else build factory(notebook) into a new tab
+        named name; replace=True closes an open one first. The window object is kept in self.<attr>."""
+        window = getattr(self, attr)
+        if window is not None and window.window.winfo_exists():
+            if not replace:
+                window.window.lift()
+                return window
+            window.window.destroy()
+        window = factory(self.notebook)
+        window.window.title(name)
+        self._tools[attr] = factory
+        setattr(self, attr, window)
+        return window
+
+    def _pop_out(self, page):
+        """Rebuild the tool of a tab in its own window (closing that window just closes it)"""
+        for attr, factory in self._tools.items():
+            window = getattr(self, attr)
+            if window is not None and window.window is page:
+                page.destroy()
+                setattr(self, attr, factory(self.root))
+                return
+
+    def _shown(self, window):
+        """A tool window that is open and visible (a hidden tab is not refreshed)"""
+        return window is not None and is_shown(window.window)
+
+    def _tab_changed(self):
+        """A selected tab is refreshed at once, so it never shows stale data"""
+        for window in (self.analysis_window, self.diagnostics_window, self.temporal_window, self.hotspot_window,
+                       self.motion_window, self.indices_window, self.roi_window):
+            if window is not None and isinstance(window.window, Page) and self._shown(window):
+                window.refresh()
+
+    def _open_calibration(self):
+        mat_id = self._profile_mat_id()
+        profile_text = (f"Mat profile: {mat_id} (saved automatically on disconnect, mat switch and close)"
+                        if mat_id else "No mat profile: simulated data, a recording or not connected - "
+                                       "changes here are not saved per mat")
+
+        def build(parent):
+            editor = CalibrationWindow(parent, self.pressure_calibration,
+                                       lambda: self.pre_baseline_grid, self._refresh_calibration, profile_text,
+                                       lambda: self.cell_area_m2)
+            self.calibration_windows.append(editor)
+            return editor
+        self.open_tool("calibration_window", "Calibration", build)
+
     def _open_roi(self):
-        if self.roi_window is not None and self.roi_window.window.winfo_exists():
-            self.roi_window.window.lift()
-        else:
-            self.roi_window = RoiWindow(self.root, self)
+        self.open_tool("roi_window", "ROI", lambda parent: RoiWindow(parent, self))
 
     def _open_analysis(self):
-        if self.analysis_window is not None and self.analysis_window.window.winfo_exists():
-            self.analysis_window.window.lift()
-        else:
-            self.analysis_window = AnalysisWindow(self.root, self)
+        self.open_tool("analysis_window", "Analysis", lambda parent: AnalysisWindow(parent, self))
 
     def _open_diagnostics(self):
-        if self.diagnostics_window is not None and self.diagnostics_window.window.winfo_exists():
-            self.diagnostics_window.window.lift()
-        else:
-            self.diagnostics_window = DiagnosticsWindow(
-                self.root, self.sensor_health, lambda: self.selected_cell, self._select_cell,
-                lambda: self.source.quality.snapshot() if self.source is not None else None,
-                lambda: self.source.serial_stats() if isinstance(self.source, SerialSource) else None)
+        self.open_tool("diagnostics_window", "Diagnostics", lambda parent: DiagnosticsWindow(
+            parent, self.sensor_health, lambda: self.selected_cell, self._select_cell,
+            lambda: self.source.quality.snapshot() if self.source is not None else None,
+            lambda: self.source.serial_stats() if isinstance(self.source, SerialSource) else None))
 
     def _open_temporal(self):
-        if self.temporal_window is not None and self.temporal_window.window.winfo_exists():
-            self.temporal_window.window.lift()
-        else:
-            self.temporal_window = TemporalWindow(self.root, self)
+        self.open_tool("temporal_window", "Temporal", lambda parent: TemporalWindow(parent, self))
 
     def _open_hotspots(self):
-        if self.hotspot_window is not None and self.hotspot_window.window.winfo_exists():
-            self.hotspot_window.window.lift()
-        else:
-            self.hotspot_window = HotspotWindow(self.root, self)
+        self.open_tool("hotspot_window", "Hotspots", lambda parent: HotspotWindow(parent, self))
 
     def _open_motion(self):
-        if self.motion_window is not None and self.motion_window.window.winfo_exists():
-            self.motion_window.window.lift()
-        else:
-            self.motion_window = MotionWindow(self.root, self)
+        self.open_tool("motion_window", "Movement", lambda parent: MotionWindow(parent, self))
 
     def _open_indices(self):
-        if self.indices_window is not None and self.indices_window.window.winfo_exists():
-            self.indices_window.window.lift()
-        else:
-            self.indices_window = IndicesWindow(self.root, self)
+        self.open_tool("indices_window", "Indices", lambda parent: IndicesWindow(parent, self))
 
     def _open_annotation(self, initial_type="Note"):
         AnnotationWindow(self.root, self, initial_type)
 
     def _open_engineering(self):
-        if self.engineering_window is not None and self.engineering_window.window.winfo_exists():
-            self.engineering_window.window.lift()
-        else:
-            self.engineering_window = EngineeringWindow(self.root, self)
+        self.open_tool("engineering_window", "Engineering", lambda parent: EngineeringWindow(parent, self))
 
     def _open_help(self):
-        if self.help_window is not None and self.help_window.window.winfo_exists():
-            self.help_window.window.lift()
-        else:
-            self.help_window = HelpWindow(self.root)
+        self.open_tool("help_window", "Help", HelpWindow)
 
     def current_settings(self):
         settings = capture_settings(self.contact_threshold_kpa, self.temporal,
@@ -1634,7 +1667,7 @@ class DesktopApp:
         self.axes.contour(x, y, fine, levels=[0.5], **style)
 
     def _refresh_analysis(self):
-        if self.analysis_window is not None and self.analysis_window.window.winfo_exists():
+        if self._shown(self.analysis_window):
             self.analysis_window.refresh()
 
     def _refresh_calibration(self, kind=None):
@@ -1859,23 +1892,23 @@ class DesktopApp:
                     grid = self._orient(grid)
                 self._handle_new_frame(grid, sample_time)
             self._check_connection_health()
-            if (self.diagnostics_window is not None and self.diagnostics_window.window.winfo_exists()
+            if (self._shown(self.diagnostics_window)
                     and time.time() - self._last_diagnostics_draw >= 0.5):
                 self._last_diagnostics_draw = time.time()
                 self.diagnostics_window.refresh()
-            if (self.temporal_window is not None and self.temporal_window.window.winfo_exists()
+            if (self._shown(self.temporal_window)
                     and time.time() - self._last_temporal_draw >= 0.5):
                 self._last_temporal_draw = time.time()
                 self.temporal_window.refresh()
             if time.time() - self._last_feature_draw >= 0.5:
                 self._last_feature_draw = time.time()
-                if self.hotspot_window is not None and self.hotspot_window.window.winfo_exists():
+                if self._shown(self.hotspot_window):
                     self.hotspot_window.refresh()
-                if self.motion_window is not None and self.motion_window.window.winfo_exists():
+                if self._shown(self.motion_window):
                     self.motion_window.refresh()
-                if self.indices_window is not None and self.indices_window.window.winfo_exists():
+                if self._shown(self.indices_window):
                     self.indices_window.refresh()
-                if self.roi_window is not None and self.roi_window.window.winfo_exists():
+                if self._shown(self.roi_window):
                     self.roi_window.refresh()
         self._retry_reconnect()
         self._update_occupancy()

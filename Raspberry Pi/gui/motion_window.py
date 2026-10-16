@@ -6,6 +6,7 @@ from datetime import datetime
 
 from gui import theme
 from gui.reposition_window import RepositionWindow
+from gui.page import make_window
 
 
 def _time_label(timestamp):
@@ -15,7 +16,7 @@ def _time_label(timestamp):
 class MotionWindow:
     def __init__(self, parent, app):
         self.app = app
-        self.window = tk.Toplevel(parent)
+        self.window = make_window(parent)
         self.window.title("Movement and reposition")
         self.window.geometry("900x560")
         ttk.Label(self.window, text='Shows when the person moved or repositioned, and how much the pressure changed afterwards.', wraplength=760, padding=(8, 6)).pack(side=tk.TOP, fill=tk.X)
@@ -96,7 +97,10 @@ class MotionWindow:
     def _show_difference(self):
         record = self._selected()
         if record is not None:
-            RepositionWindow(self.window, record, _time_label(record["timestamp"]), theme.heatmap_cmap())
+            label = _time_label(record["timestamp"])
+            self.app.open_tool("reposition_window", f"Reposition {label}",
+                               lambda parent: RepositionWindow(parent, record, label, theme.heatmap_cmap()),
+                               replace=True)
 
     def _timeline_details(self):
         selection = self.timeline.curselection()
