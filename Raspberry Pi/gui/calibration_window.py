@@ -8,14 +8,9 @@ from tkinter import filedialog, messagebox, ttk
 import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.colors import ListedColormap
-from matplotlib.figure import Figure
+from gui import theme
 
 import config
-
-# muted tones: this gets looked at for a long time
-UNCALIBRATED_COLOR = "#a86a6a"
-CALIBRATED_COLOR = "#6f9a76"
-MINIGRID_COLORS = ListedColormap([UNCALIBRATED_COLOR, CALIBRATED_COLOR])
 
 
 def _when(profile, exists):
@@ -39,7 +34,7 @@ class CalibrationWindow:
         self.on_change = on_change
         self.window = tk.Toplevel(parent)
         self.window.title("Pressure calibration")
-        self.window.geometry("760x860")
+        self.window.geometry("800x860")
         ttk.Label(self.window, text='Teaches the mat what each sensor reading means in kPa. Needed before pressure values and hotspots can be trusted.', wraplength=760, padding=(8, 6)).pack(side=tk.TOP, fill=tk.X)
         if profile_text:
             ttk.Label(self.window, text=profile_text, font=("TkDefaultFont", 9, "bold"),
@@ -78,7 +73,7 @@ class CalibrationWindow:
         top.pack(side=tk.TOP, fill=tk.X)
         side = ttk.Frame(top)
         side.pack(side=tk.RIGHT, anchor="n")
-        self.mini_figure = Figure(figsize=(1.9, 2.0))
+        self.mini_figure = theme.figure(figsize=(1.9, 2.0))
         self.mini_axes = self.mini_figure.add_subplot()
         self.mini_canvas = FigureCanvasTkAgg(self.mini_figure, master=side)
         self.mini_canvas.get_tk_widget().pack()
@@ -144,7 +139,7 @@ class CalibrationWindow:
         ttk.Button(bulk, text="Apply model to all", command=self._update_all_models).grid(
             row=2, column=2, padx=4, pady=(6, 0))
 
-        self.figure = Figure(figsize=(5, 2.6))
+        self.figure = theme.figure(figsize=(5, 2.6))
         self.axes = self.figure.add_subplot()
         self.canvas = FigureCanvasTkAgg(self.figure, master=individual)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=10)
@@ -187,7 +182,7 @@ class CalibrationWindow:
         self.uniform_points.pack(fill=tk.X, pady=(6, 0))
         ttk.Button(panel, text="Remove selected point", command=self._uniform_remove_point).pack(
             anchor="w", pady=4)
-        self.uniform_figure = Figure(figsize=(5, 3))
+        self.uniform_figure = theme.figure(figsize=(5, 3))
         self.uniform_axes = self.uniform_figure.add_subplot()
         self.uniform_canvas = FigureCanvasTkAgg(self.uniform_figure, master=panel)
         self.uniform_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
@@ -251,7 +246,7 @@ class CalibrationWindow:
         if unit == "N":
             area = self.cell_area_getter()
             if area is None:
-                raise ValueError("Set the mat size (Mat size... under Estimated load) to use newtons")
+                raise ValueError("Set the mat size (Mat size... in the Calibrate toolbar group) to use newtons")
             pressure = pressure / (area * 1000 * cell_count)
         return pressure
 
@@ -293,10 +288,11 @@ class CalibrationWindow:
         calibrated = np.array([[self.individual.is_calibrated(r, c) for c in range(config.TOTAL_COLS)]
                                for r in range(config.TOTAL_ROWS)], dtype=int)
         self.mini_axes.clear()
-        self.mini_axes.imshow(calibrated, cmap=MINIGRID_COLORS, vmin=0, vmax=1, aspect="equal")
+        colours = ListedColormap([theme.palette()["bad"], theme.palette()["ok"]])  # uncalibrated, calibrated
+        self.mini_axes.imshow(calibrated, cmap=colours, vmin=0, vmax=1, aspect="equal")
         row, col = self._cell()
         self.mini_axes.plot(col, row, marker="s", markersize=6, fillstyle="none",
-                            color="#222222", linestyle="None")
+                            color=theme.palette()["ink"], linestyle="None")
         self.mini_axes.set_xticks([])
         self.mini_axes.set_yticks([])
         self.mini_figure.tight_layout(pad=0.3)

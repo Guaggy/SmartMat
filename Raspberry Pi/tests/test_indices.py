@@ -8,6 +8,7 @@ from unittest import mock
 
 import numpy as np
 
+from gui import theme
 from processing.hotspots import HotspotTracker
 from processing.indices import (INACTIVE, NEAR, OK, OVER, IndexMonitor, default_indices,
                                 evaluate_indices, validate_indices)
@@ -356,7 +357,7 @@ class DesktopIndexTests(unittest.TestCase):
         self.assertEqual(self.app.indices.states["Load"], "over")
         kinds = [event["kind"] for event in self.app.timeline.events]
         self.assertEqual(kinds.count("index_over_threshold"), 1)
-        self.assertEqual(self.app.index_chips["Load"].cget("bg"), "#bd5555")
+        self.assertEqual(self.app.index_chips["Load"].cget("bg"), theme.palette()["bad"])
         self.app._update_plot()     # draws the over-threshold outline without error
 
     def test_settings_carry_indices_and_old_presets_leave_them_alone(self):

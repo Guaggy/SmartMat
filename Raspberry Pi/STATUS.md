@@ -87,6 +87,14 @@ ESP32 --MQTT/Serial--> sources/*Source (raw 0..value_max -> 0-1000, general.scal
   touched. Simple keeps source/device/protocol, Connect/Disconnect, Tare, Record, Export snapshot, 2D/3D, Data, the heatmap and
   the Peak / Estimated load / Hotspots lines + patient chip. Tests: `tests/test_view_mode.py`. A new main-window widget that
   is not part of that set must be registered with `_adv()`.
+- `theme.py` - flat light/dark ttk theme ("smartmat", on clam) from `branding.PALETTE_*`: `apply_theme(root, mode)`
+  restyles ttk styles, plain tk widgets (walks every open window) and every figure made with `theme.figure()` live;
+  `heatmap_cmap()` is the shared ramp fading into `hm_bg`; `contrast`/`text_on` are pure. Mode saved as `theme` in
+  settings.json (`app_settings.theme()/save_theme`, light default); Light/Dark switch in the brand bar
+  (`DesktopApp._set_theme`). Layout B: brand bar (lockup per theme, selected mat, View, Light/Dark, About), toolbar
+  rows of labelled groups (Source, Playback while a recording plays, Calibrate + Record, Display, Tools, Options),
+  readouts column of label/value rows (`_readout` splits a "Name: value" StringVar), status bar (patient cell, index
+  cells, source health, status text, disclaimer). Tests: `tests/test_theme.py`.
 - One file per tool window: `calibration_window.py`, `analysis_window.py`,
   `diagnostics_window.py`, `temporal_window.py`, `hotspot_window.py`,
   `motion_window.py`, `engineering_window.py`, `annotation_window.py`,
@@ -155,7 +163,7 @@ the per-cell `CELL_*_MM`). Only a size the user typed ("Mat size...") or that is
 (`DesktopApp._user_size_mm`); a preset size is never written, so a later firmware/Python preset change takes effect.
 The About panel shows "Mat: <vendor> <model>" (MQTT: just the model). The calibration window shows which profile is active. Design: `docs/superpowers/specs/2026-10-15-per-mat-profiles-design.md`.
 
-Mat size / load estimate: `DesktopApp.mat_size_mm` ("Mat size..." button under the Estimated load line, kept in the mat's profile) feeds ONE
+Mat size / load estimate: `DesktopApp.mat_size_mm` ("Mat size..." button in the toolbar's Calibrate group, kept in the mat's profile) feeds ONE
 `cell_size_mm` / `cell_area_m2` property (`processing/calibration.cell_size_mm`: width / cols, height / rows of the oriented
 grid, axes swap on a 90/270 rotation). Area, force, hotspots, analysis, calibration-window newtons, the "Cell: W x H mm" line and
 the readiness warning all read it - never `config.CELL_*` directly. "Estimated load: X kg (indicative)" = force_N / 9.81
@@ -194,7 +202,7 @@ of `selftest.txt`), disclaimer text and the accent
 palette. `PALETTE_LIGHT` / `PALETTE_DARK` / `HEATMAP_STOPS` are the shared design tokens (ACCENT/DARK/MUTED/HEADER_BG
 are aliases of the light palette). Logos come from `branding_source/Logo.jpg` via `tools/make_branding.py` into
 `assets/logo_{mark,lockup}_{light,dark}.png`, `icon_256.png` (window icon) and `icon.ico` (exe icon in both PyInstaller
-specs). The header strip (light lockup, About button, View switch) is `DesktopApp._build_header`; the app starts in Easy
+specs). The brand bar (lockup by theme, View switch, Light/Dark, About) is `DesktopApp._build_header`; the app starts in Easy
 (Simple) mode (`START_IN_SIMPLE_MODE`, default True). Bundled read-only files go through
 `resource_path()` (`sys._MEIPASS`, which is also the temp extraction folder of the one-file build). Builds:
 `build_exe.bat` -> `SmartMat.spec` (onedir, windowed) -> `dist\SmartMat\SmartMat.exe` + `dist\SmartMat.zip`
@@ -211,9 +219,8 @@ Engineering > Connection edits it (Test = `check_broker`, Save restarts discover
 
 `branding.py` - product/company names, website, contact address (contact@verdianmedical.com, confirmed), `VERSION` (About, window title "SmartMat 0.1.0", first line
 of `selftest.txt`), disclaimer text and the accent
-colours taken from verdianmedical.com; `assets/logo.png` is the site's header icon. The header strip (logo, "SmartMat - by
-Verdian Medical", About button, View switch) is `DesktopApp._build_header`; the accent colours only touch the header, the
-Connect/Record buttons (`Accent.TButton`) and the View switch - never the heatmap or index/occupancy colours. Bundled read-only
+colours taken from verdianmedical.com; `assets/logo.png` is the site's header icon. The brand bar is `DesktopApp._build_header`; the accent colour only touches the
+Connect/Record buttons (`Accent.TButton`), the selected switch/tab and links; state cells use ok/warn/bad/idle. Bundled read-only
 files (`assets/`) are found with `paths.resource_path()` (frozen: inside the PyInstaller bundle; `SmartMat.spec` datas), user
 data still goes through `APP_DIR`. Missing logo = text-only header.
 

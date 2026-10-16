@@ -1,6 +1,6 @@
 """In-app settings kept in settings.json in the user data folder (paths.APP_DIR).
 
-The MQTT broker and the SmartMat server URL. Stored as plain text, on purpose. Never raises on a
+The MQTT broker, the SmartMat server URL and the desktop theme. Stored as plain text, on purpose. Never raises on a
 missing or corrupt file: the broker then comes from config.py, then the defaults.
 """
 
@@ -15,6 +15,7 @@ FILE = None  # tests point this at a temp file; None = <paths.APP_DIR>/settings.
 MQTT_DEFAULTS = {"host": "localhost", "port": 1883, "username": "", "password": ""}
 CONFIG_NAMES = {"host": "broker_host", "port": "broker_port",
                 "username": "mqtt_username", "password": "mqtt_password"}
+THEMES = ("light", "dark")
 PLACEHOLDERS = {"your-mqtt-username", "your-mqtt-password"}  # config.example.py credentials: count as unset (the host never does)
 
 
@@ -33,8 +34,26 @@ def load():
 
 def save_mqtt(host, port, username, password):
     """Write the broker settings (other saved keys are kept). Raises OSError if the file cannot be written."""
+    _save("mqtt", {"host": host, "port": port, "username": username, "password": password})
+
+
+def theme():
+    """The saved desktop theme, "light" or "dark"; anything else (or nothing) counts as "light" """
+    value = load().get("theme")
+    return value if value in THEMES else "light"
+
+
+def save_theme(mode):
+    """Save the desktop theme (ValueError for an unknown mode, OSError if the file cannot be written)"""
+    if mode not in THEMES:
+        raise ValueError(f"unknown theme {mode!r}")
+    _save("theme", mode)
+
+
+def _save(key, value):
+    """Set one top-level key, keeping the others"""
     data = load()
-    data["mqtt"] = {"host": host, "port": port, "username": username, "password": password}
+    data[key] = value
     _write(data)
 
 
