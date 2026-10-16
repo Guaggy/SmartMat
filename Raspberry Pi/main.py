@@ -1,7 +1,6 @@
 import sys
 
 import paths  # must run first: frozen builds load config.py from paths.APP_DIR
-from gui.desktop import DesktopApp
 
 def selftest():
     """Headless smoke test of a frozen build: `SmartMat.exe --selftest` writes selftest.txt into paths.APP_DIR."""
@@ -27,6 +26,10 @@ def selftest():
 def main():
     if "--selftest" in sys.argv:
         return selftest()
+    if "--server" in sys.argv:  # headless: same as python -m server (no tkinter)
+        from server.__main__ import main as server_main
+        return server_main([arg for arg in sys.argv[1:] if arg != "--server"])
+    from gui.desktop import DesktopApp
     app = DesktopApp()
     app.run()
 

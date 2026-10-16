@@ -101,7 +101,7 @@ class MqttSource:
     Without a chip_id it only listens for every mat's metadata (for the device list).
     """
 
-    def __init__(self, chip_id=None):
+    def __init__(self, chip_id=None, client_id=None):
         self.chip_id = chip_id
         self.mats = {}  # chip_id -> (rows, cols) for every mat the broker has metadata for
         self.value_maxes = {}  # chip_id -> raw full scale (kept apart so mats stays (rows, cols))
@@ -111,9 +111,10 @@ class MqttSource:
         self.quality = SourceQuality()
         self._connected = False
         self._meta_seen = threading.Event()
-        # own client id for the listener, so it can stay up next to a streaming connection
+        # own client id for the listener, so it can stay up next to a streaming connection; the server passes its own
+        # per mat (a broker drops the older of two connections with the same id)
         self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
-                                   client_id="smartmat-pi" if chip_id else "smartmat-pi-discovery")
+                                   client_id=client_id or ("smartmat-pi" if chip_id else "smartmat-pi-discovery"))
         self.error = None  # last connection problem as readable text, None while fine
         settings = app_settings.effective_mqtt()  # read now, so a saved change applies to the next source
         self.host, self.port = settings["host"], settings["port"]

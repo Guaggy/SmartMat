@@ -1,0 +1,19 @@
+# SmartMat server on a Raspberry Pi (systemd). Edit User and the two paths, then:
+#   sudo cp deploy/smartmat-server.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now smartmat-server
+#   journalctl -u smartmat-server -f      # its output
+[Unit]
+Description=SmartMat server (mats, alerts, web dashboard)
+After=network-online.target mosquitto.service
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/SmartMat/Raspberry Pi
+ExecStart=/usr/bin/python3 -m server
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
