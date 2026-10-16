@@ -41,6 +41,8 @@ def connected_regions(mask):
     return regions
 
 
+RELATIVE_CEILING = 0.9  # the relative thresholds never exceed this share of the frame's peak
+
 class HotspotTracker:
     def __init__(self):
         self.activate_kpa = HOTSPOT_ACTIVATE_KPA
@@ -231,8 +233,9 @@ class HotspotTracker:
             loaded = pressure[pressure > CONTACT_THRESHOLD_KPA]
             if loaded.size:
                 mean = float(loaded.mean())
-                activate = max(activate, self.activate_fraction * mean)
-                deactivate = max(deactivate, self.deactivate_fraction * mean)
+                ceiling = RELATIVE_CEILING * float(loaded.max())  # a hard-loaded seat must still be able to activate
+                activate = max(activate, min(self.activate_fraction * mean, ceiling))
+                deactivate = max(deactivate, min(self.deactivate_fraction * mean, ceiling))
         return activate, deactivate
 
     def _measure(self, track, cells, pressure, exposure_delta, temporal, cell_area_m2):

@@ -122,3 +122,16 @@ class RelativeHotspotTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RelativeCeilingTests(unittest.TestCase):
+    def test_hard_loaded_seat_can_still_activate(self):
+        import numpy as np
+        from processing.hotspots import HotspotTracker
+        tracker = HotspotTracker()
+        tracker.activate_fraction, tracker.deactivate_fraction = 1.7, 1.2
+        pressure = np.full((20, 20), 45.0)   # mean 45 kPa -> 1.7 x mean = 76 kPa, above the 50 kPa peak
+        pressure[5:7, 5:7] = 50.0
+        activate, deactivate = tracker.thresholds(pressure)
+        self.assertLessEqual(activate, 50.0)
+        self.assertLessEqual(deactivate, activate)
