@@ -13,4 +13,4 @@ differs from the real server in places; the real code in `Raspberry Pi/server/` 
   validated-risk claim. Push text uses mat name and room only, no patient identifiers.
 - **Secrets:** never commit push tokens, PINs, EAS or Firebase credentials. The PIN is asked per action and not stored.
 - **Scope:** work only in `Phone App/`. Server changes go in `Phone App/server-patch/` as patches for `main`.
-- **Checks before committing:** `npm run typecheck`, `npm test` (once added), `npx expo-doctor`.
+- **Checks before committing:** `npm run typecheck`, `npm test`, `npx expo-doctor`.

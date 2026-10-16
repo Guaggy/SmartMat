@@ -1,19 +1,14 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 
-import { brand } from "../brand";
+import { AppProvider } from "../state";
+import { colors } from "../theme";
 
 export default function RootLayout() {
   return (
-    <>
+    <AppProvider>
       <StatusBar style="light" />
-      <Stack
-        screenOptions={{
-          headerStyle: { backgroundColor: brand.navy },
-          headerTintColor: "#FFFFFF",
-          contentStyle: { backgroundColor: brand.navy },
-        }}
-      />
-    </>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }} />
+    </AppProvider>
   );
 }

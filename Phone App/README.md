@@ -4,7 +4,7 @@ Android and iOS app (Expo / React Native, TypeScript) that shows mat status and 
 server. SmartMat is an engineering / teaching tool, not a validated medical device; the app says "risk level
 (indicative)" and never claims a diagnosis.
 
-Status: skeleton only. Screens, the mock server and push come in later commits.
+Status: Setup/Settings and Overview screens work against the mock server. Mat detail, Alerts and push come next.
 
 ## Run it
 
@@ -18,7 +18,11 @@ npx expo start
   `a` in the Expo terminal. The emulator reaches your PC at `http://10.0.2.2:<port>`.
 - **iPhone (no Apple membership needed):** install *Expo Go* from the App Store, put the phone on the same Wi-Fi as
   the PC and scan the QR code. This is for checking the UI. Remote push to iOS needs a paid Apple Developer account.
-- **Checks:** `npm run typecheck`, `npx expo-doctor`.
+- **Mock server (no hardware or real server needed):** in a second terminal run `npm run mock` (port 8000, PIN `1234`).
+  In the app's Settings enter `10.0.2.2:8000` on the Android emulator, or `<PC LAN IP>:8000` on a phone. It has five
+  mats (offline, high, medium, low, no user) and two open alerts. `POST /__mock/reset` restores them and
+  `POST /__mock/raise {"chip_id":"sm-102","kind":"high"}` raises a new one.
+- **Checks:** `npm run typecheck`, `npm test`, `npx expo-doctor`.
 
 ## Build with EAS (later steps add `eas.json`)
 
@@ -51,5 +55,5 @@ tile, so the 1024 px icon is upscaled and slightly soft; swap in exported brand 
 
 ## Dependencies
 
-Only what Expo Router needs plus: `expo-build-properties` (allow cleartext HTTP on Android), `expo-splash-screen`
+Only what Expo Router needs plus: `expo-secure-store` (server address and language), `jest` + `jest-expo` (tests, dev only), `expo-build-properties` (allow cleartext HTTP on Android), `expo-splash-screen`
 (branded splash). `react-dom` is a peer dependency of Expo Router that npm needs resolved to the SDK's version.

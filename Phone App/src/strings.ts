@@ -7,9 +7,44 @@ const nb = {
   overview: "Oversikt",
   alerts: "Varsler",
   settings: "Innstillinger",
-  placeholder: "Appen er under bygging.",
+  placeholder: "Kommer snart.",
   disclaimer:
     "Ingeniørverktøy, ikke medisinsk utstyr. Stilling og risiko er heuristikker (veiledende). Bruk sammen med vanlig klinisk vurdering.",
+  risk_high: "Høy risiko",
+  risk_medium: "Middels risiko",
+  risk_low: "Lav risiko",
+  risk_none: "Ingen bruker",
+  risk_offline: "Frakoblet",
+  riskNote: "Risikonivå (veiledende)",
+  p_left: "Venstre side",
+  p_right: "Høyre side",
+  p_forward: "Lent fremover",
+  p_centred: "Sentrert",
+  p_none: "Ingen bruker",
+  statusNone: "Ingen bruker i {t}",
+  offlineNoData: "Frakoblet, ingen data",
+  timeInPos: "Tid i stilling {t}",
+  alertBadge: "{n} åpent varsel",
+  alertBadgePlural: "{n} åpne varsler",
+  noMats: "Ingen matter funnet.",
+  lostServer: "Ingen kontakt med serveren. Statusene under kan være gamle.",
+  loading: "Laster …",
+  setupTitle: "Koble til serveren",
+  setupHint: "Skriv inn adressen til SmartMat-serveren, for eksempel 192.168.1.50:8000.",
+  serverUrl: "Serveradresse",
+  testConnection: "Test tilkobling",
+  save: "Lagre",
+  testing: "Tester …",
+  connectedOk: "Koblet til. {n} matter, versjon {v}.",
+  connectionFailed: "Fikk ikke kontakt med serveren. Sjekk adressen og at telefonen er på samme nett.",
+  saved: "Lagret.",
+  language: "Språk",
+  about: "Om appen",
+  version: "Versjon {v}",
+  goToSettings: "Gå til innstillinger",
+  hours: "t",
+  minutes: "min",
+  seconds: "s",
 };
 
 const en: Record<keyof typeof nb, string> = {
@@ -17,9 +52,44 @@ const en: Record<keyof typeof nb, string> = {
   overview: "Overview",
   alerts: "Alerts",
   settings: "Settings",
-  placeholder: "The app is under construction.",
+  placeholder: "Coming soon.",
   disclaimer:
     "Engineering aid, not a medical device. Posture and risk are heuristics (indicative). Use alongside normal clinical assessment.",
+  risk_high: "High risk",
+  risk_medium: "Medium risk",
+  risk_low: "Low risk",
+  risk_none: "No user",
+  risk_offline: "Offline",
+  riskNote: "Risk level (indicative)",
+  p_left: "Left side",
+  p_right: "Right side",
+  p_forward: "Leaning forward",
+  p_centred: "Centred",
+  p_none: "No user",
+  statusNone: "No user for {t}",
+  offlineNoData: "Offline, no data",
+  timeInPos: "Time in position {t}",
+  alertBadge: "{n} open alert",
+  alertBadgePlural: "{n} open alerts",
+  noMats: "No mats found.",
+  lostServer: "No contact with the server. The statuses below may be old.",
+  loading: "Loading …",
+  setupTitle: "Connect to the server",
+  setupHint: "Enter the address of the SmartMat server, for example 192.168.1.50:8000.",
+  serverUrl: "Server address",
+  testConnection: "Test connection",
+  save: "Save",
+  testing: "Testing …",
+  connectedOk: "Connected. {n} mats, version {v}.",
+  connectionFailed: "Could not reach the server. Check the address and that the phone is on the same network.",
+  saved: "Saved.",
+  language: "Language",
+  about: "About the app",
+  version: "Version {v}",
+  goToSettings: "Go to settings",
+  hours: "h",
+  minutes: "min",
+  seconds: "s",
 };
 
 export type Lang = "nb" | "en";
@@ -28,6 +98,19 @@ const dictionaries: Record<Lang, Record<StringKey, string>> = { nb, en };
 
 export const defaultLang: Lang = "nb";
 
-export function t(key: StringKey, lang: Lang = defaultLang): string {
-  return dictionaries[lang][key] ?? nb[key];
+export type Vars = Record<string, string | number>;
+
+export function t(key: StringKey, lang: Lang = defaultLang, vars?: Vars): string {
+  const text = dictionaries[lang][key] ?? nb[key];
+  return vars ? text.replace(/\{(\w+)\}/g, (_, name) => String(vars[name] ?? "")) : text;
+}
+
+/** 45 s, 11 min, 1 t 17 min */
+export function formatDuration(seconds: number, lang: Lang = defaultLang): string {
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return `${s} ${t("seconds", lang)}`;
+  const minutes = Math.floor(s / 60);
+  if (minutes < 60) return `${minutes} ${t("minutes", lang)}`;
+  const rest = minutes % 60;
+  return `${Math.floor(minutes / 60)} ${t("hours", lang)}${rest ? ` ${rest} ${t("minutes", lang)}` : ""}`;
 }
