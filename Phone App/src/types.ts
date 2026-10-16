@@ -131,3 +131,12 @@ export interface Theme {
 }
 
 export type AlertAction = "ack" | "ignore";
+
+// POST /api/devices (needs a PIN) and PUT /api/devices/<token> (no PIN; the push token is the secret)
+export interface DeviceSettings {
+  name?: string;
+  lang?: "nb" | "en";
+  tz?: string; // IANA zone, e.g. "Europe/Oslo"; the server applies the quiet window in this zone
+  quiet_from?: string | null; // "HH:MM"
+  quiet_to?: string | null;
+}

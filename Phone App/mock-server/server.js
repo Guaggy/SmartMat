@@ -28,7 +28,7 @@ const RISK_ORDER = ["offline", "high", "medium", "low", "none"];
 
 function createMockServer(clock = () => Date.now() / 1000) {
   const t0 = clock();
-  let alerts, events, wrongPins, lockedUntil;
+  let alerts, events, wrongPins, lockedUntil, devices;
 
   function reset() {
     const now = clock();
@@ -44,6 +44,7 @@ function createMockServer(clock = () => Date.now() / 1000) {
     ];
     wrongPins = 0;
     lockedUntil = 0;
+    devices = {};
   }
   function alert(id, chipId, kind, t) {
     return { id, chip_id: chipId, kind, t_raised: t, since: t - 30, t_cleared: null, state: "open", by: null, t_handled: null };
@@ -141,6 +142,30 @@ function createMockServer(clock = () => Date.now() / 1000) {
       events.unshift({ id: events.length + 1, t: now, chip_id: a.chip_id, kind: m[2] === "ack" ? "alert acknowledged" : "alert ignored", user: USER, detail: { alert: a.id, kind: a.kind } });
       return [200, { ok: true, user: USER, alert: Object.assign({}, a) }];
     }
+    // Phones for push (needs the patch in server-patch/ on the real server). Register needs a PIN, the rest is by token.
+    if (req.method === "POST" && path === "/api/devices") {
+      if (!body || typeof body !== "object") return [400, { error: "Send a JSON object" }];
+      if (!body.pin) return [401, { error: "PIN required" }];
+      if (now < lockedUntil) return [429, { error: "Too many wrong PINs, try again later" }];
+      if (String(body.pin) !== PIN) {
+        if (++wrongPins >= 5) { lockedUntil = now + 30; wrongPins = 0; }
+        return [403, { error: "Wrong PIN" }];
+      }
+      wrongPins = 0;
+      if (body.platform !== "android" && body.platform !== "ios") return [400, { error: "Platform must be android or ios" }];
+      if (!/^Expo(nent)?PushToken\[[A-Za-z0-9_-]{1,200}\]$/.test(String(body.expo_push_token))) return [400, { error: "That is not an Expo push token" }];
+      const { pin, expo_push_token, ...rest } = body;
+      devices[expo_push_token] = rest;
+      return [201, { ok: true, user: USER }];
+    }
+    if ((m = path.match(/^\/api\/devices\/(.+)$/)) && (req.method === "PUT" || req.method === "DELETE")) {
+      const token = decodeURIComponent(m[1]);
+      if (!devices[token]) return [404, { error: "Unknown device" }];
+      if (req.method === "DELETE") { delete devices[token]; return [200, { ok: true }]; }
+      Object.assign(devices[token], body || {});
+      return [200, { ok: true }];
+    }
+    if (req.method === "GET" && path === "/__mock/devices") return [200, devices];
     if (req.method === "POST" && path === "/__mock/reset") { reset(); return [200, { ok: true }]; }
     if (req.method === "POST" && path === "/__mock/raise") {
       if (!body || !mat(body.chip_id)) return [404, { error: "Unknown mat" }];

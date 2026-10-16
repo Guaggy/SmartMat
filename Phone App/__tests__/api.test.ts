@@ -111,6 +111,21 @@ describe("api against the mock server", () => {
     await expect(api.handleAlert("a1", "ack", PIN)).rejects.toMatchObject({ status: 429 });
   });
 
+  it("registering a phone for push needs a PIN, then it can be updated and removed by token", async () => {
+    const token = "ExponentPushToken[abc_DEF-123]";
+    const settings = { name: "Pixel", lang: "nb" as const, tz: "Europe/Oslo", quiet_from: "22:00", quiet_to: "07:00" };
+    await expect(api.registerDevice(token, "android", "0000", settings)).rejects.toMatchObject({ status: 403 });
+    await expect(api.registerDevice("nope", "android", PIN, settings)).rejects.toMatchObject({ status: 400 });
+    expect(await api.registerDevice(token, "android", PIN, settings)).toEqual({ ok: true, user: "Test Nurse" });
+    expect(await api.updateDevice(token, { quiet_from: null, quiet_to: null })).toEqual({ ok: true });
+    const stored = await (await nodeFetch(`${base}/__mock/devices`)).json();
+    expect(stored[token]).toMatchObject({ platform: "android", lang: "nb", tz: "Europe/Oslo", quiet_from: null });
+    expect(stored[token]).not.toHaveProperty("pin"); // the PIN is never kept
+    expect(await api.unregisterDevice(token)).toEqual({ ok: true });
+    await expect(api.unregisterDevice(token)).rejects.toMatchObject({ status: 404 });
+    await expect(api.updateDevice(token, { lang: "en" })).rejects.toMatchObject({ status: 404 });
+  });
+
   it("an unreachable server is status 0", async () => {
     const dead = createApi("http://127.0.0.1:1", 1000, nodeFetch);
     const error = await dead.health().catch((e) => e);

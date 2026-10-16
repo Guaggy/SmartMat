@@ -1,5 +1,5 @@
 import type {
-  Alert, AlertAction, AlertResult, Health, LogEvent, MatDetail, MatTimeline, Overview, Theme,
+  Alert, AlertAction, AlertResult, DeviceSettings, Health, LogEvent, MatDetail, MatTimeline, Overview, Theme,
 } from "./types";
 
 export class ApiError extends Error {
@@ -17,7 +17,7 @@ export function normalizeUrl(input: string): string {
 }
 
 export function createApi(baseUrl: string, timeoutMs = 8000, fetchImpl: typeof fetch = fetch) {
-  async function request<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+  async function request<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let response: Response;
@@ -58,6 +58,12 @@ export function createApi(baseUrl: string, timeoutMs = 8000, fetchImpl: typeof f
     // The PIN goes in the body and is used once; it is never stored by the app.
     handleAlert: (id: string, action: AlertAction, pin: string) =>
       request<AlertResult>("POST", `/api/alerts/${encodeURIComponent(id)}/${action}`, { pin }),
+    // Push registration. The PIN proves a staff member allows this phone to get alerts; it is not stored.
+    registerDevice: (token: string, platform: "android" | "ios", pin: string, settings: DeviceSettings) =>
+      request<{ ok: boolean; user: string }>("POST", "/api/devices", { expo_push_token: token, platform, pin, ...settings }),
+    updateDevice: (token: string, settings: DeviceSettings) =>
+      request<{ ok: boolean }>("PUT", `/api/devices/${encodeURIComponent(token)}`, settings),
+    unregisterDevice: (token: string) => request<{ ok: boolean }>("DELETE", `/api/devices/${encodeURIComponent(token)}`),
   };
 }
 

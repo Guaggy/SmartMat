@@ -4,7 +4,7 @@ Android and iOS app (Expo / React Native, TypeScript) that shows mat status and 
 server. SmartMat is an engineering / teaching tool, not a validated medical device; the app says "risk level
 (indicative)" and never claims a diagnosis.
 
-Status: Setup/Settings, Overview, Mat detail (heatmap, key numbers, 1-hour timeline), Alerts with PIN confirmation and quiet hours work against the mock server. Push notifications and the server patch come next.
+Status: all five screens work against the mock server and the real server's JSON shapes. Push: the app side and the server patch are written and tested against fake endpoints; a real push to a phone still needs the one-time setup below. `eas.json` comes next.
 
 ## Run it
 
@@ -34,6 +34,44 @@ eas build --platform android --profile preview   # APK for internal testing
 
 iOS builds and TestFlight need an Apple Developer Program membership (99 USD/yr); not set up yet.
 
+## Push notifications
+
+How it works: the server sends one push per raised alert (not for cleared ones) through the Expo push service. The text
+is the mat name and room only. A phone registers with a staff PIN (Settings > Push notifications), which the server
+checks but the app never stores. Quiet hours are kept by the **server** (it sends nothing to a phone in its quiet
+window), because a push that arrives while the app is closed cannot be held back by the app.
+
+**Needs a development or release build.** The Expo docs say push is unavailable in Expo Go on Android since SDK 53. They
+do not say that about iOS, but I have not tested Expo Go on iOS, and an iOS build with push needs a paid Apple
+Developer account. Local notifications are not used.
+
+One-time setup (Android):
+
+1. `eas login`, then in `Phone App/` run `eas init`. It adds `extra.eas.projectId` to `app.json`; commit that change.
+   Without it the app says "Push is not set up in this build".
+2. Firebase: create a project at console.firebase.google.com and add an Android app with package `com.smartmat.mobile`.
+   Download `google-services.json` into `Phone App/` (commit it: it only holds public ids) and add
+   `"googleServicesFile": "./google-services.json"` under `expo.android` in `app.json`.
+3. Firebase > Project settings > Service accounts > *Generate new private key*. Upload it to EAS with `eas credentials`
+   (Android > production > Google Service Account > FCM V1). Never commit this file.
+4. Build a development build and install it on the emulator or a phone:
+   `eas build --profile development --platform android` (or locally `npx expo run:android`), then `npx expo start`.
+5. On the server: apply `server-patch/` (see `server-patch/README.md`) and restart it. The server needs internet access to
+   `exp.host`.
+6. In the app: Settings > turn on *Push-varsler*, enter your PIN. The token is shown under the switch.
+7. Send a test: `node scripts/send-test-push.mjs "ExponentPushToken[...]" --receipts`. Or raise a real alert; with the
+   mock server there is no Expo service, so use the script.
+
+Tapping a push opens the Alerts tab. Android channel: `alerts` (high importance).
+
+Server-side settings are in `config.py`: `PUSH_ENABLED`, `PUSH_ACCESS_TOKEN` (optional Expo access token so only your server
+can push to your phones).
+
+## Mock server and tests
+
+`npm test` runs the unit tests, including the API client against the mock server. The mock's JSON keys were diffed against the
+real server running in demo mode.
+
 ## Plain HTTP on the LAN
 
 The server speaks plain HTTP today, so the app allows it:
@@ -56,4 +94,4 @@ tile, so the 1024 px icon is upscaled and slightly soft; swap in exported brand 
 ## Dependencies
 
 Only what Expo Router needs plus: `expo-secure-store` (server address, language, quiet hours), `react-native-svg` (heatmap and timeline), `jest` + `jest-expo` (tests, dev only), `expo-build-properties` (allow cleartext HTTP on Android), `expo-splash-screen`
-(branded splash). `react-dom` is a peer dependency of Expo Router that npm needs resolved to the SDK's version.
+(branded splash), `expo-notifications` (push). `react-dom` is a peer dependency of Expo Router that npm needs resolved to the SDK's version.

@@ -1,8 +1,11 @@
 import Constants from "expo-constants";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 
-import { createApi, normalizeUrl } from "../../api";
+import { ApiError, createApi, normalizeUrl } from "../../api";
+import { PinDialog } from "../../components/PinDialog";
+import { alertErrorKey } from "../../errors";
+import { platform, registerForPush, timeZone, type PushOutcome } from "../../push";
 import { parseTime } from "../../quietHours";
 import { useApp } from "../../state";
 import type { Lang } from "../../strings";
@@ -18,6 +21,12 @@ export default function Settings() {
   const [from, setFrom] = useState(settings.quiet.from);
   const [to, setTo] = useState(settings.quiet.to);
   const [quietError, setQuietError] = useState(false);
+  const { api } = useApp();
+  const [pinOpen, setPinOpen] = useState(false);
+  const [pinBusy, setPinBusy] = useState(false);
+  const [pinProblem, setPinProblem] = useState<string | null>(null);
+  const [pushMessage, setPushMessage] = useState<string | null>(null);
+  const tokenRef = useRef<string | null>(null); // asked for once, so a mistyped PIN does not repeat the permission prompt
 
   useEffect(() => setUrl(settings.serverUrl), [settings.serverUrl]);
 
@@ -47,6 +56,55 @@ export default function Settings() {
     setUrl(address);
     await update({ serverUrl: address });
     setResult({ ok: true, text: t("saved") });
+  }
+
+  const failure = (reason: Extract<PushOutcome, { ok: false }>["reason"]) =>
+    t(({ denied: "pushDenied", noProject: "pushNoProject", unsupported: "pushUnsupported", error: "pushError" } as const)[reason]);
+
+  async function enablePush(pin: string) {
+    if (!api) return;
+    setPinBusy(true);
+    setPinProblem(null);
+    if (!tokenRef.current) {
+      const outcome = await registerForPush();
+      if (!outcome.ok) {
+        setPinBusy(false);
+        setPinOpen(false);
+        setPushMessage(failure(outcome.reason));
+        return;
+      }
+      tokenRef.current = outcome.token;
+    }
+    try {
+      await api.registerDevice(tokenRef.current, platform(), pin, {
+        name: Constants.deviceName ?? undefined,
+        lang: settings.lang,
+        tz: timeZone(),
+        quiet_from: settings.quiet.enabled ? settings.quiet.from : null,
+        quiet_to: settings.quiet.enabled ? settings.quiet.to : null,
+      });
+      await update({ push: { enabled: true, token: tokenRef.current } });
+      setPinOpen(false);
+      setPushMessage(t("pushActive"));
+    } catch (e) {
+      setPinProblem(t(alertErrorKey(e)));
+    }
+    setPinBusy(false);
+  }
+
+  async function disablePush() {
+    const token = settings.push.token;
+    if (api && token) {
+      try {
+        await api.unregisterDevice(token);
+      } catch (e) {
+        // 404: the server no longer knew this phone, which is what we wanted. No contact: stay on, so alerts keep coming.
+        if (!(e instanceof ApiError && e.status === 404)) return setPushMessage(t("netErr"));
+      }
+    }
+    tokenRef.current = null;
+    await update({ push: { enabled: false, token: null } });
+    setPushMessage(t("pushInactive"));
   }
 
   return (
@@ -86,6 +144,33 @@ export default function Settings() {
           />
         ))}
       </View>
+
+      <Text style={styles.label}>{t("pushTitle")}</Text>
+      <View style={styles.switchRow}>
+        <Text style={styles.switchLabel}>{t("pushOn")}</Text>
+        <Switch
+          value={settings.push.enabled}
+          disabled={!api}
+          onValueChange={(on) => (on ? (setPinProblem(null), setPinOpen(true)) : disablePush())}
+          trackColor={{ true: colors.accent, false: colors.line }}
+        />
+      </View>
+      {pushMessage ? <Text style={styles.hint}>{pushMessage}</Text> : null}
+      {settings.push.token ? (
+        <Text style={styles.hint} selectable>
+          {t("pushToken")}: {settings.push.token}
+        </Text>
+      ) : null}
+      <Text style={styles.hint}>{t("pushHint")}</Text>
+      <PinDialog
+        visible={pinOpen}
+        title={t("pushDialogTitle")}
+        confirmLabel={t("pushEnable")}
+        error={pinProblem}
+        busy={pinBusy}
+        onCancel={() => setPinOpen(false)}
+        onSubmit={enablePush}
+      />
 
       <Text style={styles.label}>{t("quietHours")}</Text>
       <View style={styles.switchRow}>

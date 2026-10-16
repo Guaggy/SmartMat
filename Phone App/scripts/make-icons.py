@@ -40,3 +40,4 @@ centred(mark_alpha(big, white=True), 680).save(OUT / "android-icon-monochrome.pn
 Image.new("RGB", (1024, 1024), bg).save(OUT / "android-icon-background.png")
 centred(mark, 900).save(OUT / "splash-icon.png")
 mark.resize((48, 48), Image.LANCZOS).save(OUT / "favicon.png")
+centred(mark_alpha(big, white=True), 900).resize((96, 96), Image.LANCZOS).save(OUT / "notification-icon.png")  # Android status bar: white on transparent
