@@ -8,4 +8,5 @@ a = Analysis(
     excludes=["config"],
 )
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name="SmartMat", console=False)
+exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name="SmartMat", console=False,
+          icon="assets/icon.ico")

@@ -185,6 +185,26 @@ Engineering > Connection edits it (Test = `check_broker`, Save restarts discover
 
 `branding.py` - product/company names, website, contact address (contact@verdianmedical.com, confirmed), `VERSION` (About, window title "SmartMat 0.1.0", first line
 of `selftest.txt`), disclaimer text and the accent
+palette. `PALETTE_LIGHT` / `PALETTE_DARK` / `HEATMAP_STOPS` are the shared design tokens (ACCENT/DARK/MUTED/HEADER_BG
+are aliases of the light palette). Logos come from `branding_source/Logo.jpg` via `tools/make_branding.py` into
+`assets/logo_{mark,lockup}_{light,dark}.png`, `icon_256.png` (window icon) and `icon.ico` (exe icon in both PyInstaller
+specs). The header strip (light lockup, About button, View switch) is `DesktopApp._build_header`; the app starts in Easy
+(Simple) mode (`START_IN_SIMPLE_MODE`, default True). Bundled read-only files go through
+`resource_path()` (`sys._MEIPASS`, which is also the temp extraction folder of the one-file build). Builds:
+`build_exe.bat` -> `SmartMat.spec` (onedir, windowed) -> `dist\SmartMat\SmartMat.exe` + `dist\SmartMat.zip`
+(about 2 s start), and `build_exe_onefile.bat` -> `SmartMat-onefile.spec` (same Analysis, keep in sync) ->
+`dist\onefile\SmartMat.exe` (one 41 MB file, about 6-8 s start, extracts to `%TEMP%` each launch).
+`SmartMat.exe --selftest` is a headless smoke test (writes `selftest.txt` with app_dir and mode to APP_DIR).
+Source-tree behaviour is unchanged.
+
+`app_settings.py` - `settings.json` in `paths.APP_DIR` (gitignored, plaintext) holds the MQTT broker;
+`effective_mqtt()` = settings.json > config.py (only the example credential placeholders count as unset; the host never does) > `localhost:1883`, no
+credentials. `MqttSource` reads it at construction and only calls `username_pw_set` for a non-empty user;
+Engineering > Connection edits it (Test = `check_broker`, Save restarts discovery via
+`DesktopApp.restart_discovery`). An open MQTT connection keeps its old broker until it reconnects.
+
+`branding.py` - product/company names, website, contact address (contact@verdianmedical.com, confirmed), `VERSION` (About, window title "SmartMat 0.1.0", first line
+of `selftest.txt`), disclaimer text and the accent
 colours taken from verdianmedical.com; `assets/logo.png` is the site's header icon. The header strip (logo, "SmartMat - by
 Verdian Medical", About button, View switch) is `DesktopApp._build_header`; the accent colours only touch the header, the
 Connect/Record buttons (`Accent.TButton`) and the View switch - never the heatmap or index/occupancy colours. Bundled read-only
