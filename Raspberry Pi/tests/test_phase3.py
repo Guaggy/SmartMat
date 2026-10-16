@@ -7,6 +7,7 @@ import numpy as np
 from processing.roi import rectangle_mask
 from processing.analysis import load_distribution, pressure_distribution, roi_statistics
 from processing.display import interpolate_grid
+from processing import sensor_health
 from processing.sensor_health import SensorHealth
 from processing.statistics import weighted_center
 
@@ -52,7 +53,7 @@ class Phase3ProcessingTests(unittest.TestCase):
 
     def test_health_warnings_need_repeated_evidence(self):
         health = SensorHealth()
-        for index in range(5):
+        for index in range(sensor_health.HEALTH_SATURATION_FRAMES):
             grid = np.full((16, 15), 10.0)
             grid[1, 1] = 1000
             health.update(grid, float(index))

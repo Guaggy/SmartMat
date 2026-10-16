@@ -126,11 +126,26 @@ class SerialSourceTest(unittest.TestCase):
             if grid is not None:
                 outputs.append((step, grid[0, 0]))
             now[0] += 1 / 64
-        self.assertEqual([step for step, _ in outputs], [8, 17])  # one grid per window, not per frame
+        self.assertEqual([step for step, _ in outputs], [8, 16])  # one grid per window, on a fixed 0.125 s grid
         self.assertAlmostEqual(outputs[0][1], (8 * 10 + 20) / 9 * 1000 / 255)  # float mean of frames 0..8
         quality = source.quality.snapshot()
         self.assertEqual((quality["valid"], quality["malformed"], quality["dropped"]), (18, 0, 0))
         self.assertEqual(source._out, 2)
+
+    def test_averaged_rate_matches_the_target_with_slow_polls(self):
+        # 60 fps stream, polls every 27 ms (Windows sleep jitter): restarting each window at the next
+        # frame used to give ~7.7 grids/s for a target of 10
+        now = [0.0]
+        source = self.make(MAXRAYS_PROFILE, target_fps=10, clock=lambda: now[0])
+        sent, outputs = 0, 0
+        while now[0] < 10.0:
+            due = int(now[0] * 60)
+            source._connection.data.extend(maxrays_packet(5) * (due - sent))
+            sent = due
+            source._poll_once()
+            outputs += source.latest.take() is not None
+            now[0] += 0.027
+        self.assertIn(outputs, (99, 100))
 
     def test_average_is_a_float_mean_of_the_window(self):
         now = [0.0]

@@ -7,8 +7,15 @@ import numpy as np
 
 from config import (
     HOTSPOT_ACTIVATE_KPA, HOTSPOT_DEACTIVATE_KPA, HOTSPOT_MIN_CELLS,
-    HOTSPOT_PERSISTENCE_S, HOTSPOT_MAX_MOVE_CELLS, HOTSPOT_END_RELIEF_S,
+    HOTSPOT_PERSISTENCE_S, HOTSPOT_MAX_MOVE_CELLS, HOTSPOT_END_RELIEF_S, CONTACT_THRESHOLD_KPA,
 )
+import config
+
+# relative rule, 0 = off (absolute kPa thresholds only); getattr so an older config.py without them still loads
+HOTSPOT_ACTIVATE_FRACTION = getattr(config, "HOTSPOT_ACTIVATE_FRACTION", 0.0)
+HOTSPOT_DEACTIVATE_FRACTION = getattr(config, "HOTSPOT_DEACTIVATE_FRACTION", 0.0)
+# an active hotspot missing for less than this stays active (no relief/resume pair for a one-frame dropout)
+HOTSPOT_RELIEF_GRACE_S = getattr(config, "HOTSPOT_RELIEF_GRACE_S", 0.0)
 from processing.temporal import FULL, PARTIAL
 
 
@@ -42,6 +49,9 @@ class HotspotTracker:
         self.persistence_s = HOTSPOT_PERSISTENCE_S
         self.max_move_cells = HOTSPOT_MAX_MOVE_CELLS
         self.end_relief_s = HOTSPOT_END_RELIEF_S
+        self.activate_fraction = HOTSPOT_ACTIVATE_FRACTION
+        self.deactivate_fraction = HOTSPOT_DEACTIVATE_FRACTION
+        self.relief_grace_s = HOTSPOT_RELIEF_GRACE_S
         self.tracks = {}
         self.ended = deque(maxlen=50)
         self.next_id = 1
@@ -54,7 +64,8 @@ class HotspotTracker:
     def settings(self):
         return {key: getattr(self, key) for key in (
             "activate_kpa", "deactivate_kpa", "min_cells", "persistence_s",
-            "max_move_cells", "end_relief_s")}
+            "max_move_cells", "end_relief_s", "activate_fraction", "deactivate_fraction",
+            "relief_grace_s")}
 
     def reset(self):
         self.tracks.clear()
@@ -101,12 +112,13 @@ class HotspotTracker:
                           np.maximum(0, temporal.exposure - self._previous_exposure))
         self._previous_exposure = temporal.exposure.copy()
 
-        low_mask = values >= self.deactivate_kpa
+        activate, deactivate = self.thresholds(values)
+        low_mask = values >= deactivate
         regions = []
         for cells in connected_regions(low_mask):
             if len(cells) < self.min_cells:
                 continue
-            if any(values[cell] >= self.activate_kpa for cell in cells) or any(
+            if any(values[cell] >= activate for cell in cells) or any(
                     cells & track["cells"] for track in self.tracks.values()):
                 regions.append(cells)
         regions.sort(key=lambda cells: min(cells))
@@ -151,7 +163,7 @@ class HotspotTracker:
                     track["relieved_s"] = 0.0
                     events.append(("hotspot_resumed", track["id"]))
             else:
-                if not any(values[cell] >= self.activate_kpa for cell in cells):
+                if not any(values[cell] >= activate for cell in cells):
                     continue
                 track_id = self.next_id
                 self.next_id += 1
@@ -192,6 +204,8 @@ class HotspotTracker:
             if track_id in assigned_tracks or (track["state"] == "active" and
                                                 track["last_seen"] == timestamp):
                 continue
+            if track["state"] == "active" and timestamp - track["last_seen"] < self.relief_grace_s:
+                continue
             if track["state"] == "active":
                 track["state"] = "relieved"
                 track["relieved_since"] = timestamp
@@ -207,6 +221,19 @@ class HotspotTracker:
                 events.append(("hotspot_ended", track_id))
         self.initial_frame = False
         return events
+
+    def thresholds(self, pressure):
+        """(activate, deactivate) kPa for this frame: the absolute values, raised to a fraction of the
+        mean over loaded cells (> CONTACT_THRESHOLD_KPA) when the fractions are set. Relative to the
+        loaded area, so it does not depend on the absolute kPa curve and still works when cells saturate."""
+        activate, deactivate = self.activate_kpa, self.deactivate_kpa
+        if self.activate_fraction > 0:
+            loaded = pressure[pressure > CONTACT_THRESHOLD_KPA]
+            if loaded.size:
+                mean = float(loaded.mean())
+                activate = max(activate, self.activate_fraction * mean)
+                deactivate = max(deactivate, self.deactivate_fraction * mean)
+        return activate, deactivate
 
     def _measure(self, track, cells, pressure, exposure_delta, temporal, cell_area_m2):
         ordered = sorted(cells)

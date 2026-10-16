@@ -174,6 +174,8 @@ class HotspotTests(unittest.TestCase):
         self.tracker.min_cells = 2
         self.tracker.persistence_s = 2
         self.tracker.end_relief_s = 2
+        self.tracker.activate_fraction = 0.0  # these test the absolute kPa rule and plain relief
+        self.tracker.relief_grace_s = 0.0
         self.temporal = TemporalAnalysis()
 
     def update(self, values, timestamp):
@@ -256,6 +258,7 @@ class HotspotTests(unittest.TestCase):
             tracker = HotspotTracker()
             tracker.persistence_s = 0.1
             tracker.end_relief_s = 0.1
+            tracker.activate_fraction, tracker.relief_grace_s = 0.0, 0.0
             temporal = TemporalAnalysis()
             sequence = []
             for values, timestamp in samples[:len(frames)]:

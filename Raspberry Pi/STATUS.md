@@ -46,7 +46,9 @@ ESP32 --MQTT/Serial--> sources/*Source (raw 0..value_max -> 0-1000, general.scal
 - `temporal.py` - per-cell exposure (kPa*min), burden (load/decay), 4-state
   relief state machine, rolling windows. Densest math in the codebase.
 - `hotspots.py` - connected-component (flood fill) high-pressure region
-  tracking with frame-to-frame ID matching (merge/split/relief/resume).
+  tracking with frame-to-frame ID matching (merge/split/relief/resume). Thresholds are the kPa values,
+  raised to `HOTSPOT_*_FRACTION` x the loaded-area mean when set (`thresholds()`; 0 = kPa only);
+  `HOTSPOT_RELIEF_GRACE_S` ignores short dropouts. Presets/recordings without these keys load them as 0.
 - `motion.py` - per-frame movement score + a before/settle/after sustained-
   redistribution check for reposition detection.
 - `signals.py` - registry of named signals (cell grids or whole-mat numbers)
@@ -118,11 +120,15 @@ ignored and the device dropdown appends " (offline)" for offline mats (unknown/o
 (config grid, value_max 1000, mat_id = port) or "Maxrays 20x20 (921600)"
 (`sources/maxrays.py` decoder, 20x20, value_max 255, mat_id `maxrays-usb`, preset model "MC266" + default sensing
 size 343 x 358 mm; datasheet facts in `notes.md`). The Maxrays stream (~60 fps) is averaged (float) over
-1/`config.SERIAL_TARGET_FPS` s (default 10; 0 or negative = off; None/non-numeric = 10) into ONE scaled grid per window; merged frames are not drops,
+1/`config.SERIAL_TARGET_FPS` s (default 10; 0 or negative = off; None/non-numeric = 10) into ONE scaled grid per window (windows on a fixed schedule, so slow polls do not stretch the rate); merged frames are not drops,
 `serial_stats` has `frames_per_s` (decoded) and `output_per_s`. `MqttSource` ignores frame messages with the retain
 flag (stale after a reconnect); retained meta is still used. The
 desktop shows a Protocol dropdown for Serial and applies the source's shape
 before connecting; `list_ports()` returns `Port(device, label)`.
+
+`tools/replay_tune.py` replays a recording through the analysis classes without the GUI and prints event counts per
+minute (`--set NAME=value`, `--sweep NAME=a,b,c`, `--file`); `tests/test_retune.py` asserts the tuned defaults on
+`samples/seat_take1.json`.
 
 `SerialSource.start_raw_capture(path, seconds)` tees the exact port bytes to
 `recordings/raw_<profile>_<time>.bin` (desktop "Capture raw (5 s)" button, shown for Serial, enabled while
