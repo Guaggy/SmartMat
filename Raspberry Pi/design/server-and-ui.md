@@ -60,10 +60,10 @@ Logos: `assets/logo_*.png|jpg` light and dark variants (lockup + mark); the dark
   offline for `ALERT_OFFLINE_S` (default 30); an alert is open until the condition clears; acknowledge/ignore needs a
   PIN and records who. Open alerts drive the bell. No push yet.
 - REST (all JSON): `GET /api/overview` (small rows for the table: id, name, room, seat, unit, demo, online, risk,
-  posture, time_in_position_s, saturated, open_alerts, since-relief), `GET /api/mats/<id>` (snapshot + metadata + last
-  hour timeline), `GET /api/mats/<id>/timeline?hours=`, `GET /api/mats/<id>/log`, `GET /api/alerts`,
+  posture, time_in_position_s, saturated, open_alerts, since-relief), `GET /api/mats/<id>` (the row + snapshot, age_s,
+  stale), `GET /api/mats/<id>/timeline?hours=`, `GET /api/mats/<id>/log`, `GET /api/alerts`,
   `POST /api/alerts/<id>/ack|ignore`, `PUT /api/mats/<id>/meta`, `PUT /api/mats/<id>/profile` + `GET` (profile JSON,
-  version int), `POST|GET /api/users`, `GET /api/theme`, `GET /api/health`. Errors: JSON `{error}` with 4xx.
+  version int), `GET|POST /api/users`, `PUT /api/users/<id>`, `GET /api/theme`, `GET /api/health`. Errors: JSON `{error}` with 4xx.
 - Deployment: `deploy/smartmat-server.service` (systemd, Pi) and `deploy/install_windows_server.ps1` (startup task);
   windows exe `SmartMatServer.exe` via a second spec (console-less).
 - Config (all in config.example.py): `SERVER_PORT` (default 8000, same as WEB_PORT today), `DEMO_PREFIX`,

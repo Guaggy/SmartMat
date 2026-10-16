@@ -1,7 +1,8 @@
 """Seated posture class and risk level from the oriented pressure grid (pure, no GUI).
 
 Heuristics for testing the pipeline, not a clinical assessment. Grid convention (after
-orientation): column 0 is "left", the last row is "forward" (the front edge of the seat).
+orientation): row 0 is the back of the seat and the last row is "forward" (the front edge); column 0 is "left"
+as drawn in the map (the sitter's right when seen from above with the front at the bottom; the Mirror H setting swaps it).
 """
 
 import config
@@ -54,8 +55,8 @@ class PostureTracker:
         return self.posture
 
     def time_in_position(self, t):
-        """Seconds in the current posture, None while empty or unknown"""
-        if self.posture in (None, "none"):
+        """Seconds in the current posture (for "none": how long nobody has been on the mat), None before any frame"""
+        if self.posture is None:
             return None
         return max(0.0, t - self.changed_at)
 

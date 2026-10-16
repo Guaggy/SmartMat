@@ -65,7 +65,9 @@ class Store:
         return self._rows("SELECT COUNT(*) AS n FROM users")[0]["n"]
 
     def users(self):
-        return self._rows("SELECT id, name, role, active FROM users ORDER BY id")
+        """id, name, role, active (never the PIN hash)"""
+        return [dict(row, active=bool(row["active"]))
+                for row in self._rows("SELECT id, name, role, active FROM users ORDER BY id")]
 
     def _pin_owner(self, pin):
         for user in self._rows("SELECT * FROM users WHERE active = 1"):
@@ -88,7 +90,7 @@ class Store:
                                           (name, role, _hash(pin, salt), salt))
         except sqlite3.IntegrityError as error:
             raise ValueError("a user with that name exists") from error
-        return {"id": cursor.lastrowid, "name": name, "role": role, "active": 1}
+        return {"id": cursor.lastrowid, "name": name, "role": role, "active": True}
 
     def update_user(self, user_id, active=None, pin=None):
         """Disable/enable a user or reset their PIN; KeyError if there is no such user"""
@@ -103,14 +105,14 @@ class Store:
         if active is not None:
             with self._lock, self._db:
                 self._db.execute("UPDATE users SET active = ? WHERE id = ?", (int(bool(active)), user_id))
-        return self._rows("SELECT id, name, role, active FROM users WHERE id = ?", (user_id,))[0]
+        return next(user for user in self.users() if user["id"] == user_id)
 
     def _check_new_pin(self, pin, user_id=None):
         if not valid_pin(pin):
             raise ValueError("PIN must be 4-8 digits")
         owner = self._pin_owner(pin)
         if owner is not None and owner["id"] != user_id:
-            raise ValueError("choose another PIN")  # the PIN alone says who is acting, so it must be unique
+            raise ValueError("That PIN is already in use, choose another")  # the PIN alone says who is acting, so it must be unique
 
     def check_pin(self, pin, t, key=""):
         """(user, None) for a right PIN, else (None, reason); reason 'locked' while `key` (the client) is
@@ -156,6 +158,11 @@ class Store:
         for row in rows:
             row["detail"] = None if row["detail"] is None else json.loads(row["detail"])
         return rows
+
+    def handled(self, chip_id, since):
+        """Alerts acknowledged or ignored since `since`, for the timeline markers: [{t, kind, user}]"""
+        return self._rows("SELECT t, 'handled' AS kind, user FROM events WHERE chip_id = ? AND t >= ? "
+                          "AND kind IN ('alert acknowledged', 'alert ignored') ORDER BY t", (chip_id, since))
 
     def record_states(self, t, states):
         """One tick: [(chip_id, posture, risk)]; extends each mat's open segment or starts a new one"""
