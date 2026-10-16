@@ -143,3 +143,15 @@ SATURATION_WARN_CELLS = 1
 # Demo mats
 # Chip ids starting with this are replayed recordings (tools/publish_demo_mat.py); the app labels them "(demo)".
 DEMO_PREFIX = "demo-"
+
+# Server (python -m server): headless analysis, alerts and web dashboard for every mat
+SERVER_PORT = 8000            # web UI + REST; same as WEB_PORT, so run the server or the desktop Web UI on one machine
+SERVER_SERIAL_PORTS = []      # USB mats the server owns and republishes to MQTT, e.g. [("COM3", "Maxrays 20x20 (921600)")]
+POSTURE_SIDE_CELLS = 2.0      # centre of pressure this many cells left/right of the mat centre -> "left"/"right"
+POSTURE_FORWARD_CELLS = 2.5   # ... this many cells towards the last row -> "forward"
+POSTURE_HOLD_S = 3.0          # a new posture must last this long before it counts
+ALERT_HIGH_HOLD_S = 30.0      # risk "high" this long opens an alert
+ALERT_OFFLINE_S = 30.0        # a mat offline this long opens an alert
+RETENTION_DAYS = 30           # events and timeline older than this are deleted
+PIN_LOCKOUT_ATTEMPTS = 0      # wrong PINs in a row before a user is locked out (0 = no lockout)
+PIN_LOCKOUT_S = 60            # how long a lockout lasts

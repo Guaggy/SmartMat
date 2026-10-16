@@ -226,6 +226,16 @@ old grid) and set back for Serial/Simulated. Always
 read them as `config.TOTAL_ROWS` - a `from config import TOTAL_ROWS` copy goes
 stale. `sources/simulated_source.py` is the one deliberate exception.
 
+`server/` - headless server (`python -m server [--demo [N]]`, `main.py --server`; never imports gui/ or tkinter).
+`engine.py` `MatEngine` = the desktop's per-frame pipeline per mat (orient, tare, pressure calibration from the mat's
+profile, temporal, hotspots, motion, occupancy, indices, `processing/posture.py`), `snapshot()` = gui/web's snapshot
+plus posture, time_in_position_s, risk, saturated_cells, since_relief_s, online. processing/* reads the grid size from
+`config.TOTAL_*`, so `engine.grid_shape()` sets it per mat under one global lock. `alerts.py` = alert state machine,
+`store.py` = sqlite (users with scrypt PINs, mats, events, timeline), `app.py` = Flask `create_app` (REST, PIN in the
+JSON body of every write), `__main__.py` = MQTT discovery (one `MqttSource(chip, client_id=...)` per mat), serial
+bridge (`SERVER_SERIAL_PORTS`, republished as `usb<port>`), demo mats (`DemoMat`, faster clocks), pump (4 frames/s per
+mat) and 1 s tick. Design: `docs/superpowers/specs/2026-10-16-server-and-ui-design.md`. Tests: `tests/test_server_*.py`.
+
 ## Active design docs
 
 - `docs/superpowers/specs/2026-10-07-multi-mat-mqtt-design.md` - chip-ID MQTT
