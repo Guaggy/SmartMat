@@ -9,6 +9,7 @@ import { useApp } from "../../state";
 import { formatDuration } from "../../strings";
 import { colors } from "../../theme";
 import { usePoll } from "../../usePoll";
+import { useServerNow } from "../../useServerNow";
 import { useStops } from "../../useStops";
 
 export default function MatDetailScreen() {
@@ -16,14 +17,17 @@ export default function MatDetailScreen() {
   const { api, settings, t } = useApp();
   const { width } = useWindowDimensions();
   const stops = useStops(api);
-  const { data, error } = usePoll(api && id ? () => api.mat(id) : null, `${settings.serverUrl}/${id}`, 3000);
+  const now = useServerNow(api);
+  const key = `${settings.serverUrl}/${id}`;
+  const { data, error } = usePoll(api && id ? () => api.mat(id) : null, key, 3000);
+  const { data: timeline } = usePoll(api && id ? () => api.timeline(id, 1) : null, `${key}/tl`, 10000);
   const mapWidth = Math.min(width - 32, 420);
   const dur = (s: number | null) => (s === null ? "–" : formatDuration(s, settings.lang));
 
-  const snap = data?.snapshot;
-  const offline = snap ? !snap.online : false;
+  const snap = data?.snapshot ?? null;
   const relative = snap?.unit === "relative";
-  const peak = snap ? peakValue(snap) : null;
+  const peak = !snap || snap.occupied === false ? null : relative ? peakValue(snap) : snap.peak_kpa;
+  const age = data?.age_s ?? null;
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -35,27 +39,30 @@ export default function MatDetailScreen() {
           headerTintColor: colors.ink,
         }}
       />
-      {error ? <Text style={styles.banner}>{error.message === "unknown mat" ? t("noMats") : t("lostServer")}</Text> : null}
+      {error ? <Text style={styles.banner}>{t("lostServer")}</Text> : null}
       {!data ? (
         <Text style={styles.muted}>{error ? "" : t("loading")}</Text>
       ) : (
         <>
           <View style={styles.header}>
             <Text style={styles.muted}>{[data.room, data.seat, data.unit].filter(Boolean).join(" · ")}</Text>
-            <RiskPill risk={snap!.online ? snap!.risk : "offline"} />
+            <RiskPill risk={data.online ? data.risk : "offline"} />
           </View>
           <Text style={styles.note}>{t("riskNote")}</Text>
+          {age !== null ? <Text style={styles.note}>{t("lastData", { t: formatDuration(age, settings.lang) })}</Text> : null}
 
-          {offline ? <Text style={styles.warn}>{t("offlineMat")}</Text> : null}
-          {snap!.occupied === false ? <Text style={styles.muted}>{t("unoccupied")}</Text> : null}
+          {!data.online ? <Text style={styles.warn}>{t("offlineMat")}</Text> : data.stale && age !== null ? (
+            <Text style={styles.warn}>{t("staleMat", { t: formatDuration(age, settings.lang) })}</Text>
+          ) : null}
+          {data.online && snap?.occupied === false ? <Text style={styles.muted}>{t("unoccupied")}</Text> : null}
           {relative ? <Text style={styles.warn}>{t("uncal")}</Text> : null}
-          {snap!.saturated_cells > 0 ? <Text style={styles.warn}>{t("saturation", { n: snap!.saturated_cells })}</Text> : null}
+          {data.saturated_cells > 0 ? <Text style={styles.warn}>{t("saturation", { n: data.saturated_cells })}</Text> : null}
 
           <Text style={styles.section}>{t("pressureMap")}</Text>
-          {snap!.grid ? (
+          {snap?.grid ? (
             <>
-              <Heatmap grid={snap!.grid} scaleMax={snap!.scale_max ?? 50} stops={stops} hotspots={snap!.hotspots} dimmed={offline} width={mapWidth} />
-              <Text style={styles.note}>{relative ? t("mapScaleRel") : t("mapScale", { n: snap!.scale_max ?? 50 })}</Text>
+              <Heatmap grid={snap.grid} scaleMax={snap.scale_max} stops={stops} hotspots={snap.hotspots} dimmed={!data.online || data.stale} width={mapWidth} />
+              <Text style={styles.note}>{relative ? t("mapScaleRel") : t("mapScale", { n: snap.scale_max })}</Text>
             </>
           ) : (
             <Text style={styles.muted}>{t("noGrid")}</Text>
@@ -63,15 +70,15 @@ export default function MatDetailScreen() {
 
           <View style={styles.numbers}>
             <Stat label={relative ? t("highestRelative") : t("highestPressure")} value={peak === null ? "–" : relative ? peak.toFixed(1) : `${peak.toFixed(0)} kPa`} />
-            <Stat label={t("timeInPosLabel")} value={dur(snap!.time_in_position_s)} />
-            <Stat label={t("sinceRelief")} value={dur(snap!.since_relief_s)} />
-            <Stat label={t("hotspots")} value={String(snap!.hotspots?.length ?? 0)} />
+            <Stat label={t("timeInPosLabel")} value={data.online ? dur(data.time_in_position_s) : "–"} />
+            <Stat label={t("sinceRelief")} value={dur(data.since_relief_s)} />
+            <Stat label={t("hotspots")} value={String(snap?.hotspots.length ?? 0)} />
           </View>
 
-          {snap!.indices?.length ? (
+          {snap?.indices.length ? (
             <>
               <Text style={styles.section}>{t("indices")}</Text>
-              {snap!.indices.map((index) => (
+              {snap.indices.map((index) => (
                 <View key={index.name} style={styles.indexRow}>
                   <Text style={styles.indexName}>{index.name}</Text>
                   <Text style={[styles.indexState, index.state === "over" && { color: colors.bad }, index.state === "near" && { color: colors.warn }]}>
@@ -83,7 +90,7 @@ export default function MatDetailScreen() {
           ) : null}
 
           <View style={styles.timeline}>
-            <Timeline segments={data.timeline} now={Date.now() / 1000} width={mapWidth} />
+            <Timeline data={timeline ?? { segments: [], markers: [] }} now={now()} width={mapWidth} />
           </View>
           <Text style={styles.disclaimer}>{t("disclaimer")}</Text>
         </>

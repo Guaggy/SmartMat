@@ -1,5 +1,5 @@
 import type {
-  Alert, AlertAction, Health, LogEvent, MatDetail, MatTimeline, Overview, Theme,
+  Alert, AlertAction, AlertResult, Health, LogEvent, MatDetail, MatTimeline, Overview, Theme,
 } from "./types";
 
 export class ApiError extends Error {
@@ -57,7 +57,7 @@ export function createApi(baseUrl: string, timeoutMs = 8000, fetchImpl: typeof f
     theme: () => request<Theme>("GET", "/api/theme"),
     // The PIN goes in the body and is used once; it is never stored by the app.
     handleAlert: (id: string, action: AlertAction, pin: string) =>
-      request<Alert>("POST", `/api/alerts/${encodeURIComponent(id)}/${action}`, { pin }),
+      request<AlertResult>("POST", `/api/alerts/${encodeURIComponent(id)}/${action}`, { pin }),
   };
 }
 

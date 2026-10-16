@@ -2,8 +2,8 @@ import { alertErrorKey } from "../src/errors";
 import { ApiError } from "../src/api";
 import { cellColor, HEATMAP_STOPS, peakValue, rampColor } from "../src/heatmap";
 import { isQuiet, parseTime } from "../src/quietHours";
-import { layoutTimeline } from "../src/timeline";
-import type { Snapshot } from "../src/types";
+import { layoutTimeline, markerX } from "../src/timeline";
+import type { SnapshotDetail } from "../src/types";
 
 describe("heatmap", () => {
   it("hits the end stops and clamps", () => {
@@ -22,12 +22,12 @@ describe("heatmap", () => {
     expect(cellColor(0.5, 50, HEATMAP_STOPS, "bg")).toBe("bg");
     expect(cellColor(25, 50, HEATMAP_STOPS, "bg")).toBe("rgb(233,196,106)");
   });
-  it("finds the peak, ignoring dead cells and empty mats", () => {
-    const base = { online: true, risk: "low", posture: "centred", time_in_position_s: 1, saturated_cells: 0, since_relief_s: null } as const;
+  it("finds the peak of a relative signal, ignoring dead cells and empty mats", () => {
+    const base: Omit<SnapshotDetail, "grid" | "occupied"> = { unit: "relative", scale_max: 1, hotspots: [], peak_kpa: null, indices: [] };
     const grid = [[null, 3], [12.5, 4]];
-    expect(peakValue({ ...base, occupied: true, grid } as Snapshot)).toBe(12.5);
-    expect(peakValue({ ...base, occupied: false, grid } as Snapshot)).toBeNull();
-    expect(peakValue({ ...base, occupied: true, grid: null } as Snapshot)).toBeNull();
+    expect(peakValue({ ...base, occupied: true, grid })).toBe(12.5);
+    expect(peakValue({ ...base, occupied: false, grid })).toBeNull();
+    expect(peakValue({ ...base, occupied: true, grid: null })).toBeNull();
   });
 });
 
@@ -42,6 +42,14 @@ describe("timeline layout", () => {
     const bars = layoutTimeline([seg(0, 100), seg(0, 4000)], 7200, 1, 360);
     expect(bars).toHaveLength(1);
     expect(bars[0].x).toBe(0);
+  });
+});
+
+describe("timeline markers", () => {
+  it("places a marker inside the window and drops others", () => {
+    expect(markerX(3400, 3700, 1, 360)).toBeCloseTo(330, 5);
+    expect(markerX(50, 3700, 1, 360)).toBeNull();
+    expect(markerX(4000, 3700, 1, 360)).toBeNull();
   });
 });
 
@@ -71,6 +79,7 @@ describe("alert errors", () => {
   it("maps server statuses to texts", () => {
     expect(alertErrorKey(new ApiError(403, "x"))).toBe("errWrongPin");
     expect(alertErrorKey(new ApiError(429, "x"))).toBe("errLocked");
+    expect(alertErrorKey(new ApiError(409, "x"))).toBe("errNotOpen");
     expect(alertErrorKey(new ApiError(404, "x"))).toBe("errNotOpen");
     expect(alertErrorKey(new ApiError(0, "x"))).toBe("netErr");
     expect(alertErrorKey(new Error("boom"))).toBe("netErr");

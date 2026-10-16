@@ -20,3 +20,9 @@ export function layoutTimeline(segments: TimelineSegment[], now: number, hours: 
   }
   return bars;
 }
+
+/** x position of a marker, or null when it is outside the window */
+export function markerX(t: number, now: number, hours: number, width: number): number | null {
+  const start = now - hours * 3600;
+  return t < start || t > now ? null : ((t - start) / (hours * 3600)) * width;
+}

@@ -1,4 +1,4 @@
-import type { Snapshot, Theme } from "./types";
+import type { SnapshotDetail, Theme } from "./types";
 
 export type Stops = Theme["heatmap_stops"];
 
@@ -26,8 +26,9 @@ export function cellColor(value: number | null, scaleMax: number, stops: Stops, 
   return t < 0.02 ? background : rampColor(t, stops);
 }
 
-/** Highest value in the grid, or null when there is no grid or nobody is on the mat */
-export function peakValue(snapshot: Snapshot): number | null {
+/** Highest grid value, for a relative (uncalibrated) signal where the server sends no peak_kpa.
+ *  null when there is no grid or nobody is on the mat. */
+export function peakValue(snapshot: SnapshotDetail): number | null {
   if (!snapshot.grid || snapshot.occupied === false) return null;
   let peak: number | null = null;
   for (const row of snapshot.grid) for (const v of row) if (v !== null && (peak === null || v > peak)) peak = v;

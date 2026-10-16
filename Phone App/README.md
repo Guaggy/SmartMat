@@ -19,8 +19,8 @@ npx expo start
 - **iPhone (no Apple membership needed):** install *Expo Go* from the App Store, put the phone on the same Wi-Fi as
   the PC and scan the QR code. This is for checking the UI. Remote push to iOS needs a paid Apple Developer account.
 - **Mock server (no hardware or real server needed):** in a second terminal run `npm run mock` (port 8000, PIN `1234`).
-  In the app's Settings enter `10.0.2.2:8000` on the Android emulator, or `<PC LAN IP>:8000` on a phone. It has five
-  mats (offline, high, medium, low, no user) and two open alerts. `POST /__mock/reset` restores them and
+  In the app's Settings enter `10.0.2.2:8000` on the Android emulator, or `<PC LAN IP>:8000` on a phone. It has six
+  mats (never sent a frame, offline with an old picture, high, medium, low, no user), two open alerts and one handled one. `POST /__mock/reset` restores them and
   `POST /__mock/raise {"chip_id":"sm-102","kind":"high"}` raises a new one.
 - **Checks:** `npm run typecheck`, `npm test`, `npx expo-doctor`.
 

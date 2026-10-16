@@ -6,7 +6,7 @@ differs from the real server in places; the real code in `Raspberry Pi/server/` 
 - **Stack:** React Native + Expo SDK 58 (TypeScript), Expo Router (`src/app/`), `expo-notifications`,
   `expo-secure-store`. Add packages with `npx expo install`, never `npm install <pkg>`.
 - **Data:** REST polling of the SmartMat server plus Expo push for alerts. No MQTT in the app.
-- **API contract:** `src/types.ts` mirrors `Raspberry Pi/server/app.py`. Fix types there, not in screens.
+- **API contract:** `src/types.ts` mirrors `Raspberry Pi/server/app.py` and `Raspberry Pi/design/api-contract.md` (checked against main at af4f8c4; the mock server must keep the same keys). Fix types there, not in screens.
 - **Language:** Norwegian (`nb`) is the default, English second. All text lives in `src/strings.ts`.
 - **Framing rule (hard):** SmartMat is an engineering / teaching tool, not a validated medical device. Say
   "pressure", "pressure-time exposure", "risk level (indicative)". Never "ulcer probability", "diagnosis" or a

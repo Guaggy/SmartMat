@@ -1,5 +1,5 @@
-// JSON shapes of the SmartMat server, copied from Raspberry Pi/server/app.py, alerts.py, engine.py and store.py.
-// HANDOFF.md and tools/mock_api.py differ in places; this file follows the real server. Fix shapes here only.
+// JSON shapes of the SmartMat server: Raspberry Pi/server/app.py and Raspberry Pi/design/api-contract.md.
+// Checked against main at af4f8c4. If the server changes, fix the shapes here only.
 // Times are unix seconds, durations are seconds.
 
 export type Risk = "high" | "medium" | "low" | "none" | "offline";
@@ -10,14 +10,15 @@ export interface Health {
   time: number;
   mats: number;
   version: string;
+  needs_admin: boolean; // true while the server has no users yet
 }
 
 export interface MatInfo {
   id: string;
   name: string;
-  room: string | null;
-  seat: string | null;
-  unit: string | null;
+  room: string; // "" when not set
+  seat: string;
+  unit: string;
   demo: boolean;
 }
 
@@ -33,9 +34,9 @@ export interface OverviewRow extends MatInfo {
 }
 
 export interface Overview {
-  time: number;
   mats: OverviewRow[]; // worst first
   open_alerts: number;
+  server_time: number;
 }
 
 export interface Hotspot {
@@ -55,22 +56,15 @@ export interface Index {
   state: "ok" | "near" | "over";
 }
 
-// Offline mats and mats that never sent a frame only have the first block of fields (grid is null).
-export interface Snapshot {
-  online: boolean;
-  risk: Risk;
-  posture: Posture;
-  time_in_position_s: number | null;
-  saturated_cells: number;
-  since_relief_s: number | null;
-  occupied: boolean | null;
+// The picture part of a mat. null when the mat has not sent a frame yet; an offline mat keeps its last picture.
+export interface SnapshotDetail {
+  unit: "kPa" | "relative";
+  scale_max: number;
   grid: (number | null)[][] | null; // row 0 = back of the seat, last row = front
-  unit?: "kPa" | "relative";
-  scale_max?: number;
-  hotspots?: Hotspot[];
-  indices?: Index[];
-  shape?: [number, number];
-  profile_version?: number;
+  occupied: boolean | null;
+  hotspots: Hotspot[];
+  peak_kpa: number | null; // null for a relative (uncalibrated) signal
+  indices: Index[];
 }
 
 export interface TimelineSegment {
@@ -80,21 +74,27 @@ export interface TimelineSegment {
   risk: Risk;
 }
 
-export interface MatDetail extends MatInfo {
-  snapshot: Snapshot;
-  timeline: TimelineSegment[]; // last hour
-  alerts: Alert[];
+export interface TimelineMarker {
+  t: number;
+  kind: "handled";
+  user: string | null;
+}
+
+export interface MatDetail extends OverviewRow {
+  snapshot: SnapshotDetail | null;
+  age_s: number | null; // seconds since the last frame, null before the first one
+  stale: boolean;
 }
 
 export interface MatTimeline {
-  id: string;
-  timeline: TimelineSegment[];
+  segments: TimelineSegment[];
+  markers: TimelineMarker[];
 }
 
-export type AlertKind = "high" | "offline";
+export type AlertKind = "high_risk" | "offline";
 export type AlertState = "open" | "acknowledged" | "ignored";
 
-// The server only lists alerts whose condition is still active (handled ones stay until it clears).
+// GET /api/alerts: alerts whose condition is still present plus the last 30 handled ones that have cleared.
 export interface Alert {
   id: string;
   chip_id: string;
@@ -103,9 +103,16 @@ export interface Alert {
   since: number;
   t_cleared: number | null;
   state: AlertState;
-  user: string | null;
+  by: string | null; // user who acknowledged or ignored it
   t_handled: number | null;
-  name?: string; // added by GET /api/alerts only
+  name?: string; // mat name and room are added by GET /api/alerts only
+  room?: string;
+}
+
+export interface AlertResult {
+  ok: boolean;
+  user: string;
+  alert: Alert;
 }
 
 export interface LogEvent {
@@ -118,8 +125,8 @@ export interface LogEvent {
 }
 
 export interface Theme {
-  palette_light: Record<string, string>;
-  palette_dark: Record<string, string>;
+  light: Record<string, string>;
+  dark: Record<string, string>;
   heatmap_stops: [number, [number, number, number]][];
 }
 

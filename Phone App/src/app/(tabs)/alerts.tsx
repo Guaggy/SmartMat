@@ -9,17 +9,19 @@ import { formatDuration } from "../../strings";
 import { colors } from "../../theme";
 import type { Alert, AlertAction } from "../../types";
 import { usePoll } from "../../usePoll";
+import { useServerNow } from "../../useServerNow";
 
 interface Pending {
   alert: Alert;
   action: AlertAction;
 }
 
-// Open alerts first, then newest. The server only lists alerts whose condition is still active.
+// Open alerts first, then newest. The server lists alerts still present plus the last 30 handled ones that cleared.
 const order = (a: Alert, b: Alert) => Number(b.state === "open") - Number(a.state === "open") || b.t_raised - a.t_raised;
 
 export default function Alerts() {
   const { api, settings, t } = useApp();
+  const now = useServerNow(api);
   const { data, error, refreshing, refresh } = usePoll(api ? () => api.alerts() : null, settings.serverUrl);
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState(false);
@@ -46,6 +48,7 @@ export default function Alerts() {
     setPending({ alert, action });
   };
   const name = (alert: Alert) => alert.name ?? alert.chip_id;
+  const place = (alert: Alert) => (alert.room ? ` · ${alert.room}` : "");
 
   return (
     <View style={styles.screen}>
@@ -60,13 +63,14 @@ export default function Alerts() {
           <View style={[styles.card, item.state === "open" && styles.cardOpen]}>
             <Link href={{ pathname: "/mat/[id]", params: { id: item.chip_id } }} style={styles.name}>
               {name(item)}
+              {place(item)}
             </Link>
-            <Text style={styles.kind}>{t(item.kind === "offline" ? "kind_offline" : "kind_high")}</Text>
+            <Text style={styles.kind}>{t(item.kind === "offline" ? "kind_offline" : "kind_high_risk")}</Text>
             <Text style={styles.meta}>
-              {t("raisedAgo", { t: formatDuration(Date.now() / 1000 - item.t_raised, settings.lang) })}
+              {t("raisedAgo", { t: formatDuration(now() - item.t_raised, settings.lang) })}
               {" · "}
               {t(`st_${item.state}`)}
-              {item.user ? ` ${t("byUser", { u: item.user })}` : ""}
+              {item.by ? ` ${t("byUser", { u: item.by })}` : ""}
             </Text>
             {item.state === "open" ? (
               <View style={styles.buttons}>

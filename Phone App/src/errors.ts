@@ -7,7 +7,7 @@ export function alertErrorKey(error: unknown): StringKey {
     if (error.status === 403) return "errWrongPin";
     if (error.status === 401) return "errPinRequired";
     if (error.status === 429) return "errLocked";
-    if (error.status === 404) return "errNotOpen";
+    if (error.status === 409 || error.status === 404) return "errNotOpen"; // already handled, cleared or unknown
   }
   return "netErr";
 }
