@@ -4,6 +4,7 @@ apply_theme(root, mode) can be called again at any time: every open window and e
 figure() follows. The pure helpers (palette, heatmap_cmap, contrast, text_on) need no display.
 """
 
+import functools
 import weakref
 import tkinter as tk
 from tkinter import font as tkfont, ttk
@@ -58,9 +59,14 @@ def text_on(background):
 
 def heatmap_cmap(mode=None):
     """The shared pressure ramp; the lowest FADE_BELOW of the scale fades into the theme's hm_bg"""
+    return _heatmap_cmap(mode if mode in MODES else _mode)
+
+
+@functools.lru_cache(maxsize=None)
+def _heatmap_cmap(mode):
     stops = [(0.0, palette(mode)["hm_bg"]), (FADE_BELOW, _hex(HEATMAP_STOPS[0][1]))]
     stops += [(t, _hex(rgb)) for t, rgb in HEATMAP_STOPS[1:]]
-    return LinearSegmentedColormap.from_list(f"smartmat_{mode or _mode}", stops)
+    return LinearSegmentedColormap.from_list(f"smartmat_{mode}", stops)
 
 
 def health_cmap(mode=None):

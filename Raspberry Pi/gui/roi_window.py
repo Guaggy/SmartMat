@@ -16,7 +16,6 @@ from processing.roi import cells_mask, polygon_mask, rectangle_mask, roi_balance
 MODES = ("2 corners", "Polygon", "Paint")
 UNDO_STEPS = 20
 TRAIL_SAMPLES = 60
-SELECTED_COLORS = ListedColormap(["#b8b8b8", "#5b9d61"])  # unselected grey, selected green
 
 
 def _show(value, suffix="", digits=2):
@@ -182,11 +181,11 @@ class RoiWindow:
         if self._stroke is not None:
             stroke = cells_mask((rows, cols), self._stroke)
             shown = shown & ~stroke if self.remove_var.get() else shown | stroke
-        axes.imshow(np.ma.masked_where(~shown, shown), cmap=ListedColormap(["#5b9d61"]), alpha=0.55,
-                    aspect="auto", vmin=0, vmax=1)
+        axes.imshow(np.ma.masked_where(~shown, shown), cmap=ListedColormap([theme.palette()["accent_fill"]]),
+                    alpha=0.55, aspect="auto", vmin=0, vmax=1)
         axes.set_xticks(np.arange(-0.5, cols), minor=True)
         axes.set_yticks(np.arange(-0.5, rows), minor=True)
-        axes.grid(which="minor", color="#cccccc", linewidth=0.4)
+        axes.grid(which="minor", color=theme.palette()["line"], linewidth=0.4)
         axes.tick_params(which="minor", length=0)
         if self.pending:
             corners = self.pending + ([self._hover] if self._hover is not None else [])
@@ -231,9 +230,10 @@ class RoiWindow:
 
         layout = self.output_figure.add_gridspec(2, 2, height_ratios=(3, 2))
         mini = self.output_figure.add_subplot(layout[0, 0])
-        mini.imshow(roi.astype(int), cmap=SELECTED_COLORS, vmin=0, vmax=1, aspect="auto")
+        selected = ListedColormap([theme.palette()["line"], theme.palette()["accent_fill"]])  # unselected, selected
+        mini.imshow(roi.astype(int), cmap=selected, vmin=0, vmax=1, aspect="auto")
         if stats["center_x"] is not None:
-            mini.plot([stats["center_x"]], [stats["center_y"]], marker="+", color="black",
+            mini.plot([stats["center_x"]], [stats["center_y"]], marker="+", color=theme.palette()["ink"],
                       markersize=12, markeredgewidth=2)
         mini.set_title("Selected cells (+ = centre of pressure)", fontsize=9)
         mini.set_xticks([])
@@ -255,8 +255,8 @@ class RoiWindow:
         axes.set_xlim(-1, 1)
         axes.set_ylim(-1, 1)
         axes.set_aspect("equal")
-        axes.axhline(0, color="#999999", linewidth=0.8)
-        axes.axvline(0, color="#999999", linewidth=0.8)
+        axes.axhline(0, color=theme.palette()["muted"], linewidth=0.8)
+        axes.axvline(0, color=theme.palette()["muted"], linewidth=0.8)
         axes.set_xlabel("left  <-  load  ->  right", fontsize=8)
         axes.set_ylabel("lower  <-  load  ->  upper", fontsize=8)
         if balance is None:
@@ -264,8 +264,8 @@ class RoiWindow:
             return
         axes.set_title("Balance within the region", fontsize=9)
         if len(self.trail) > 1:
-            axes.plot([x for x, _y in self.trail], [y for _x, y in self.trail], color="#9da7b1", linewidth=1)
-        axes.plot([balance["x"]], [balance["y"]], marker="o", color="#5b9d61", markersize=9)
+            axes.plot([x for x, _y in self.trail], [y for _x, y in self.trail], color=theme.palette()["idle"], linewidth=1)
+        axes.plot([balance["x"]], [balance["y"]], marker="o", color=theme.palette()["accent_fill"], markersize=9)
         quadrants = balance["quadrants"]
         for key, x, y, horizontal, vertical in (("upper_left", -0.95, 0.95, "left", "top"),
                                                 ("upper_right", 0.95, 0.95, "right", "top"),

@@ -84,8 +84,8 @@ class IndicesWindow:
             axes.plot([time - start for time, _value in history], [value for _time, value in history],
                       color="green")
         threshold = definition["threshold"]
-        axes.axhline(threshold, color="#bd5555", linestyle="dashed", label="Threshold")
-        axes.axhline(threshold * definition["near_fraction"], color="#e8b04e", linestyle="dotted",
+        axes.axhline(threshold, color=theme.palette()["bad"], linestyle="dashed", label="Threshold")
+        axes.axhline(threshold * definition["near_fraction"], color=theme.palette()["warn"], linestyle="dotted",
                      label="Near")
         axes.set_ylim(bottom=0)
         axes.set_xlabel("Time (s)")

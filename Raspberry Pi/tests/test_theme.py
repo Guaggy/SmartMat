@@ -110,6 +110,11 @@ class ThemeAppTests(unittest.TestCase):
             self.assertGreater(seen, 10)
             for fig in list(theme._figures):
                 self.assertEqual(to_hex(fig.get_facecolor()).upper(), p["panel"].upper())
+            self.assertEqual(to_hex(app.image.get_cmap()(0.0)).upper(), p["hm_bg"].upper())
+            token = self.desktop.OCCUPANCY_LABELS[app.occupancy.occupied][1]
+            self.assertEqual(app.occupancy_label.cget("bg").upper(), p[token].upper())
+            for chip in app.index_chips.values():
+                self.assertIn(chip.cget("bg").upper(), {p[token].upper() for token in ("line", "idle", "warn", "bad")})
 
     def test_toggle_is_saved_and_used_at_the_next_start(self):
         self.switch("dark")

@@ -12,11 +12,6 @@ from gui import theme
 
 import config
 
-# muted tones: this gets looked at for a long time
-UNCALIBRATED_COLOR = "#a86a6a"
-CALIBRATED_COLOR = "#6f9a76"
-MINIGRID_COLORS = ListedColormap([UNCALIBRATED_COLOR, CALIBRATED_COLOR])
-
 
 def _when(profile, exists):
     """'last changed ...' text for a profile, from its modified_at timestamp"""
@@ -293,10 +288,11 @@ class CalibrationWindow:
         calibrated = np.array([[self.individual.is_calibrated(r, c) for c in range(config.TOTAL_COLS)]
                                for r in range(config.TOTAL_ROWS)], dtype=int)
         self.mini_axes.clear()
-        self.mini_axes.imshow(calibrated, cmap=MINIGRID_COLORS, vmin=0, vmax=1, aspect="equal")
+        colours = ListedColormap([theme.palette()["bad"], theme.palette()["ok"]])  # uncalibrated, calibrated
+        self.mini_axes.imshow(calibrated, cmap=colours, vmin=0, vmax=1, aspect="equal")
         row, col = self._cell()
         self.mini_axes.plot(col, row, marker="s", markersize=6, fillstyle="none",
-                            color="#222222", linestyle="None")
+                            color=theme.palette()["ink"], linestyle="None")
         self.mini_axes.set_xticks([])
         self.mini_axes.set_yticks([])
         self.mini_figure.tight_layout(pad=0.3)

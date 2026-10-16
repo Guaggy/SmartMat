@@ -13,7 +13,6 @@ from tkinter import filedialog, simpledialog, ttk
 import numpy as np
 import config as app_config
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.colors import LinearSegmentedColormap
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 - registers the 3D projection
 
 import app_settings
@@ -80,19 +79,17 @@ DATA_MODES = {
 }
 # DesktopApp.data_modes adds the cell signals ("signal:<name>") and map indices ("index:<name>") to these
 
-OCCUPANCY_LABELS = {  # muted: this sits on screen all day
-    True: ("Patient detected", "#5b9d61"),
-    False: ("No patient", "#777777"),
-    None: ("Patient: unknown", "#9da7b1"),
+# Status cells: text and the palette token of the cell colour. Muted: these sit on screen all day
+OCCUPANCY_LABELS = {
+    True: ("Patient detected", "ok"),
+    False: ("No patient", "idle"),
+    None: ("Patient: unknown", "line"),
 }
 
-INDEX_CHIP_COLORS = {"inactive": "#9da7b1", OK: "#777777", NEAR: "#e8b04e", OVER: "#bd5555"}
+INDEX_CHIP_COLORS = {"inactive": "line", OK: "idle", NEAR: "warn", OVER: "bad"}
 INDEX_EVENTS = {OK: "index_cleared", NEAR: "index_near_threshold", OVER: "index_over_threshold"}
 INDEX_OUTLINE_COLOR = "#8a4f9e"  # distinct from hotspot red/orange and the blue contact boundary
 
-HEATMAP_COLORS = LinearSegmentedColormap.from_list(
-    "relative_pressure", ["white", "green", "red"]
-)
 DEFAULT_SHAPE = (app_config.TOTAL_ROWS, app_config.TOTAL_COLS)  # config.py's own size, used by Serial/Simulated
 
 
@@ -235,7 +232,7 @@ class DesktopApp:
         self._notice, self._notice_until = "", 0.0  # one-off message that the live status line must not wipe
         status_bar = ttk.Frame(self.root)
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
-        self.occupancy_label = tk.Label(status_bar, fg="white", padx=10)
+        self.occupancy_label = tk.Label(status_bar, padx=10)
         self.occupancy_label.pack(side=tk.RIGHT, padx=4, pady=2)
         self.index_chip_bar = ttk.Frame(status_bar)
         self.index_chip_bar.pack(side=tk.RIGHT)
@@ -604,7 +601,7 @@ class DesktopApp:
         # Amber note under the load line; packed only while cells are at the sensor limit (kept in Simple view)
         self.saturation_var = tk.StringVar()
         self.saturation_label = ttk.Label(stats_panel, textvariable=self.saturation_var, wraplength=190,
-                                          foreground="#b36b00")
+                                          style="Warn.TLabel")
         self._remember_rows(stats_panel)
 
         panel = self._adv(ttk.LabelFrame(sidebar, text="About", padding=8))
@@ -762,7 +759,7 @@ class DesktopApp:
             self.axes = self.figure.add_subplot()
             self.image = self.axes.imshow(
                 np.zeros((app_config.TOTAL_ROWS, app_config.TOTAL_COLS)),
-                cmap="coolwarm" if self.difference_var.get() else HEATMAP_COLORS,
+                cmap="coolwarm" if self.difference_var.get() else theme.heatmap_cmap(),
                 vmin=VALUE_MIN_DEFAULT, vmax=VALUE_MAX_DEFAULT,
                 aspect="auto",
             )
@@ -1621,7 +1618,7 @@ class DesktopApp:
         window.title("Tare baseline")
         figure = theme.figure(figsize=(5, 5))
         axes = figure.add_subplot()
-        image = axes.imshow(self.calibration.baseline, cmap=HEATMAP_COLORS, aspect="auto")
+        image = axes.imshow(self.calibration.baseline, cmap=theme.heatmap_cmap(), aspect="auto")
         figure.colorbar(image, ax=axes, label="Baseline value")
         FigureCanvasTkAgg(figure, master=window).get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
@@ -1897,23 +1894,30 @@ class DesktopApp:
         self._notice, self._notice_until = text, time.time() + seconds
         self.status_var.set(text)
 
+    @staticmethod
+    def _status_cell(label, token):
+        """Colour a solid status cell from the active palette, with whichever text colour reads on it"""
+        colour = theme.palette()[token]
+        label.configure(bg=colour, fg=theme.text_on(colour))
+
     def _update_occupancy(self):
-        text, color = OCCUPANCY_LABELS[self.occupancy.occupied]
-        self.occupancy_label.configure(text=text, bg=color)
+        text, token = OCCUPANCY_LABELS[self.occupancy.occupied]
+        self.occupancy_label.configure(text=text)
+        self._status_cell(self.occupancy_label, token)
 
     def _build_index_chips(self):
         for chip in self.index_chip_bar.winfo_children():
             chip.destroy()
         self.index_chips = {}
         for definition in self.indices.definitions:
-            chip = tk.Label(self.index_chip_bar, text=definition["name"], fg="white", padx=8)
+            chip = tk.Label(self.index_chip_bar, text=definition["name"], padx=8)
             chip.pack(side=tk.LEFT, padx=2, pady=2)
             self.index_chips[definition["name"]] = chip
         self._update_index_chips()
 
     def _update_index_chips(self):
         for name, chip in self.index_chips.items():
-            chip.configure(bg=INDEX_CHIP_COLORS[self.indices.states[name]])
+            self._status_cell(chip, INDEX_CHIP_COLORS[self.indices.states[name]])
 
     def _set_indices(self, definitions):
         """Replace the index definitions (raises ValueError and changes nothing if invalid)"""
@@ -2042,7 +2046,7 @@ class DesktopApp:
                                      np.linspace(0, app_config.TOTAL_ROWS - 1, plot_grid.shape[0]))
             self.axes.plot_surface(
                 cols, rows, -plot_grid,
-                cmap="coolwarm_r" if difference else HEATMAP_COLORS.reversed(),
+                cmap="coolwarm_r" if difference else theme.heatmap_cmap().reversed(),
                 vmin=-vmax, vmax=-vmin,
             )
             self.axes.set_zlim(-vmax, -vmin)
@@ -2054,7 +2058,7 @@ class DesktopApp:
             self.image.set_data(plot_grid)
             self.image.set_extent((-0.5, app_config.TOTAL_COLS - 0.5, app_config.TOTAL_ROWS - 0.5, -0.5))
             self.image.set_clim(vmin, vmax)
-            self.image.set_cmap("coolwarm" if difference else HEATMAP_COLORS)
+            self.image.set_cmap("coolwarm" if difference else theme.heatmap_cmap())
             self.axes.set_xlim(-0.5, app_config.TOTAL_COLS - 0.5)
             self.axes.set_ylim(app_config.TOTAL_ROWS - 0.5, -0.5)
             if self.show_contours and not pressure_unavailable and not difference and not derived:
@@ -2064,7 +2068,7 @@ class DesktopApp:
                 if levels:
                     x = np.linspace(0, app_config.TOTAL_COLS - 1, plot_grid.shape[1])
                     y = np.linspace(0, app_config.TOTAL_ROWS - 1, plot_grid.shape[0])
-                    self.axes.contour(x, y, plot_grid, levels=levels, colors="#333333",
+                    self.axes.contour(x, y, plot_grid, levels=levels, colors=theme.palette()["ink"],
                                       linewidths=0.6, alpha=0.6)
             if (self.show_hotspot_threshold and key == "pressure" and not difference and
                     finite_values.size and finite_values.min() < self.hotspots.activate_kpa < finite_values.max()):
@@ -2090,9 +2094,10 @@ class DesktopApp:
                                           levels=[0.5], colors="red" if track["persistent"] else "orange",
                                           linewidths=1.3)
                     row, col = track["centroid"]
+                    palette = theme.palette()
                     label = self.axes.text(col, row, f"#{track['id']} {track['active_s']:.0f}s",
-                                           color="black", fontsize=8, ha="center", va="center",
-                                           bbox={"facecolor": "white", "alpha": 0.65, "edgecolor": "none"})
+                                           color=palette["ink"], fontsize=8, ha="center", va="center",
+                                           bbox={"facecolor": palette["panel"], "alpha": 0.75, "edgecolor": "none"})
                     self.hotspot_labels.append(label)
             if not difference:
                 for name, state in self.indices.states.items():
