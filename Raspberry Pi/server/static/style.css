@@ -160,11 +160,17 @@ input { width: 100%; }
 .al .acts { display: flex; gap: 8px; margin-top: 8px; }
 
 /* dialog and toast */
-dialog { width: calc(100% - 32px); max-width: 340px; padding: 16px; background: var(--panel); color: var(--ink); border: 1px solid var(--ink); }
+dialog { width: calc(100% - 32px); max-width: 380px; padding: 16px; background: var(--panel); color: var(--ink); border: 1px solid var(--ink); }
 dialog::backdrop { background: var(--backdrop); }
 dialog h2 { margin-bottom: 10px; }
+dialog p { margin: 0 0 10px; }
 dialog label { display: block; margin-bottom: 8px; color: var(--muted); }
-dialog label input { display: block; margin-top: 2px; color: var(--ink); }
+dialog label input, dialog label select { display: block; width: 100%; margin-top: 2px; color: var(--ink); }
+.ulist { margin: 0 0 10px; padding: 0; list-style: none; max-height: 50vh; overflow: auto; }
+.ulist li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.ulist .who { flex: 1 1 140px; }
+.ulist .off { color: var(--muted); }
+.ulist .acts { display: flex; gap: 12px; }
 .err { min-height: 20px; color: var(--bad); font-weight: 600; }
 .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 .toast { position: fixed; z-index: 10; left: 50%; bottom: 16px; transform: translateX(-50%); max-width: calc(100vw - 32px); padding: 8px 14px; background: var(--ink); color: var(--panel); font-weight: 600; }

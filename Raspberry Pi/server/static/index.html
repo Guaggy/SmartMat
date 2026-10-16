@@ -35,6 +35,7 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 17V11a6 6 0 0 1 12 0v6l2 2H4zM10 21h4"/></svg>
     <span data-i="alerts"></span><span class="badge" id="badge" hidden></span>
   </button>
+  <button class="btn" id="usersBtn" type="button" data-i="users"></button>
   <button class="btn" id="helpBtn" type="button" data-i="help"></button>
   <button class="btn" id="langBtn" type="button"></button>
   <button class="btn" id="themeBtn" type="button"></button>
@@ -98,7 +99,7 @@
   <form id="dlgForm">
     <h2 id="dlgTitle"></h2>
     <div id="dlgFields"></div>
-    <label><span data-i="pin"></span>
+    <label id="pinRow"><span id="pinLabel"></span>
       <input id="pin" type="password" inputmode="numeric" autocomplete="off" required>
     </label>
     <p class="err" id="dlgErr" role="alert"></p>
@@ -107,6 +108,15 @@
       <button class="btn primary" id="dlgOk" type="submit" data-i="ok"></button>
     </div>
   </form>
+</dialog>
+
+<dialog id="usersDlg">
+  <h2 data-i="users"></h2>
+  <ul class="ulist" id="userList"></ul>
+  <div class="actions">
+    <button class="btn" id="usersClose" type="button" data-i="close"></button>
+    <button class="btn primary" id="userAdd" type="button" data-i="addUser"></button>
+  </div>
 </dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
