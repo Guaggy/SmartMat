@@ -4,7 +4,7 @@ Android and iOS app (Expo / React Native, TypeScript) that shows mat status and 
 server. SmartMat is an engineering / teaching tool, not a validated medical device; the app says "risk level
 (indicative)" and never claims a diagnosis.
 
-Status: all five screens work against the mock server and the real server's JSON shapes. Push: the app side and the server patch are written and tested against fake endpoints; a real push to a phone still needs the one-time setup below. `eas.json` comes next.
+Status: all five screens work against the mock server and the real server's JSON shapes. Push: the app side and the server patch are written and tested against fake endpoints; a real push to a phone still needs the one-time setup below. Android builds are configured in `eas.json` (untested without an Expo login).
 
 ## Run it
 
@@ -24,15 +24,28 @@ npx expo start
   `POST /__mock/raise {"chip_id":"sm-102","kind":"high"}` raises a new one.
 - **Checks:** `npm run typecheck`, `npm test`, `npx expo-doctor`.
 
-## Build with EAS (later steps add `eas.json`)
+## Build with EAS
 
 ```bash
 npm i -g eas-cli
 eas login
-eas build --platform android --profile preview   # APK for internal testing
+eas init                                          # once: adds extra.eas.projectId to app.json (commit it)
+eas build --platform android --profile development   # dev build: use with `npx expo start`, needed for push
+eas build --platform android --profile preview       # APK for internal testing, no dev tools
 ```
 
-iOS builds and TestFlight need an Apple Developer Program membership (99 USD/yr); not set up yet.
+`eas.json` profiles (Android only for now):
+
+- `development`: dev client (`expo-dev-client`), internal distribution, APK. Installs on the emulator and on phones.
+- `preview`: release-like APK for testers; install by opening the build's link or dragging the APK onto the emulator.
+- `production`: store build (AAB), version auto-incremented. Not needed yet.
+
+There are no iOS profiles yet because they need a paid Apple Developer Program membership (99 USD/yr). When you have one, add
+`ios` settings per profile and run `eas credentials`; no app code changes are needed.
+
+`eas.json` was written from the EAS docs and checked as JSON, but not run through EAS CLI (that needs your login).
+
+Local alternative to cloud builds (needs the Android SDK, as installed with Android Studio, and a JDK): `npx expo run:android`.
 
 ## Push notifications
 
@@ -94,4 +107,4 @@ tile, so the 1024 px icon is upscaled and slightly soft; swap in exported brand 
 ## Dependencies
 
 Only what Expo Router needs plus: `expo-secure-store` (server address, language, quiet hours), `react-native-svg` (heatmap and timeline), `jest` + `jest-expo` (tests, dev only), `expo-build-properties` (allow cleartext HTTP on Android), `expo-splash-screen`
-(branded splash), `expo-notifications` (push). `react-dom` is a peer dependency of Expo Router that npm needs resolved to the SDK's version.
+(branded splash), `expo-notifications` (push), `expo-dev-client` (development builds, which push needs on Android), `expo-system-ui` (makes the dark style apply on Android). `react-dom` is a peer dependency of Expo Router that npm needs resolved to the SDK's version.
