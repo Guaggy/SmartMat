@@ -1,8 +1,9 @@
 """Seated posture class and risk level from the oriented pressure grid (pure, no GUI).
 
 Heuristics for testing the pipeline, not a clinical assessment. Grid convention (after
-orientation): row 0 is the back of the seat and the last row is "forward" (the front edge); column 0 is "left"
-as drawn in the map (the sitter's right when seen from above with the front at the bottom; the Mirror H setting swaps it).
+orientation): row 0 is the back of the seat and the last row is "forward" (the front edge); left/right are the SITTER'S
+left and right (clinical convention): with the front at the bottom of the map the sitter faces the viewer-bottom, so column 0 is
+the sitter's right (the Mirror H setting swaps it).
 """
 
 import config
@@ -26,7 +27,7 @@ def classify_posture(pressure, occupied, threshold_kpa, side_cells=SIDE_CELLS, f
     rows, cols = pressure.shape
     dx, dy = x - (cols - 1) / 2, y - (rows - 1) / 2
     if abs(dx) > side_cells:
-        return "left" if dx < 0 else "right"
+        return "right" if dx < 0 else "left"  # column 0 is the sitter's right
     return "forward" if dy > forward_cells else "centred"
 
 

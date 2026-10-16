@@ -36,8 +36,8 @@ def profile(rows=20, cols=20, mirror_h=False):
 
 class PostureTests(unittest.TestCase):
     def test_classes_from_centre_of_pressure(self):
-        self.assertEqual(classify_posture(blob(9, 3), True, 2.0), "left")
-        self.assertEqual(classify_posture(blob(9, 16), True, 2.0), "right")
+        self.assertEqual(classify_posture(blob(9, 3), True, 2.0), "right")
+        self.assertEqual(classify_posture(blob(9, 16), True, 2.0), "left")
         self.assertEqual(classify_posture(blob(16, 10), True, 2.0), "forward")
         self.assertEqual(classify_posture(blob(10, 10), True, 2.0), "centred")
         self.assertEqual(classify_posture(blob(10, 10), False, 2.0), "none")
@@ -99,7 +99,7 @@ class EngineTests(unittest.TestCase):
 
     def test_orientation_from_the_profile_is_respected(self):
         left = blob(9, 3) / 50 * 1000  # default curve: 1000 = 50 kPa
-        for mirror, expected in ((False, "left"), (True, "right")):
+        for mirror, expected in ((False, "right"), (True, "left")):
             engine = MatEngine("abc", 20, 20, profile=profile(mirror_h=mirror))
             for step in range(60):
                 engine.feed(left, step * 0.1)
