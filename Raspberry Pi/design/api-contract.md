@@ -1,0 +1,123 @@
+# SmartMat web dashboard: API contract
+
+What `server/static/app.js` consumes. `tools/mock_api.py` implements exactly this, so run it next to the real
+server to compare shapes (`python tools/mock_api.py`, PIN 1234). Times are unix seconds (float or int), durations
+are seconds. All bodies are JSON. Errors are `{"error": "<text>"}` with a 4xx status; the dashboard shows the text
+as is, so write it for a nurse.
+
+Static files are served from `/` (`index.html`, `app.js`, `style.css`, `manifest.json`, `img/`); the page uses
+relative URLs and polls: `/api/overview` every 2 s, `/api/mats/<id>` (selected mat) every 1 s,
+`/api/mats/<id>/timeline` every 5 s while a row is expanded, `/api/alerts` while the bell list is open. Polling
+pauses while the browser tab is hidden. Send `Cache-Control: no-store` on `/api/*`.
+
+## Reads
+
+### GET /api/overview
+
+```json
+{"mats": [{
+   "id": "sm-101", "name": "SmartMat 1", "room": "101", "seat": "A", "unit": "Avd. A",
+   "demo": false, "online": true,
+   "risk": "high|medium|low|none|offline",
+   "posture": "left|right|forward|centred|none",
+   "time_in_position_s": 718, "since_relief_s": 5400,
+   "saturated_cells": 12, "open_alerts": 1}],
+ "open_alerts": 2, "server_time": 1792141655.2}
+```
+
+- `risk`: `offline` means no frames for `STALE_AFTER_S` or status offline. The dashboard never shows an offline mat
+  as healthy, and also treats `online: false` as offline whatever `risk` says. An unknown `risk` string is drawn as
+  "none" (grey), never green.
+- `posture` `none` means unoccupied. Then `time_in_position_s` is how long it has been unoccupied ("No user for 2:53").
+  For an offline mat `posture` and `time_in_position_s` are ignored by the UI.
+- `since_relief_s` is `null` when unknown (shown as a dash).
+- `saturated_cells >= 1` shows "N cells at sensor limit: load and peak read low".
+- `open_alerts` on a row counts that mat's alerts in state `open`; the top-level `open_alerts` drives the bell.
+- `server_time` lets the browser correct for a wrong clock (alert ages, timeline axis).
+- `unit` may be `""`; the unit filter is built from the distinct non-empty values.
+- Demo mats are marked with `demo: true` (chip id starts with `demo-`); the UI adds a DEMO label.
+
+### GET /api/mats/<id>
+
+The overview row, plus:
+
+```json
+{"snapshot": {
+   "unit": "kPa|relative", "scale_max": 50.0,
+   "grid": [[0.0, 3.1, null]], "occupied": true,
+   "hotspots": [{"id": 1, "peak_kpa": 46.0, "cells": [[9, 4], [9, 5]], "active_s": 12.5, "persistent": false}],
+   "indices": [{"name": "Peak pressure (kPa)", "layer": "pressure", "value": 46.0, "threshold": 45.0, "state": "ok|near|over"}],
+   "peak_kpa": 46.0},
+ "age_s": 0.4, "stale": false}
+```
+
+- `grid`: rows x cols, values in `unit`, `null` for a dead/unknown cell (drawn as 0). Orientation is the oriented
+  grid: **row 0 is the back of the seat, the last row the front** (the panel labels the bottom edge "Front").
+  Colour is `value / scale_max` through the ramp from `/api/theme`; the browser upsamples bilinearly (8x), so any
+  rectangular size works.
+- `unit: "relative"` (not calibrated): the UI says "relative signal, not pressure" and hides the kPa readout; send
+  `peak_kpa: null`.
+- `hotspots[].cells` are `[row, col]`; the browser draws a dashed outline round each area (thicker if `persistent`).
+- `indices[].state` is `ok`, `near` or `over`.
+- `occupied`: `true`, `false` (the UI says "Nobody is on the mat" and shows no peak) or `null` (unknown).
+- `age_s`: seconds since the last frame; `stale: true` (age > `STALE_AFTER_S`) dims the map and shows "no new data".
+  For an offline mat keep returning the last snapshot with a growing `age_s` and `stale: true`; if there is none,
+  send `snapshot: null` (the map stays empty, the note and readouts still show).
+- 404 `{"error"}` for an unknown mat; the dashboard drops its selection.
+
+### GET /api/mats/<id>/timeline?hours=5
+
+```json
+{"segments": [{"t_start": 1792123655, "t_end": 1792129171, "posture": "right", "risk": "high|medium|low|none"}],
+ "markers": [{"t": 1792130000, "kind": "handled", "user": "Test Nurse"}]}
+```
+
+- Segments are in time order and may have gaps (drawn empty = "no data"). The current segment ends at "now" (or at the
+  moment the mat went offline). Anything older than `hours` may be omitted or is clipped by the browser.
+- Segment colour comes from `risk`; the label inside from `posture`.
+- `markers` are acknowledge/ignore events (red markers, tooltip "Handled by <user>").
+
+### GET /api/alerts
+
+```json
+{"alerts": [{"id": "a1", "chip_id": "sm-101", "name": "SmartMat 1", "room": "101",
+             "kind": "high_risk|offline", "t_raised": 1792141100,
+             "state": "open|acknowledged|ignored", "by": null}]}
+```
+
+`by` is the user name once handled. The list is newest first or in any order (the UI sorts open first, then newest,
+and shows at most 30); send recent history, not only open alerts.
+
+### GET /api/theme
+
+```json
+{"light": {"bg": "#E9EDF1", "...": "..."}, "dark": {"...": "..."}, "heatmap_stops": [[0.0, [207, 230, 222]], [1.0, [107, 15, 26]]]}
+```
+
+From `branding.py` (`PALETTE_LIGHT`, `PALETTE_DARK`, `HEATMAP_STOPS`). The dashboard only reads `heatmap_stops`
+(stops sorted by t, 0..1) and keeps a built-in copy as fallback. The palette tokens live in `style.css` as CSS
+variables; keep both in step with `branding.py` when a colour changes.
+
+### GET /api/health
+
+`{"ok": true, "version": "0.1.0"}`
+
+## Writes (all need `pin` in the JSON body)
+
+Wrong PIN: 4xx (the mock uses 403) with `{"error": "Wrong PIN"}`. Success returns the handling user's name; the
+dashboard shows "Acknowledged by <user>".
+
+| Call | Body | Success |
+|---|---|---|
+| `POST /api/alerts/<id>/ack` | `{"pin"}` | `{"ok": true, "user": "name"}` |
+| `POST /api/alerts/<id>/ignore` | `{"pin"}` | `{"ok": true, "user": "name"}` |
+| `PUT /api/mats/<id>/meta` | `{"pin", "name", "room", "seat", "unit"}` | `{"ok": true, "user": "name"}` |
+
+- Acknowledging or ignoring an alert that is no longer `open`: 409 with an `{"error"}` text.
+- `meta`: all four fields are sent every time (the edit dialog sends the full set). Reject an empty name with 400.
+- After a write the dashboard re-reads overview, alerts, the mat and the timeline at once.
+
+## What the dashboard stores in the browser
+
+`localStorage` keys (all optional, every access in try/catch): `sm.lang` (`nb`|`en`), `sm.theme` (`light`|`dark`),
+`sm.sort`, `sm.unit`. Nothing about patients; no PIN is ever stored.
