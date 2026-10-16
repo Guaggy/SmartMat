@@ -1,0 +1,16 @@
+# SmartMat phone app
+
+Notification and status client for the SmartMat pressure mat. Full brief: `HANDOFF.md` (note: the API table there
+differs from the real server in places; the real code in `Raspberry Pi/server/` wins).
+
+- **Stack:** React Native + Expo SDK 58 (TypeScript), Expo Router (`src/app/`), `expo-notifications`,
+  `expo-secure-store`. Add packages with `npx expo install`, never `npm install <pkg>`.
+- **Data:** REST polling of the SmartMat server plus Expo push for alerts. No MQTT in the app.
+- **API contract:** `src/types.ts` mirrors `Raspberry Pi/server/app.py`. Fix types there, not in screens.
+- **Language:** Norwegian (`nb`) is the default, English second. All text lives in `src/strings.ts`.
+- **Framing rule (hard):** SmartMat is an engineering / teaching tool, not a validated medical device. Say
+  "pressure", "pressure-time exposure", "risk level (indicative)". Never "ulcer probability", "diagnosis" or a
+  validated-risk claim. Push text uses mat name and room only, no patient identifiers.
+- **Secrets:** never commit push tokens, PINs, EAS or Firebase credentials. The PIN is asked per action and not stored.
+- **Scope:** work only in `Phone App/`. Server changes go in `Phone App/server-patch/` as patches for `main`.
+- **Checks before committing:** `npm run typecheck`, `npm test` (once added), `npx expo-doctor`.
