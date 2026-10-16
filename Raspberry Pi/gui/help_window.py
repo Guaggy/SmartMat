@@ -2,6 +2,7 @@
 
 import tkinter as tk
 from tkinter import ttk
+from gui.page import make_window
 
 
 SECTIONS = (
@@ -54,14 +55,13 @@ Recording / Playback — save experiments or replay recorded sessions."""),
 
 class HelpWindow:
     def __init__(self, parent):
-        self.window = tk.Toplevel(parent)
+        self.window = make_window(parent)
         self.window.title("SMARTMAT Help / Quick Start")
         self.window.geometry("650x610")
 
         panel = ttk.Frame(self.window, padding=10)
         panel.pack(fill=tk.BOTH, expand=True)
-        text = tk.Text(panel, wrap=tk.WORD, padx=12, pady=10, relief=tk.FLAT,
-                       background=self.window.cget("background"))
+        text = tk.Text(panel, wrap=tk.WORD, padx=12, pady=10, relief=tk.FLAT)  # coloured by the theme
         scrollbar = ttk.Scrollbar(panel, orient=tk.VERTICAL, command=text.yview)
         text.configure(yscrollcommand=scrollbar.set)
         text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)

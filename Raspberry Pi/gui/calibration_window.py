@@ -11,6 +11,7 @@ from matplotlib.colors import ListedColormap
 from gui import theme
 
 import config
+from gui.page import is_shown, make_window
 
 
 def _when(profile, exists):
@@ -32,7 +33,7 @@ class CalibrationWindow:
         self.uniform = calibration.uniform
         self.raw_grid_getter = raw_grid_getter
         self.on_change = on_change
-        self.window = tk.Toplevel(parent)
+        self.window = make_window(parent)
         self.window.title("Pressure calibration")
         self.window.geometry("800x860")
         ttk.Label(self.window, text='Teaches the mat what each sensor reading means in kPa. Needed before pressure values and hotspots can be trusted.', wraplength=760, padding=(8, 6)).pack(side=tk.TOP, fill=tk.X)
@@ -223,6 +224,9 @@ class CalibrationWindow:
 
     def _refresh_raw(self):
         if not self.window.winfo_exists():
+            return
+        if not is_shown(self.window):  # a hidden tab: check again later
+            self.window.after(200, self._refresh_raw)
             return
         try:
             grid = self._current_grid()

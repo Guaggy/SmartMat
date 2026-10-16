@@ -12,6 +12,7 @@ from gui import theme
 import config
 from processing.analysis import roi_statistics
 from processing.roi import cells_mask, polygon_mask, rectangle_mask, roi_balance, stroke_cells
+from gui.page import make_window
 
 MODES = ("2 corners", "Polygon", "Paint")
 UNDO_STEPS = 20
@@ -25,7 +26,7 @@ def _show(value, suffix="", digits=2):
 class RoiWindow:
     def __init__(self, parent, app):
         self.app = app
-        self.window = tk.Toplevel(parent)
+        self.window = make_window(parent)
         self.window.title("ROI")
         self.window.geometry("1100x760")
         ttk.Label(self.window, wraplength=1060, padding=(8, 6), text=(

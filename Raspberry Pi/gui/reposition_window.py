@@ -6,6 +6,7 @@ from tkinter import ttk
 import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from gui import theme
+from gui.page import make_window
 
 # (label, key in the before/after snapshot, unit)
 STATS = (
@@ -33,7 +34,7 @@ class RepositionWindow:
         self.cmap = cmap
         self.record = record
         self.showing = "before"
-        self.window = tk.Toplevel(parent)
+        self.window = make_window(parent)
         self.window.title(f"Reposition at {time_label}: before / after")
         self.window.geometry("820x600")
 

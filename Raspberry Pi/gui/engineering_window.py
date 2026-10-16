@@ -16,6 +16,7 @@ from processing.reanalysis import compare_recording
 from gui.index_editor import IndexEditor
 from gui.server_panel import ServerPanel
 from processing.settings import builtin_preset, load_preset, save_preset, validate_settings
+from gui.page import is_shown, make_window
 
 FIELDS = {
     "Contact": [("Contact threshold (kPa)", None, "contact_threshold_kpa")],
@@ -73,7 +74,7 @@ EXPERIMENT_FIELDS = (
 class EngineeringWindow:
     def __init__(self, parent, app):
         self.app = app
-        self.window = tk.Toplevel(parent)
+        self.window = make_window(parent)
         self.window.title("Engineering tools")
         self.window.geometry("850x680")
         ttk.Label(self.window, text="Advanced tuning - most users won't need this tab. Adjusts detection settings and exports data for testing.", wraplength=760, padding=(8, 6)).pack(side=tk.TOP, fill=tk.X)
@@ -391,6 +392,9 @@ class EngineeringWindow:
 
     def refresh(self):
         if not self.window.winfo_exists():
+            return
+        if not is_shown(self.window):  # a hidden tab: check again later
+            self.window.after(1000, self.refresh)
             return
         summary = session_summary(self.app, self.app.validation_match_window_s)
         quality = summary["data_quality"]

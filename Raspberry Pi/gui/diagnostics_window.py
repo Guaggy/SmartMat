@@ -10,6 +10,7 @@ from gui import theme
 import config
 from processing.sensor_health import HEALTH_STATES
 from processing.statistics import saturated_cells
+from gui.page import make_window
 
 
 def _value(value):
@@ -23,7 +24,7 @@ class DiagnosticsWindow:
         self.on_select = on_select
         self.quality_getter = quality_getter
         self.serial_stats_getter = serial_stats_getter
-        self.window = tk.Toplevel(parent)
+        self.window = make_window(parent)
         self.window.title("Sensor diagnostics")
         self.window.geometry("760x650")
         ttk.Label(self.window, text='Checks that the mat itself is working properly: shows which sensors look faulty, stuck or drifting.', wraplength=760, padding=(8, 6)).pack(side=tk.TOP, fill=tk.X)

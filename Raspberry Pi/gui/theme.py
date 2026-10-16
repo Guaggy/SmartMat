@@ -149,6 +149,7 @@ def _style(root, p, family):
               foreground=[("selected", p["accent"]), ("active", p["ink"])])
 
     style.configure("TNotebook", background=p["panel"], tabmargins=(0, 2, 0, 0), **flat)
+    style.layout("Bare.TNotebook.Tab", [])  # a notebook in this style shows no tab strip (Simple view)
     style.configure("TNotebook.Tab", background=p["panel2"], foreground=p["muted"], padding=(10, 3),
                     lightcolor=p["panel2"], darkcolor=p["panel2"], bordercolor=p["line"])
     style.map("TNotebook.Tab", background=[("selected", p["panel"])], foreground=[("selected", p["accent"])],
@@ -243,6 +244,17 @@ def figure(**kwargs):
     return fig
 
 
+def prune_figures():
+    """Forget figures whose Tk canvas widget is gone (a closed window or tab)"""
+    for fig in list(_figures):
+        widget = getattr(fig.canvas, "get_tk_widget", None)
+        try:
+            if widget is not None and not widget().winfo_exists():
+                _figures.discard(fig)
+        except tk.TclError:  # the whole app is gone
+            _figures.discard(fig)
+
+
 def style_figure(fig, mode=None):
     """Recolour a figure and its axes (incl. colorbars and 3D panes) for a mode"""
     p = palette(mode)
@@ -278,6 +290,7 @@ def apply_theme(root, mode):
         root.option_add(f"*TCombobox*Listbox.{key}", value)
     _restyle_tk(root, options)
     matplotlib.rcParams.update(_rc(p))
+    prune_figures()
     for fig in list(_figures):
         style_figure(fig)
         if fig.canvas is not None:

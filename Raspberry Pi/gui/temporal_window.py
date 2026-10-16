@@ -8,6 +8,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from gui import theme
 
 from processing.temporal import WINDOWS_MIN
+from gui.page import make_window
 
 VIEWS = ("Current pressure", "Cumulative exposure", "Experimental burden",
          "Time since full relief", "Relief percentage", "Current relief state")
@@ -17,7 +18,7 @@ HISTORY = ("Pressure", "Exposure", "Burden", "Relief state")
 class TemporalWindow:
     def __init__(self, parent, app):
         self.app = app
-        self.window = tk.Toplevel(parent)
+        self.window = make_window(parent)
         self.window.title("Temporal analysis")
         self.window.geometry("850x760")
         ttk.Label(self.window, text='Shows how long each area of the body has been under pressure, and how long since it last got relief.', wraplength=760, padding=(8, 6)).pack(side=tk.TOP, fill=tk.X)

@@ -2,12 +2,13 @@
 
 import tkinter as tk
 from tkinter import ttk
+from gui.page import make_window
 
 
 class HotspotWindow:
     def __init__(self, parent, app):
         self.app = app
-        self.window = tk.Toplevel(parent)
+        self.window = make_window(parent)
         self.window.title("Hotspots")
         self.window.geometry("850x420")
         ttk.Label(self.window, text='Lists areas of high pressure being tracked, and how long each has lasted.', wraplength=760, padding=(8, 6)).pack(side=tk.TOP, fill=tk.X)

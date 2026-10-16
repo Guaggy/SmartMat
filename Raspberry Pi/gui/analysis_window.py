@@ -8,13 +8,14 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from gui import theme
 
 from processing.analysis import load_distribution, pressure_distribution
+from gui.page import make_window
 
 
 
 class AnalysisWindow:
     def __init__(self, parent, app):
         self.app = app
-        self.window = tk.Toplevel(parent)
+        self.window = make_window(parent)
         self.window.title("SMARTMAT analysis")
         self.window.geometry("950x700")
         ttk.Label(self.window, text='How pressure is spread over the whole mat, and its left/right and upper/lower balance. Regions are in the ROI window.', wraplength=760, padding=(8, 6)).pack(side=tk.TOP, fill=tk.X)

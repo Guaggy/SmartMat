@@ -6,12 +6,13 @@ from tkinter import ttk
 import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from gui import theme
+from gui.page import make_window
 
 
 class IndicesWindow:
     def __init__(self, parent, app):
         self.app = app
-        self.window = tk.Toplevel(parent)
+        self.window = make_window(parent)
         self.window.title("Indices")
         self.window.geometry("760x680")
         ttk.Label(self.window, wraplength=740, padding=(8, 6), text=(
