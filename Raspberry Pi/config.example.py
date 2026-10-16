@@ -125,3 +125,7 @@ RECONNECT_INTERVAL_S = 3  # how often to retry when auto-reconnect is on
 
 # Start with the reduced Simple view (connect, tare, record, export, heatmap, key numbers); Advanced shows everything.
 START_IN_SIMPLE_MODE = False
+
+# Demo mats
+# Chip ids starting with this are replayed recordings (tools/publish_demo_mat.py); the app labels them "(demo)".
+DEMO_PREFIX = "demo-"

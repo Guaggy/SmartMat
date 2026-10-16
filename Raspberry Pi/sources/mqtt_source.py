@@ -12,6 +12,7 @@ from processing.source_quality import SourceQuality
 
 TOPIC_PREFIX = "smartmat"  # must match mqtt_topic_prefix in ESP32/src/main.cpp
 META_TIMEOUT_S = 3.0       # how long start() waits for the selected mat's metadata
+CHIP_ID = re.compile(r"[A-Za-z0-9-]+")  # letters, digits, hyphen ("demo-take1"); keeps topic wildcards and "/" out
 MAX_GRID_SIDE = 255        # the ESP32 keeps rows/cols in a uint8
 TEST_TIMEOUT_S = 3.0       # check_broker gives up after this long
 
@@ -76,7 +77,7 @@ def parse_meta(text):
     """
 
     pieces = [piece.strip() for piece in text.split(",")]
-    if len(pieces) not in (3, 4, 7) or not pieces[0].isalnum():  # isalnum also keeps topic wildcards out
+    if len(pieces) not in (3, 4, 7) or not CHIP_ID.fullmatch(pieces[0]):
         return None
     model = size_mm = None
     try:
@@ -179,7 +180,7 @@ class MqttSource:
             text = None
         if message.topic.endswith("/status"):
             parts = message.topic.split("/")
-            if len(parts) == 3 and parts[0] == TOPIC_PREFIX and parts[1].isalnum() and text is not None:
+            if len(parts) == 3 and parts[0] == TOPIC_PREFIX and CHIP_ID.fullmatch(parts[1]) and text is not None:
                 if text.strip() in ("online", "offline"):
                     self.status[parts[1]] = text.strip()
             return

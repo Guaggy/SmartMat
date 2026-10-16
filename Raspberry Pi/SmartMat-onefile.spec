@@ -3,7 +3,7 @@
 a = Analysis(
     ["main.py"],
     pathex=["."],
-    datas=[("config.example.py", "."), ("assets", "assets")],
+    datas=[("config.example.py", "."), ("assets", "assets"), ("samples", "samples")],
     hiddenimports=["serial.tools.list_ports_windows"],
     excludes=["config"],
 )

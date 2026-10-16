@@ -247,6 +247,18 @@ crashes, and each mat's tare/calibration/orientation comes back from `profiles\<
 App: enable **Web UI**; open the two links in the About panel (hostname.local:8000 and the IP) from a phone
 or another PC on the same network. Only the mat currently open in the desktop app is live.
 
+### Test the MQTT path without hardware
+`Raspberry Pi/tools/publish_demo_mat.py` replays the bundled seat recording to the broker as a fake S3 mat with
+chip id `demo-take1` (retained meta and `online` status, last will `offline`, frames at the recording's own pace,
+looping). On the PC, from `Raspberry Pi/` (venv active):
+```powershell
+python tools\publish_demo_mat.py                  # broker host/login from the app's settings (Engineering > Connection)
+python tools\publish_demo_mat.py --once --speed 2 --host <pi> --user smartmat --password '<password>'   # overrides
+```
+Then open the app, Source **MQTT**, and pick **demo-take1 (demo)**. Stop the tool with Ctrl+C. Ids starting with
+`demo-` (`DEMO_PREFIX` in `config.py`) are marked "(demo)"; clear the leftover retained mat with
+`mosquitto_pub ... -t smartmat/demo-take1/meta -r -n`. For playback without a broker, use **Load demo recording**.
+
 ## 8. What to bring back
 
 | Item | Why |
