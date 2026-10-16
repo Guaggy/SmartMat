@@ -44,6 +44,7 @@ class Phase6Tests(unittest.TestCase):
     def test_loaded_start_keeps_prior_duration_and_relief_unknown(self):
         temporal = TemporalAnalysis()
         tracker = HotspotTracker()
+        tracker.activate_fraction = 0.0  # a uniform block is only a hotspot under the absolute rule
         values = np.zeros((16, 15))
         values[2:6, 4:8] = 40
         temporal.update(values, 10)
@@ -95,7 +96,8 @@ class Phase6Tests(unittest.TestCase):
         frames = []
         for _ in range(4):
             frame = np.zeros((16, 15))
-            frame[2:6, 4:8] = 40
+            frame[2:6, 4:8] = 20
+            frame[3:5, 5:7] = 80  # a concentration, so the default relative rule finds it too
             frames.append(frame)
         times = [1, 1.5, 2, 2.5]
         snapshot = json.dumps(metadata)

@@ -21,6 +21,9 @@ FIELDS = {
     "Hotspots": [
         ("Activation (kPa)", "hotspots", "activate_kpa"),
         ("Deactivation (kPa)", "hotspots", "deactivate_kpa"),
+        ("Activation x loaded mean (0 = off)", "hotspots", "activate_fraction"),
+        ("Deactivation x loaded mean", "hotspots", "deactivate_fraction"),
+        ("Relief grace (s)", "hotspots", "relief_grace_s"),
         ("Minimum cells", "hotspots", "min_cells"),
         ("Persistence (s)", "hotspots", "persistence_s"),
         ("Relief before end (s)", "hotspots", "end_relief_s"),

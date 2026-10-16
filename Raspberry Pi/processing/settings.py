@@ -11,6 +11,8 @@ from processing.motion import MotionAnalyzer
 from processing.temporal import TemporalAnalysis
 
 PRESET_FORMAT = "smartmat_engineering_preset_v1"
+# added after presets/recordings already existed: missing means off (0), the behaviour they were made with
+NEWER_KEYS = {"activate_fraction", "deactivate_fraction", "relief_grace_s"}
 
 
 def capture_settings(contact_threshold, temporal, hotspots, motion):
@@ -71,7 +73,7 @@ def validate_settings(settings):
             source = settings[group]
             result[group] = {}
             for key, original in defaults[group].items():
-                value = source[key]
+                value = source.get(key, 0.0) if key in NEWER_KEYS else source[key]
                 if key == "exposure_mode":
                     if value not in ("Full pressure", "Above threshold"):
                         raise ValueError
@@ -89,6 +91,7 @@ def validate_settings(settings):
         raise ValueError("Preset has missing or invalid values") from error
     h, m, t = result["hotspots"], result["movement"], result["temporal"]
     if not (0 <= h["deactivate_kpa"] < h["activate_kpa"] and h["min_cells"] >= 1 and
+            h["deactivate_fraction"] <= h["activate_fraction"] and
             h["max_move_cells"] >= 0 and h["persistence_s"] >= 0 and h["end_relief_s"] >= 0):
         raise ValueError("Hotspot thresholds or durations are invalid")
     if not (0 <= m["small_score"] < m["significant_score"] < m["major_score"] <= 1 and
