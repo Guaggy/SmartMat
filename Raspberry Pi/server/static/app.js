@@ -34,6 +34,12 @@ const i18n = {
     ackBy: "Bekreftet av {u}", ignBy: "Ignorert av {u}", savedBy: "Lagret av {u}", netErr: "Ingen kontakt med serveren.",
     tlTitle: "Siste {n} timer", lgNoData: "Ingen data", lgHandled: "Håndtert (bekreftet eller ignorert)", showMap: "Vis trykkart",
     handledBy: "Håndtert av {u}",
+    users: "Brukere", close: "Lukk", addUser: "Ny bruker", disable: "Deaktiver", enable: "Aktiver", resetPin: "Ny PIN",
+    roleAdmin: "Administrator", roleUser: "Sykepleier", userOff: "deaktivert", fRole: "Rolle",
+    fNewPin: "Ny PIN (4-8 siffer)", fRepeatPin: "Gjenta PIN", adminPin: "Din PIN (administrator)",
+    dlgFirst: "Opprett første bruker (admin)", firstHint: "Det finnes ingen brukere ennå. Denne personen blir administrator.",
+    dlgAddUser: "Ny bruker", dlgDisable: "Deaktiver {n}", dlgEnable: "Aktiver {n}", dlgResetPin: "Ny PIN for {n}",
+    pinMismatch: "PIN-kodene er ikke like.", userAdded: "Bruker {n} opprettet", userChanged: "Endret av {u}",
     foot: "Ingeniørverktøy, ikke medisinsk utstyr. Stilling og risiko er heuristikker. Bruk sammen med vanlig klinisk vurdering.",
     help_: {
       title: "Hjelp",
@@ -95,6 +101,12 @@ const i18n = {
     ackBy: "Acknowledged by {u}", ignBy: "Ignored by {u}", savedBy: "Saved by {u}", netErr: "No contact with the server.",
     tlTitle: "Last {n} hours", lgNoData: "No data", lgHandled: "Handled (acknowledged or ignored)", showMap: "Show pressure map",
     handledBy: "Handled by {u}",
+    users: "Users", close: "Close", addUser: "Add user", disable: "Disable", enable: "Enable", resetPin: "Reset PIN",
+    roleAdmin: "Admin", roleUser: "Nurse", userOff: "disabled", fRole: "Role",
+    fNewPin: "New PIN (4-8 digits)", fRepeatPin: "Repeat PIN", adminPin: "Your PIN (admin)",
+    dlgFirst: "Create first user (admin)", firstHint: "There are no users yet. This person becomes the administrator.",
+    dlgAddUser: "Add user", dlgDisable: "Disable {n}", dlgEnable: "Enable {n}", dlgResetPin: "Reset PIN for {n}",
+    pinMismatch: "The PINs do not match.", userAdded: "User {n} added", userChanged: "Changed by {u}",
     foot: "Engineering aid, not a medical device. Posture and risk are heuristics. Use alongside normal clinical assessment.",
     help_: {
       title: "Help",
@@ -167,7 +179,7 @@ const RISK_ORDER = { offline: 0, high: 1, medium: 2, low: 3, none: 4 };
 const RISKS = ["high", "medium", "low", "none"];
 const S = {
   mats: [], openAlerts: 0, alerts: [], timeline: null, mat: null, offset: 0, lost: false,
-  selected: null, open: false, bellOpen: false,
+  selected: null, open: false, bellOpen: false, needsAdmin: false, setupShown: false,
   sort: store.get("sort") || "risk", unit: store.get("unit") || "", q: "",
   ramp: [[0, [207, 230, 222]], [0.25, [126, 189, 168]], [0.5, [233, 196, 106]], [0.75, [224, 123, 57]], [0.9, [179, 38, 30]], [1, [107, 15, 26]]],
 };
@@ -180,12 +192,12 @@ async function api(path) {
   if (!r.ok) throw Object.assign(new Error(r.statusText), { status: r.status });
   return r.json();
 }
-// Writes always carry the PIN; the server answers {ok, user} or {error}.
+// Writes always carry a PIN (except creating the very first user); the server answers {ok, user, ...} or {error}.
 async function send(method, path, body) {
   try {
     const r = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const data = await r.json().catch(() => ({}));
-    return r.ok ? { ok: true, user: data.user } : { ok: false, error: data.error || r.statusText };
+    return r.ok ? Object.assign({ ok: true }, data) : { ok: false, error: data.error || r.statusText };
   } catch (e) {
     return { ok: false, error: t("netErr") };
   }
@@ -569,18 +581,26 @@ function handleAlert(kind, a) {
 
 // ---------- PIN dialog and toast ----------
 let dialogJob = null;
-function writeDialog({ title, fields = [], send, done }) {
+// fields: {key, label, value, type: "password", options: [[value, text]]}; noPin hides the acting user's PIN box
+function writeDialog({ title, fields = [], send, done, pinLabel, noPin, hint }) {
   $("dlgTitle").textContent = title;
   const box = $("dlgFields");
   box.textContent = "";
+  if (hint) box.append(el("p", "muted", hint));
   for (const f of fields) {
-    const label = el("label", "", f.label), input = el("input");
-    input.value = f.value || "";
+    const label = el("label", "", f.label), input = el(f.options ? "select" : "input");
+    for (const [v, text] of f.options || []) { const o = el("option", "", text); o.value = v; input.append(o); }
+    if (f.type) input.type = f.type;
+    if (f.type === "password") input.setAttribute("inputmode", "numeric");
+    input.value = f.value || (f.options ? f.options[0][0] : "");
     input.name = f.key;
     input.autocomplete = "off";
     label.append(input);
     box.append(label);
   }
+  $("pinRow").hidden = !!noPin;
+  $("pin").required = !noPin;
+  $("pinLabel").textContent = pinLabel || t("pin");
   $("pin").value = "";
   $("dlgErr").textContent = "";
   dialogJob = { fields, send, done };
@@ -589,7 +609,7 @@ function writeDialog({ title, fields = [], send, done }) {
 $("dlgForm").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const values = { pin: $("pin").value };
-  for (const input of $("dlgFields").querySelectorAll("input")) values[input.name] = input.value;
+  for (const input of $("dlgFields").querySelectorAll("input, select")) values[input.name] = input.value;
   $("dlgOk").disabled = true;
   const res = await dialogJob.send(values);
   $("dlgOk").disabled = false;
@@ -602,7 +622,7 @@ $("dlgForm").addEventListener("submit", async (ev) => {
     fetchTimeline();
   } else {
     $("dlgErr").textContent = res.error; // the server's own text, e.g. a wrong PIN
-    $("pin").select();
+    ($("pinRow").hidden ? $("dlgFields").querySelector("input") : $("pin")).select();
   }
 });
 $("dlgCancel").addEventListener("click", () => $("dlg").close());
@@ -627,6 +647,72 @@ $("editBtn").addEventListener("click", () => {
     done: (res) => toast(t("savedBy", { u: res.user })),
   });
 });
+
+// ---------- users (PINs are per person; viewing needs no login, changes need an admin's PIN) ----------
+const pinFields = () => [
+  { key: "pin1", label: t("fNewPin"), type: "password" }, { key: "pin2", label: t("fRepeatPin"), type: "password" },
+];
+const samePin = (v) => (v.pin1 === v.pin2 ? null : { ok: false, error: t("pinMismatch") });
+
+function firstUserDialog() {
+  writeDialog({
+    title: t("dlgFirst"), hint: t("firstHint"), noPin: true,
+    fields: [{ key: "name", label: t("fName") }, ...pinFields()],
+    send: async (v) => samePin(v) || send("POST", "/api/users", { name: v.name, role: "admin", new_pin: v.pin1 }),
+    done: (res) => { S.needsAdmin = false; toast(t("userAdded", { n: res.created.name })); },
+  });
+}
+
+async function renderUsers() {
+  let data;
+  try { data = await api("/api/users"); } catch (e) { toast(t("netErr")); return false; }
+  const list = $("userList");
+  list.textContent = "";
+  for (const u of data.users) {
+    const li = el("li"), acts = el("span", "acts");
+    li.append(el("span", u.active ? "who" : "who off",
+      u.name + " · " + t(u.role === "admin" ? "roleAdmin" : "roleUser") + (u.active ? "" : " · " + t("userOff"))));
+    for (const [key, change] of [[u.active ? "disable" : "enable", { active: !u.active }], ["resetPin", null]]) {
+      const b = el("button", "link", t(key));
+      b.type = "button";
+      b.addEventListener("click", () => writeDialog({
+        title: t(change ? (u.active ? "dlgDisable" : "dlgEnable") : "dlgResetPin", { n: u.name }),
+        fields: change ? [] : pinFields(), pinLabel: t("adminPin"),
+        send: async (v) => (change ? null : samePin(v)) ||
+          send("PUT", "/api/users/" + u.id, Object.assign({ pin: v.pin }, change || { new_pin: v.pin1 })),
+        done: (res) => { renderUsers(); toast(t("userChanged", { u: res.user })); },
+      }));
+      acts.append(b);
+    }
+    li.append(acts);
+    list.append(li);
+  }
+  return true;
+}
+
+async function openUsers() {
+  if (S.needsAdmin) return firstUserDialog();
+  if (await renderUsers()) $("usersDlg").showModal();
+}
+
+$("userAdd").addEventListener("click", () => writeDialog({
+  title: t("dlgAddUser"), pinLabel: t("adminPin"),
+  fields: [
+    { key: "name", label: t("fName") },
+    { key: "role", label: t("fRole"), options: [["user", t("roleUser")], ["admin", t("roleAdmin")]] },
+    ...pinFields(),
+  ],
+  send: async (v) => samePin(v) || send("POST", "/api/users", { pin: v.pin, name: v.name, role: v.role, new_pin: v.pin1 }),
+  done: (res) => { renderUsers(); toast(t("userAdded", { n: res.created.name })); },
+}));
+$("usersClose").addEventListener("click", () => $("usersDlg").close());
+$("usersBtn").addEventListener("click", openUsers);
+
+async function checkSetup() { // no users yet: ask for the first admin, once per page load
+  const h = await api("/api/health");
+  S.needsAdmin = !!h.needs_admin;
+  if (S.needsAdmin && !S.setupShown && !$("dlg").open) { S.setupShown = true; firstUserDialog(); }
+}
 
 // ---------- help page ----------
 function renderHelp() {
@@ -749,3 +835,4 @@ loadTheme();
 every(2000, loadOverview);
 every(1000, fetchMat);
 every(5000, fetchTimeline);
+every(10000, checkSetup);

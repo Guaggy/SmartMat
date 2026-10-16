@@ -13,12 +13,10 @@ from tkinter import filedialog, simpledialog, ttk
 import numpy as np
 import config as app_config
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.figure import Figure
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 - registers the 3D projection
 
-from branding import (ACCENT, COMPANY_NAME, CONTACT_EMAIL, DARK, DISCLAIMER, HEADER_BG, MUTED, PRODUCT_NAME,
-                      VERSION, WEBSITE_URL)
+import app_settings
+from branding import COMPANY_NAME, CONTACT_EMAIL, DISCLAIMER, PRODUCT_NAME, VERSION, WEBSITE_URL
 from paths import resource_path
 from config import (
     VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT,
@@ -57,7 +55,7 @@ from sources.simulated_source import SCENARIOS, SimulatedSource
 
 DEMO_DEVICE = "Demo: seat take 1"  # entry in the Simulated device list, played from the bundled sample
 DEMO_RECORDING = "samples/seat_take1.json"
-from gui import web
+from gui import theme, web
 from gui.calibration_window import CalibrationWindow
 from gui.analysis_window import AnalysisWindow
 from gui.diagnostics_window import DiagnosticsWindow
@@ -81,19 +79,20 @@ DATA_MODES = {
 }
 # DesktopApp.data_modes adds the cell signals ("signal:<name>") and map indices ("index:<name>") to these
 
-OCCUPANCY_LABELS = {  # muted: this sits on screen all day
-    True: ("Patient detected", "#5b9d61"),
-    False: ("No patient", "#777777"),
-    None: ("Patient: unknown", "#9da7b1"),
+# Status cells: text and the palette token of the cell colour. Muted: these sit on screen all day
+OCCUPANCY_LABELS = {
+    True: ("Patient detected", "ok"),
+    False: ("No patient", "idle"),
+    None: ("Patient: unknown", "line"),
 }
 
-INDEX_CHIP_COLORS = {"inactive": "#9da7b1", OK: "#777777", NEAR: "#e8b04e", OVER: "#bd5555"}
+INDEX_CHIP_COLORS = {"inactive": "line", OK: "idle", NEAR: "warn", OVER: "bad"}
 INDEX_EVENTS = {OK: "index_cleared", NEAR: "index_near_threshold", OVER: "index_over_threshold"}
 INDEX_OUTLINE_COLOR = "#8a4f9e"  # distinct from hotspot red/orange and the blue contact boundary
 
-HEATMAP_COLORS = LinearSegmentedColormap.from_list(
-    "relative_pressure", ["white", "green", "red"]
-)
+READOUT_NAME_WIDTH = 15  # characters: the readout names line up in one column
+READOUT_VALUE_WRAP = 140  # pixels
+READOUT_WRAP = 230        # pixels, a full-width line in the readouts column
 DEFAULT_SHAPE = (app_config.TOTAL_ROWS, app_config.TOTAL_COLS)  # config.py's own size, used by Serial/Simulated
 
 
@@ -121,6 +120,7 @@ class DesktopApp:
         self.root = tk.Tk()
         self.root.title(f"{PRODUCT_NAME} {VERSION}")
         self.root.geometry("1150x750")
+        self.theme_var = tk.StringVar(value=theme.apply_theme(self.root, app_settings.theme()))
 
         self.source = None
         self._rotation = 0                 # degrees, as last applied (rotation_var is the control)
@@ -225,25 +225,17 @@ class DesktopApp:
         self._advanced = set()  # widgets hidden in Simple view (see _apply_view)
         self._rows = []         # (parent, [(widget, pack options)]) in pack order, to put hidden widgets back
         self._build_header()
+        # Layout B toolbar: rows of labelled groups (Source / Calibrate, Record / Display / Tools / Options)
+        self.toolbar = ttk.Frame(self.root, padding=(8, 4, 8, 6))
+        self.toolbar.pack(side=tk.TOP, fill=tk.X)
+        ttk.Separator(self.root).pack(side=tk.TOP, fill=tk.X)
         self._build_connection_bar()
         self._build_actions_bar()
         self._build_data_bar()
         self._build_options_bar()
-        for bar in [self.root, *self.root.pack_slaves()]:
-            self._remember_rows(bar)
-        self.status_var = tk.StringVar(value="Not connected")
-        self._notice, self._notice_until = "", 0.0  # one-off message that the live status line must not wipe
-        status_bar = ttk.Frame(self.root)
-        status_bar.pack(side=tk.BOTTOM, fill=tk.X)
-        self.occupancy_label = tk.Label(status_bar, fg="white", padx=10)
-        self.occupancy_label.pack(side=tk.RIGHT, padx=4, pady=2)
-        self.index_chip_bar = ttk.Frame(status_bar)
-        self.index_chip_bar.pack(side=tk.RIGHT)
-        self._build_index_chips()
-        self._update_occupancy()
-        ttk.Label(status_bar, textvariable=self.status_var, padding=4).pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self._adv(self.index_chip_bar)
-        self._remember_rows(status_bar)
+        self._remember_rows(self.root)
+        self._remember_tree(self.toolbar)
+        self._build_status_bar()
         self._toggle_web_ui()  # Web UI defaults to on
         self._refresh_devices()
 
@@ -259,36 +251,61 @@ class DesktopApp:
     # ---- window layout
 
     def _build_header(self):
-        """Top strip: logo lockup, About, and the Simple / Advanced switch (Simple hides what _adv registered)"""
-        style = ttk.Style(self.root)
-        style.configure("Header.TFrame", background=HEADER_BG)
-        style.configure("Header.TLabel", background=HEADER_BG, foreground=DARK)
-        style.configure("Accent.TButton", foreground=ACCENT, font=("", 9, "bold"))  # primary actions
-        style.configure("View.Toolbutton", foreground=MUTED)
-        style.map("View.Toolbutton", foreground=[("selected", ACCENT)])
-
+        """Brand bar: logo lockup, the Simple / Advanced switch (Simple hides what _adv registered), the
+        Light / Dark switch and About"""
         self.header = ttk.Frame(self.root, style="Header.TFrame", padding=(8, 4))
         self.header.pack(side=tk.TOP, fill=tk.X)
         try:
             self.root.iconphoto(True, tk.PhotoImage(file=str(resource_path("assets/icon_256.png"))))
         except tk.TclError:
             pass  # no icon file: default window icon
-        try:
-            self._header_logo = tk.PhotoImage(file=str(resource_path("assets/logo_lockup_light.png"))).subsample(2)
-            ttk.Label(self.header, image=self._header_logo, style="Header.TLabel").pack(side=tk.LEFT)
-        except tk.TclError:  # no logo file: text header
-            ttk.Label(self.header, text=f"{PRODUCT_NAME} - by {COMPANY_NAME}", style="Header.TLabel",
-                      font=("", 11, "bold")).pack(side=tk.LEFT)
+        self._header_logos = {}
+        for mode in theme.MODES:
+            try:
+                self._header_logos[mode] = tk.PhotoImage(
+                    file=str(resource_path(f"assets/logo_lockup_{mode}.png"))).subsample(2)
+            except tk.TclError:  # no logo file: text header
+                pass
+        self.header_logo = ttk.Label(self.header, style="Header.TLabel", font=theme.font("title", "bold"),
+                                     text=f"{PRODUCT_NAME} - by {COMPANY_NAME}")
+        self.header_logo.pack(side=tk.LEFT)
+        self._show_header_logo()
 
         switch = ttk.Frame(self.header, style="Header.TFrame")
         switch.pack(side=tk.RIGHT)
-        ttk.Button(switch, text="About", command=self._open_about).pack(side=tk.LEFT, padx=(0, 12))
-        ttk.Label(switch, text="View:", style="Header.TLabel").pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Label(switch, text="View", style="HeaderMuted.TLabel").pack(side=tk.LEFT, padx=(0, 2))
         self.view_var = tk.StringVar(
             value="Simple" if getattr(app_config, "START_IN_SIMPLE_MODE", True) else "Advanced")
         for label in ("Simple", "Advanced"):
-            ttk.Radiobutton(switch, text=label, value=label, variable=self.view_var, style="View.Toolbutton",
+            ttk.Radiobutton(switch, text=label, value=label, variable=self.view_var, style="Header.Toolbutton",
                             command=self._apply_view).pack(side=tk.LEFT)
+        ttk.Separator(switch, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10, pady=4)
+        for mode in theme.MODES:
+            ttk.Radiobutton(switch, text=mode.title(), value=mode, variable=self.theme_var,
+                            style="Header.Toolbutton", command=self._set_theme).pack(side=tk.LEFT)
+        ttk.Separator(switch, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10, pady=4)
+        ttk.Button(switch, text="About", command=self._open_about, style="Header.TButton").pack(side=tk.LEFT)
+
+    def _show_header_logo(self):
+        logo = self._header_logos.get(self.theme_var.get())
+        self.header_logo.configure(image=logo or "", compound="image" if logo else "none")
+
+    def _set_theme(self):
+        """Light / Dark switch: restyle everything that is open now, and remember the choice"""
+        mode = theme.apply_theme(self.root, self.theme_var.get())
+        self._show_header_logo()
+        self._update_occupancy()
+        self._update_index_chips()
+        # the heatmap ramp fades into the theme's own background (the figure itself was restyled in place;
+        # rebuilding it here would leave the new canvas at the wrong size until the next window resize)
+        if self.frame is not None:
+            self._update_plot()
+        elif self.plot_type_var.get() == "2D Heatmap":
+            self.image.set_cmap(theme.heatmap_cmap())
+        try:
+            app_settings.save_theme(mode)
+        except OSError as error:
+            self.status_var.set(f"Could not save the theme: {error}")
 
     def _open_about(self):
         if self.about_window is not None and self.about_window.winfo_exists():
@@ -299,7 +316,7 @@ class DesktopApp:
         window.resizable(False, False)
         frame = ttk.Frame(window, padding=16)
         frame.pack()
-        ttk.Label(frame, text=PRODUCT_NAME, font=("", 14, "bold")).pack(anchor="w")
+        ttk.Label(frame, text=PRODUCT_NAME, font=theme.font("big", "bold")).pack(anchor="w")
         ttk.Label(frame, text=f"Version {VERSION}").pack(anchor="w")
         ttk.Label(frame, text=f"by {COMPANY_NAME}").pack(anchor="w", pady=(0, 8))
         for text, url in ((WEBSITE_URL, WEBSITE_URL), (CONTACT_EMAIL, f"mailto:{CONTACT_EMAIL}")):
@@ -309,7 +326,7 @@ class DesktopApp:
     @staticmethod
     def _link(parent, text, url, **options):
         """A label that opens url in the browser when clicked, styled as a link"""
-        link = ttk.Label(parent, text=text, foreground=ACCENT, cursor="hand2", font=("", 9, "underline"), **options)
+        link = ttk.Label(parent, text=text, style="Link.TLabel", cursor="hand2", **options)
         link.pack(anchor="w")
         link.bind("<Button-1>", lambda _event: webbrowser.open(url))
         return link
@@ -347,15 +364,35 @@ class DesktopApp:
     def _place_capture_button(self):
         """Serial only, and only in Advanced view"""
         if self.source_var.get() == "Serial" and self.view_var.get() != "Simple":
-            self.capture_button.pack(side=tk.LEFT, padx=(0, 8), after=self.protocol_menu)
+            self.capture_button.pack(side=tk.LEFT, padx=(0, 4), after=self.export_button)
         else:
             self.capture_button.pack_forget()
 
-    def _build_connection_bar(self):
-        bar = ttk.Frame(self.root, padding=(8, 8, 8, 0))
-        bar.pack(side=tk.TOP, fill=tk.X)
+    def _remember_tree(self, widget):
+        """_remember_rows for widget and every frame inside it (the toolbar nests rows and groups)"""
+        self._remember_rows(widget)
+        for child in widget.winfo_children():
+            if child.winfo_class() == "TFrame":
+                self._remember_tree(child)
 
-        ttk.Label(bar, text="Source:").pack(side=tk.LEFT)
+    def _toolbar_row(self, advanced=False):
+        row = ttk.Frame(self.toolbar)
+        row.pack(side=tk.TOP, fill=tk.X, pady=1)
+        return self._adv(row) if advanced else row
+
+    def _group(self, row, title):
+        """A labelled group of controls in a toolbar row, after a hairline when it is not the first; returns
+        the frame to put the controls in"""
+        if row.pack_slaves():
+            ttk.Separator(row, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10, pady=2)
+        ttk.Label(row, text=title, style="Muted.TLabel", width=9).pack(side=tk.LEFT)
+        group = ttk.Frame(row)
+        group.pack(side=tk.LEFT)
+        return group
+
+    def _build_connection_bar(self):
+        self.source_row = self._toolbar_row()
+        bar = self._group(self.source_row, "Source")
         self.source_var = tk.StringVar(value="Simulated")
         source_menu = ttk.Combobox(
             bar, textvariable=self.source_var, state="readonly",
@@ -368,41 +405,79 @@ class DesktopApp:
         self.device_var = tk.StringVar()
         self.device_menu = ttk.Combobox(bar, textvariable=self.device_var, state="readonly", width=22)
         self.device_menu.pack(side=tk.LEFT, padx=(0, 8))
+        # the brand bar names the selected mat
+        ttk.Label(self.header, textvariable=self.device_var, style="HeaderMuted.TLabel").pack(side=tk.LEFT,
+                                                                                             padx=(16, 0))
         # Serial only: shown by _refresh_devices, packed between the device menu and Rename
         self.protocol_label = ttk.Label(bar, text="Protocol:")
         self.protocol_var = tk.StringVar(value=TEXT_PROFILE)
         self.protocol_menu = ttk.Combobox(bar, textvariable=self.protocol_var, state="readonly",
                                           values=list(PROFILES), width=22)
         self.protocol_menu.bind("<<ComboboxSelected>>", lambda _event: self.baud_var.set(self._baud_text()))
-        self.capture_button = ttk.Button(bar, text="Capture raw (5 s)", command=self._capture_raw, state="disabled")
         self.rename_button = ttk.Button(bar, text="Rename...", command=self._rename_mat)
         self.rename_button.pack(side=tk.LEFT, padx=(0, 8))
         self._adv(self.rename_button)
 
-        ttk.Button(bar, text="Connect", command=self._connect, style="Accent.TButton").pack(side=tk.LEFT, padx=(0, 12))
-        ttk.Button(bar, text="Disconnect", command=self._disconnect).pack(side=tk.LEFT, padx=(0, 12))
+        ttk.Button(bar, text="Connect", command=self._connect, style="Accent.TButton").pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Button(bar, text="Disconnect", command=self._disconnect).pack(side=tk.LEFT, padx=(0, 8))
         ttk.Button(bar, text="Load demo recording", command=self._load_demo).pack(side=tk.LEFT, padx=(0, 12))
 
-        self.playback_speed_label = ttk.Label(bar, text="Playback:")
+        # Own row, shown by _show_playback only while a recording plays (it does not fit next to the source)
+        self.playback_row = ttk.Frame(self.toolbar)
+        bar = self._group(self.playback_row, "Playback")
+        self.playback_speed_label = ttk.Label(bar, text="Speed:")
+        self.playback_speed_label.pack(side=tk.LEFT, padx=(0, 3))
         self.playback_speed_var = tk.StringVar(value="1x")
         self.playback_speed_menu = ttk.Combobox(
             bar, textvariable=self.playback_speed_var, state="readonly",
             values=["0.25x", "0.5x", "1x", "2x", "5x"], width=6,
         )
+        self.playback_speed_menu.pack(side=tk.LEFT, padx=(0, 12))
         self.playback_speed_menu.bind("<<ComboboxSelected>>", lambda _event: self._set_playback_speed())
         self.replay_settings_var = tk.StringVar(value="Reproduce recording")
         self.replay_settings_menu = ttk.Combobox(
-            bar, textvariable=self.replay_settings_var, state="readonly", width=22,
+            bar, textvariable=self.replay_settings_var, state="readonly", width=30,
             values=["Reproduce recording", "Re-analyze with current settings"])
+        self.replay_settings_menu.pack(side=tk.LEFT, padx=(0, 12))
         self.replay_settings_menu.bind("<<ComboboxSelected>>", lambda _event: self._connect())
 
-        self.connection_var = tk.StringVar(value="Not connected")
-        ttk.Label(bar, textvariable=self.connection_var).pack(side=tk.LEFT)
+        self.connection_var = tk.StringVar(value="Not connected")  # source health, shown in the status bar
+
+    def _show_playback(self, show):
+        if show:
+            self.playback_row.pack(side=tk.TOP, fill=tk.X, pady=1, after=self.source_row)
+        else:
+            self.playback_row.pack_forget()
 
     def _build_actions_bar(self):
-        bar = ttk.Frame(self.root, padding=8)
-        bar.pack(side=tk.TOP, fill=tk.X)
+        row = self._toolbar_row()
+        bar = self._group(row, "Calibrate")
+        self._adv(ttk.Button(bar, text="Reset", command=self._reset)).pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Button(bar, text="Tare", command=self._capture_baseline).pack(side=tk.LEFT, padx=(0, 4))
+        self._adv(ttk.Button(bar, text="View tare", command=self._view_baseline)).pack(side=tk.LEFT, padx=(0, 4))
+        self.mat_size_button = ttk.Button(bar, text="Mat size...", command=self._set_mat_size)
+        self.mat_size_button.pack(side=tk.LEFT, padx=(0, 12))
 
+        # Orientation of live data, applied at ingest (not to recordings, which are saved already oriented)
+        self._adv(ttk.Label(bar, text="Rotate:")).pack(side=tk.LEFT)
+        self.rotation_var = tk.StringVar(value="0")
+        rotation_menu = ttk.Combobox(bar, textvariable=self.rotation_var, state="readonly",
+                                     values=["0", "90", "180", "270"], width=4)
+        self._adv(rotation_menu).pack(side=tk.LEFT, padx=(0, 8))
+        rotation_menu.bind("<<ComboboxSelected>>", lambda _event: self._orientation_changed())
+        self.mirror_h_var = self._checkbox(bar, "Mirror H", self._orientation_changed, advanced=True)
+        self.mirror_v_var = self._checkbox(bar, "Mirror V", self._orientation_changed, advanced=True)
+
+        bar = self._group(row, "Record")
+        self.record_button = ttk.Button(bar, text="Record", command=self._toggle_recording, style="Accent.TButton")
+        self.record_button.pack(side=tk.LEFT, padx=(0, 4))
+        self.export_button = ttk.Button(bar, text="Export snapshot...", command=self._export_snapshot)
+        self.export_button.pack(side=tk.LEFT, padx=(0, 4))
+        # Serial only, Advanced only: placed by _place_capture_button
+        self.capture_button = ttk.Button(bar, text="Capture raw (5 s)", command=self._capture_raw, state="disabled")
+
+    def _build_data_bar(self):
+        bar = self._group(self._toolbar_row(), "Display")
         ttk.Label(bar, text="Plot:").pack(side=tk.LEFT)
         self.plot_type_var = tk.StringVar(value="2D Heatmap")
         plot_menu = ttk.Combobox(
@@ -411,6 +486,17 @@ class DesktopApp:
         )
         plot_menu.pack(side=tk.LEFT, padx=(0, 12))
         plot_menu.bind("<<ComboboxSelected>>", lambda _event: self._build_plot())
+
+        ttk.Label(bar, text="Data:").pack(side=tk.LEFT)
+        self.data_mode_var = tk.StringVar(value="Baseline subtracted")
+        self._data_mode_shown = "Baseline subtracted"  # last mode actually applied (to fall back to)
+        self.data_modes = self._build_data_modes()
+        self.data_menu = ttk.Combobox(bar, textvariable=self.data_mode_var, state="readonly",
+                                      values=list(self.data_modes), width=21)
+        self.data_menu.pack(side=tk.LEFT, padx=(0, 12))
+        self.data_menu.bind("<<ComboboxSelected>>", lambda _event: self._change_data_mode())
+
+        self.threshold_var = tk.StringVar(value=str(self.contact_threshold_kpa))
 
         self._adv(ttk.Label(bar, text="Mode:")).pack(side=tk.LEFT)
         self.mode_var = tk.StringVar(value=self.active_mode.label)
@@ -430,53 +516,14 @@ class DesktopApp:
         self.mode_param_entry.bind("<FocusOut>", lambda _event: self._apply_mode_param())
         self._select_mode()
 
-        self._adv(ttk.Button(bar, text="Reset", command=self._reset)).pack(side=tk.LEFT, padx=(0, 4))
-        ttk.Button(bar, text="Tare", command=self._capture_baseline).pack(side=tk.LEFT, padx=(0, 4))
-        self._adv(ttk.Button(bar, text="View tare", command=self._view_baseline)).pack(side=tk.LEFT, padx=(0, 12))
-
-        self.record_button = ttk.Button(bar, text="Record", command=self._toggle_recording, style="Accent.TButton")
-        self.record_button.pack(side=tk.LEFT, padx=(0, 4))
-        ttk.Button(bar, text="Export snapshot...", command=self._export_snapshot).pack(side=tk.LEFT, padx=(0, 12))
-
-        # Orientation of live data, applied at ingest (not to recordings, which are saved already oriented)
-        self._adv(ttk.Label(bar, text="Rotate:")).pack(side=tk.LEFT)
-        self.rotation_var = tk.StringVar(value="0")
-        rotation_menu = ttk.Combobox(bar, textvariable=self.rotation_var, state="readonly",
-                                     values=["0", "90", "180", "270"], width=4)
-        self._adv(rotation_menu).pack(side=tk.LEFT, padx=(0, 4))
-        rotation_menu.bind("<<ComboboxSelected>>", lambda _event: self._orientation_changed())
-        self.mirror_h_var = self._checkbox(bar, "Mirror H", self._orientation_changed, advanced=True)
-        self.mirror_v_var = self._checkbox(bar, "Mirror V", self._orientation_changed, advanced=True)
-
-    def _build_data_bar(self):
-        bar = ttk.Frame(self.root, padding=(8, 0, 8, 8))
-        bar.pack(side=tk.TOP, fill=tk.X)
-
-        ttk.Label(bar, text="Data:").pack(side=tk.LEFT)
-        self.data_mode_var = tk.StringVar(value="Baseline subtracted")
-        self._data_mode_shown = "Baseline subtracted"  # last mode actually applied (to fall back to)
-        self.data_modes = self._build_data_modes()
-        self.data_menu = ttk.Combobox(bar, textvariable=self.data_mode_var, state="readonly",
-                                      values=list(self.data_modes), width=21)
-        self.data_menu.pack(side=tk.LEFT, padx=(0, 12))
-        self.data_menu.bind("<<ComboboxSelected>>", lambda _event: self._change_data_mode())
-
-        self.threshold_var = tk.StringVar(value=str(self.contact_threshold_kpa))
-
         self._adv(ttk.Label(bar, text="Ignore signal <=")).pack(side=tk.LEFT)
         self.noise_threshold_var = tk.StringVar(value=str(self.signal_noise_threshold))
         noise_entry = ttk.Entry(bar, textvariable=self.noise_threshold_var, width=6)
-        self._adv(noise_entry).pack(side=tk.LEFT, padx=(2, 8))
+        self._adv(noise_entry).pack(side=tk.LEFT, padx=(2, 12))
         noise_entry.bind("<Return>", lambda _event: self._apply_noise_threshold())
         noise_entry.bind("<FocusOut>", lambda _event: self._apply_noise_threshold())
 
         self.cop_var = self._checkbox(bar, "Show CoP", self._update_plot, advanced=True)
-        for text, command, gap in (("Pressure calibration...", self._open_calibration, 8),
-                                   ("Plot options...", self._open_plot_options, 8), ("ROI...", self._open_roi, 8),
-                                   ("Analysis...", self._open_analysis, 8),
-                                   ("Diagnostics...", self._open_diagnostics, 8),
-                                   ("Temporal...", self._open_temporal, 0)):
-            self._adv(ttk.Button(bar, text=text, command=command)).pack(side=tk.LEFT, padx=(0, gap))
 
     def _build_data_modes(self):
         """Dropdown label -> frame key: the base maps, the cell signals, and each map index"""
@@ -529,21 +576,23 @@ class DesktopApp:
         return "Pressure (kPa)" if key == "pressure" else "Relative sensor value"
 
     def _build_options_bar(self):
-        """On/off checkboxes, separate from the action buttons above"""
-        bar = self._adv(ttk.Frame(self.root, padding=(8, 0, 8, 8)))  # the whole row is Advanced-only
-        bar.pack(side=tk.TOP, fill=tk.X)
+        """Tool windows, then the on/off checkboxes; both rows are Advanced-only"""
+        bar = self._group(self._toolbar_row(advanced=True), "Tools")
+        for text, command in (("Pressure calibration...", self._open_calibration),
+                              ("Plot options...", self._open_plot_options), ("ROI...", self._open_roi),
+                              ("Analysis...", self._open_analysis), ("Diagnostics...", self._open_diagnostics),
+                              ("Temporal...", self._open_temporal), ("Hotspots...", self._open_hotspots),
+                              ("Movement...", self._open_motion), ("Indices...", self._open_indices),
+                              ("Engineering...", self._open_engineering), ("Help", self._open_help)):
+            ttk.Button(bar, text=text, command=command).pack(side=tk.LEFT, padx=(0, 2))
 
+        bar = self._group(self._toolbar_row(advanced=True), "Options")
         self.auto_scale_var = self._checkbox(bar, "Auto-scale", self._toggle_calibration)
         self.paused_var = self._checkbox(bar, "Pause", self._toggle_pause)
         self.numbers_var = self._checkbox(bar, "Show numbers", self._toggle_numbers)
         self.auto_reconnect_var = self._checkbox(bar, "Auto-reconnect", default=True)
         self.web_ui_var = self._checkbox(bar, "Web UI", self._toggle_web_ui, default=True)
         self.show_hotspots_var = self._checkbox(bar, "Show hotspots", self._toggle_hotspots, default=True)
-        ttk.Button(bar, text="Hotspots...", command=self._open_hotspots).pack(side=tk.LEFT, padx=4)
-        ttk.Button(bar, text="Movement...", command=self._open_motion).pack(side=tk.LEFT, padx=4)
-        ttk.Button(bar, text="Indices...", command=self._open_indices).pack(side=tk.LEFT, padx=4)
-        ttk.Button(bar, text="Engineering...", command=self._open_engineering).pack(side=tk.LEFT, padx=4)
-        ttk.Button(bar, text="Help", command=self._open_help).pack(side=tk.LEFT, padx=4)
 
     def _checkbox(self, parent, text, command=None, default=False, advanced=False):
         """Add one checkbox to parent, return its BooleanVar"""
@@ -555,15 +604,57 @@ class DesktopApp:
             self._adv(button)
         return var
 
-    def _build_about_panel(self):
-        """FPS and a few general facts"""
-        sidebar = ttk.Frame(self.content)
-        sidebar.pack(side=tk.RIGHT, fill=tk.Y)
+    def _build_status_bar(self):
+        """Bottom line: patient state, index states, source health, the live status text and the disclaimer"""
+        self.status_var = tk.StringVar(value="Not connected")
+        self._notice, self._notice_until = "", 0.0  # one-off message that the live status line must not wipe
+        status_bar = ttk.Frame(self.root, style="Status.TFrame")
+        status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        ttk.Separator(self.root).pack(side=tk.BOTTOM, fill=tk.X)
+        self.occupancy_label = tk.Label(status_bar, padx=10)
+        self.occupancy_label.pack(side=tk.LEFT, padx=(4, 2), pady=2)
+        self.index_chip_bar = self._adv(ttk.Frame(status_bar, style="Status.TFrame"))
+        self.index_chip_bar.pack(side=tk.LEFT)
+        self._build_index_chips()
+        self._update_occupancy()
+        ttk.Label(status_bar, textvariable=self.connection_var, style="Status.TLabel",
+                  padding=(8, 2)).pack(side=tk.LEFT)
+        ttk.Label(status_bar, text=DISCLAIMER.split(".")[0], style="StatusMuted.TLabel",
+                  padding=(8, 2)).pack(side=tk.RIGHT)
+        ttk.Label(status_bar, textvariable=self.status_var, style="StatusMuted.TLabel",
+                  padding=(8, 2)).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._remember_rows(status_bar)
 
-        stats_panel = ttk.LabelFrame(sidebar, text="Live pressure", padding=8)
+    def _readout(self, parent, variable):
+        """One aligned row showing a "Name: value" variable as a muted name column and a value column; returns
+        the row (the variable itself is unchanged)"""
+        row = ttk.Frame(parent)
+        row.pack(anchor="w", fill=tk.X)
+        name, value = tk.StringVar(), tk.StringVar()
+        ttk.Label(row, textvariable=name, style="Muted.TLabel", width=READOUT_NAME_WIDTH).pack(side=tk.LEFT,
+                                                                                               anchor="n")
+        ttk.Label(row, textvariable=value, wraplength=READOUT_VALUE_WRAP).pack(side=tk.LEFT, anchor="n")
+
+        def split(*_args):
+            head, colon, tail = variable.get().partition(": ")
+            name.set(head if colon else "")
+            value.set(tail if colon else head)
+        variable.trace_add("write", split)
+        split()
+        return row
+
+    def _build_about_panel(self):
+        """Readouts column: live pressure as aligned label/value rows, then facts about the mat and the app"""
+        sidebar = ttk.Frame(self.content, padding=(12, 8, 8, 8))
+        sidebar.pack(side=tk.RIGHT, fill=tk.Y)
+        ttk.Separator(self.content, orient=tk.VERTICAL).pack(side=tk.RIGHT, fill=tk.Y)
+
+        stats_panel = ttk.Frame(sidebar)
         stats_panel.pack(side=tk.TOP, fill=tk.X)
+        ttk.Label(stats_panel, text="Live pressure", style="Heading.TLabel").pack(anchor="w", pady=(0, 4))
         self.pressure_status_var = tk.StringVar(value="Default pressure calibration active")
-        self._adv(ttk.Label(stats_panel, textvariable=self.pressure_status_var, wraplength=190)).pack(anchor="w")
+        self._adv(ttk.Label(stats_panel, textvariable=self.pressure_status_var, style="Muted.TLabel",
+                            wraplength=READOUT_WRAP)).pack(anchor="w", pady=(0, 4))
         self.peak_var = tk.StringVar(value="Peak: -")
         self.mean_var = tk.StringVar(value="Mean contact: -")
         self.area_var = tk.StringVar(value="Contact area: -")
@@ -574,53 +665,54 @@ class DesktopApp:
         self.selected_cell_var = tk.StringVar(value="Cell: click the 2D plot")
         for variable in (self.peak_var, self.mean_var, self.area_var, self.force_var, self.load_var,
                          self.hotspots_var, self.cop_text_var, self.selected_cell_var):
-            label = ttk.Label(stats_panel, textvariable=variable, wraplength=190)
-            label.pack(anchor="w")
+            row = self._readout(stats_panel, variable)
             if variable not in (self.peak_var, self.load_var, self.hotspots_var):
-                self._adv(label)  # Simple view keeps peak, load and hotspots
-            if variable is self.load_var:  # the load line says "set mat size", so the button sits under it
-                self.mat_size_button = ttk.Button(stats_panel, text="Mat size...", command=self._set_mat_size)
-                self.mat_size_button.pack(anchor="w")
+                self._adv(row)  # Simple view keeps peak, load and hotspots
+            if variable is self.load_var:
+                self._load_row = row
         # Amber note under the load line; packed only while cells are at the sensor limit (kept in Simple view)
         self.saturation_var = tk.StringVar()
-        self.saturation_label = ttk.Label(stats_panel, textvariable=self.saturation_var, wraplength=190,
-                                          foreground="#b36b00")
+        self.saturation_label = ttk.Label(stats_panel, textvariable=self.saturation_var, wraplength=READOUT_WRAP,
+                                          style="Warn.TLabel")
         self._remember_rows(stats_panel)
 
-        panel = self._adv(ttk.LabelFrame(sidebar, text="About", padding=8))
-        panel.pack(side=tk.TOP, fill=tk.X, pady=(8, 0))
+        panel = self._adv(ttk.Frame(sidebar))
+        panel.pack(side=tk.TOP, fill=tk.X, pady=(12, 0))
         self._remember_rows(sidebar)
+        ttk.Separator(panel).pack(fill=tk.X, pady=(0, 8))
+        ttk.Label(panel, text="About", style="Heading.TLabel").pack(anchor="w", pady=(0, 4))
 
         self.fps_var = tk.StringVar(value="FPS: -")
-        ttk.Label(panel, textvariable=self.fps_var).pack(anchor="w", pady=(0, 8))
+        self._readout(panel, self.fps_var)
 
-        self._info_line(panel, "ESP32", header=True)
+        self._info_line(panel, "ESP32", header=True, top_pad=6)
         self.grid_info_var = tk.StringVar(value=f"Grid: {app_config.TOTAL_ROWS} x {app_config.TOTAL_COLS}")
-        ttk.Label(panel, textvariable=self.grid_info_var).pack(anchor="w")
+        self._readout(panel, self.grid_info_var)
         self.baud_var = tk.StringVar(value=self._baud_text())
-        ttk.Label(panel, textvariable=self.baud_var).pack(anchor="w")
+        self._readout(panel, self.baud_var)
         self.model_var = tk.StringVar()  # the connected mat's preset name, empty without one
-        ttk.Label(panel, textvariable=self.model_var).pack(anchor="w")
+        self._readout(panel, self.model_var)
         self._info_line(panel, f"Value range: {VALUE_MIN_DEFAULT}-{VALUE_MAX_DEFAULT}")
 
         self._info_line(panel, "App", header=True, top_pad=8)
-        self._info_line(panel, "Web UI:")
+        ttk.Label(panel, text="Web UI", style="Muted.TLabel").pack(anchor="w")
         self.web_address_var, self.web_ip_var = (tk.StringVar(value=address) for address in _web_address())
         for variable in (self.web_address_var, self.web_ip_var):  # hostname.local first, the IP as fallback
-            self._link(panel, variable.get(), variable.get(), wraplength=190)
+            self._link(panel, variable.get(), variable.get(), wraplength=READOUT_WRAP)
         self._info_line(panel, f"Stale after: {STALE_AFTER_S}s")
         self._info_line(panel, f"Reconnect every: {RECONNECT_INTERVAL_S}s")
         self.cell_info_var = tk.StringVar()
-        ttk.Label(panel, textvariable=self.cell_info_var).pack(anchor="w")
+        self._readout(panel, self.cell_info_var)
         self._update_cell_info()
 
     def _baud_text(self):
         return f"Baud rate: {PROFILES[self.protocol_var.get()]['baud']}"
 
-    @staticmethod
-    def _info_line(parent, text, header=False, top_pad=0):
-        kwargs = {"font": ("", 9, "bold")} if header else {}
-        ttk.Label(parent, text=text, **kwargs).pack(anchor="w", pady=(top_pad, 0))
+    def _info_line(self, parent, text, header=False, top_pad=0):
+        if header:
+            ttk.Label(parent, text=text, font=theme.font("small", "bold")).pack(anchor="w", pady=(top_pad, 0))
+        else:
+            self._readout(parent, tk.StringVar(parent, value=text)).pack_configure(pady=(top_pad, 0))
 
     def _refresh_devices(self):
         """Repopulate the device dropdown, keeping the current selection if still valid"""
@@ -717,7 +809,7 @@ class DesktopApp:
 
     def _build_plot_area(self):
         """Holds the reference buttons directly above the (rebuilt) plot canvas"""
-        self.plot_area = ttk.Frame(self.content)
+        self.plot_area = ttk.Frame(self.content, padding=(8, 6, 4, 4))
         self.plot_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         bar = self._adv(ttk.Frame(self.plot_area, padding=(0, 0, 0, 4)))
         bar.pack(side=tk.TOP, fill=tk.X)
@@ -735,14 +827,14 @@ class DesktopApp:
         self.cop_marker = None
         self.selected_marker = None
         self.hotspot_labels = []
-        self.figure = Figure(figsize=(6, 6))
+        self.figure = theme.figure(figsize=(6, 6))
         if self.plot_type_var.get() == "3D Surface":
             self.axes = self.figure.add_subplot(projection="3d")
         else:
             self.axes = self.figure.add_subplot()
             self.image = self.axes.imshow(
                 np.zeros((app_config.TOTAL_ROWS, app_config.TOTAL_COLS)),
-                cmap="coolwarm" if self.difference_var.get() else HEATMAP_COLORS,
+                cmap="coolwarm" if self.difference_var.get() else theme.heatmap_cmap(),
                 vmin=VALUE_MIN_DEFAULT, vmax=VALUE_MAX_DEFAULT,
                 aspect="auto",
             )
@@ -1006,9 +1098,7 @@ class DesktopApp:
         self._reset_indices()
         self.session_state = None
         self.timeline = EventTimeline()
-        self.playback_speed_label.pack_forget()
-        self.playback_speed_menu.pack_forget()
-        self.replay_settings_menu.pack_forget()
+        self._show_playback(False)
 
         source_name = self.source_var.get()
         device = self.device_var.get()
@@ -1057,13 +1147,7 @@ class DesktopApp:
 
             if getattr(self.source, "is_playback", False):
                 self.source.set_playback_speed(float(self.playback_speed_var.get().rstrip("x")))
-                self.playback_speed_label.pack(side=tk.LEFT, padx=(0, 3))
-                self.playback_speed_menu.pack(side=tk.LEFT, padx=(0, 12))
-                self.replay_settings_menu.pack(side=tk.LEFT, padx=(0, 12))
-            else:
-                self.playback_speed_label.pack_forget()
-                self.playback_speed_menu.pack_forget()
-                self.replay_settings_menu.pack_forget()
+            self._show_playback(getattr(self.source, "is_playback", False))
 
             self.active_mode.reset()
             self.cell_history.clear()
@@ -1112,9 +1196,7 @@ class DesktopApp:
         self.last_frame_time = None
         self.occupancy.reset()
         self._reset_indices()
-        self.playback_speed_label.pack_forget()
-        self.playback_speed_menu.pack_forget()
-        self.replay_settings_menu.pack_forget()
+        self._show_playback(False)
         self.connection_var.set("Not connected")
         self.status_var.set("Disconnected")
         self._update_stats()
@@ -1599,9 +1681,9 @@ class DesktopApp:
             return
         window = tk.Toplevel(self.root)
         window.title("Tare baseline")
-        figure = Figure(figsize=(5, 5))
+        figure = theme.figure(figsize=(5, 5))
         axes = figure.add_subplot()
-        image = axes.imshow(self.calibration.baseline, cmap=HEATMAP_COLORS, aspect="auto")
+        image = axes.imshow(self.calibration.baseline, cmap=theme.heatmap_cmap(), aspect="auto")
         figure.colorbar(image, ax=axes, label="Baseline value")
         FigureCanvasTkAgg(figure, master=window).get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
@@ -1877,23 +1959,30 @@ class DesktopApp:
         self._notice, self._notice_until = text, time.time() + seconds
         self.status_var.set(text)
 
+    @staticmethod
+    def _status_cell(label, token):
+        """Colour a solid status cell from the active palette, with whichever text colour reads on it"""
+        colour = theme.palette()[token]
+        label.configure(bg=colour, fg=theme.text_on(colour))
+
     def _update_occupancy(self):
-        text, color = OCCUPANCY_LABELS[self.occupancy.occupied]
-        self.occupancy_label.configure(text=text, bg=color)
+        text, token = OCCUPANCY_LABELS[self.occupancy.occupied]
+        self.occupancy_label.configure(text=text)
+        self._status_cell(self.occupancy_label, token)
 
     def _build_index_chips(self):
         for chip in self.index_chip_bar.winfo_children():
             chip.destroy()
         self.index_chips = {}
         for definition in self.indices.definitions:
-            chip = tk.Label(self.index_chip_bar, text=definition["name"], fg="white", padx=8)
+            chip = tk.Label(self.index_chip_bar, text=definition["name"], padx=8)
             chip.pack(side=tk.LEFT, padx=2, pady=2)
             self.index_chips[definition["name"]] = chip
         self._update_index_chips()
 
     def _update_index_chips(self):
         for name, chip in self.index_chips.items():
-            chip.configure(bg=INDEX_CHIP_COLORS[self.indices.states[name]])
+            self._status_cell(chip, INDEX_CHIP_COLORS[self.indices.states[name]])
 
     def _set_indices(self, definitions):
         """Replace the index definitions (raises ValueError and changes nothing if invalid)"""
@@ -2022,7 +2111,7 @@ class DesktopApp:
                                      np.linspace(0, app_config.TOTAL_ROWS - 1, plot_grid.shape[0]))
             self.axes.plot_surface(
                 cols, rows, -plot_grid,
-                cmap="coolwarm_r" if difference else HEATMAP_COLORS.reversed(),
+                cmap="coolwarm_r" if difference else theme.heatmap_cmap().reversed(),
                 vmin=-vmax, vmax=-vmin,
             )
             self.axes.set_zlim(-vmax, -vmin)
@@ -2034,7 +2123,7 @@ class DesktopApp:
             self.image.set_data(plot_grid)
             self.image.set_extent((-0.5, app_config.TOTAL_COLS - 0.5, app_config.TOTAL_ROWS - 0.5, -0.5))
             self.image.set_clim(vmin, vmax)
-            self.image.set_cmap("coolwarm" if difference else HEATMAP_COLORS)
+            self.image.set_cmap("coolwarm" if difference else theme.heatmap_cmap())
             self.axes.set_xlim(-0.5, app_config.TOTAL_COLS - 0.5)
             self.axes.set_ylim(app_config.TOTAL_ROWS - 0.5, -0.5)
             if self.show_contours and not pressure_unavailable and not difference and not derived:
@@ -2044,7 +2133,7 @@ class DesktopApp:
                 if levels:
                     x = np.linspace(0, app_config.TOTAL_COLS - 1, plot_grid.shape[1])
                     y = np.linspace(0, app_config.TOTAL_ROWS - 1, plot_grid.shape[0])
-                    self.axes.contour(x, y, plot_grid, levels=levels, colors="#333333",
+                    self.axes.contour(x, y, plot_grid, levels=levels, colors=theme.palette()["ink"],
                                       linewidths=0.6, alpha=0.6)
             if (self.show_hotspot_threshold and key == "pressure" and not difference and
                     finite_values.size and finite_values.min() < self.hotspots.activate_kpa < finite_values.max()):
@@ -2070,9 +2159,10 @@ class DesktopApp:
                                           levels=[0.5], colors="red" if track["persistent"] else "orange",
                                           linewidths=1.3)
                     row, col = track["centroid"]
+                    palette = theme.palette()
                     label = self.axes.text(col, row, f"#{track['id']} {track['active_s']:.0f}s",
-                                           color="black", fontsize=8, ha="center", va="center",
-                                           bbox={"facecolor": "white", "alpha": 0.65, "edgecolor": "none"})
+                                           color=palette["ink"], fontsize=8, ha="center", va="center",
+                                           bbox={"facecolor": palette["panel"], "alpha": 0.75, "edgecolor": "none"})
                     self.hotspot_labels.append(label)
             if not difference:
                 for name, state in self.indices.states.items():
@@ -2130,7 +2220,7 @@ class DesktopApp:
         if count >= app_config.SATURATION_WARN_CELLS:
             self.saturation_var.set(f"{count} cells at sensor limit: load and peak read low")
             if not self.saturation_label.winfo_manager():
-                self.saturation_label.pack(anchor="w", after=self.mat_size_button)
+                self.saturation_label.pack(anchor="w", after=self._load_row)
         else:
             self.saturation_label.pack_forget()
 
@@ -2274,7 +2364,7 @@ class DesktopApp:
         self.history_detail_var = tk.StringVar()
         ttk.Label(self.history_window, textvariable=self.history_detail_var,
                   wraplength=680, padding=8).pack(fill=tk.X)
-        self.history_figure = Figure(figsize=(6, 3))
+        self.history_figure = theme.figure(figsize=(6, 3))
         self.history_axes = self.history_figure.add_subplot()
         self.history_canvas = FigureCanvasTkAgg(self.history_figure, master=self.history_window)
         self.history_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)

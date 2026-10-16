@@ -26,7 +26,7 @@ desktop app --REST + PIN (profiles, labels, log)--> server
 Light: bg #E9EDF1, panel #FFFFFF, panel2 #F4F6F8, line #D3DAE2, ink #10182B, muted #586377, accent #2F7A62, accent_fill
 #5E9C83, brandbar #FFFFFF, hm_bg #F1F4F7, ok #2E7D5B, warn #B7791F (text #8A5A00), bad #A8231B, idle #566074.
 Dark: bg #0A101D, panel #111A2D, panel2 #0D1525, line #243049, ink #E6EBF2, muted #93A0B5, accent #74B89C,
-accent_fill #5E9C83, brandbar #10182B, hm_bg #0A101D, ok #6FC49C, warn #E6B45A, bad #F08A80, idle #9AA6BA.
+accent_fill #5E9C83, brandbar #141824 (the navy behind logo_lockup_dark.png), hm_bg #0A101D, ok #6FC49C, warn #E6B45A, bad #F08A80, idle #9AA6BA.
 Heatmap ramp stops: 0 (207,230,222), .25 (126,189,168), .5 (233,196,106), .75 (224,123,57), .9 (179,38,30),
 1 (107,15,26); cells below ~2 % of full scale fade into hm_bg. The web UI reads these via `/api/theme`.
 Style rules (desktop and web): flat, square, hairline rules, no shadows, no card-in-card, no dot-pills, state = text
@@ -60,10 +60,10 @@ Logos: `assets/logo_*.png|jpg` light and dark variants (lockup + mark); the dark
   offline for `ALERT_OFFLINE_S` (default 30); an alert is open until the condition clears; acknowledge/ignore needs a
   PIN and records who. Open alerts drive the bell. No push yet.
 - REST (all JSON): `GET /api/overview` (small rows for the table: id, name, room, seat, unit, demo, online, risk,
-  posture, time_in_position_s, saturated, open_alerts, since-relief), `GET /api/mats/<id>` (snapshot + metadata + last
-  hour timeline), `GET /api/mats/<id>/timeline?hours=`, `GET /api/mats/<id>/log`, `GET /api/alerts`,
+  posture, time_in_position_s, saturated, open_alerts, since-relief), `GET /api/mats/<id>` (the row + snapshot, age_s,
+  stale), `GET /api/mats/<id>/timeline?hours=`, `GET /api/mats/<id>/log`, `GET /api/alerts`,
   `POST /api/alerts/<id>/ack|ignore`, `PUT /api/mats/<id>/meta`, `PUT /api/mats/<id>/profile` + `GET` (profile JSON,
-  version int), `POST|GET /api/users`, `GET /api/theme`, `GET /api/health`. Errors: JSON `{error}` with 4xx.
+  version int), `GET|POST /api/users`, `PUT /api/users/<id>`, `GET /api/theme`, `GET /api/health`. Errors: JSON `{error}` with 4xx.
 - Deployment: `deploy/smartmat-server.service` (systemd, Pi) and `deploy/install_windows_server.ps1` (startup task);
   windows exe `SmartMatServer.exe` via a second spec (console-less).
 - Config (all in config.example.py): `SERVER_PORT` (default 8000, same as WEB_PORT today), `DEMO_PREFIX`,

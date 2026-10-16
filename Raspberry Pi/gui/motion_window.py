@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 from datetime import datetime
 
+from gui import theme
 from gui.reposition_window import RepositionWindow
 
 
@@ -95,8 +96,7 @@ class MotionWindow:
     def _show_difference(self):
         record = self._selected()
         if record is not None:
-            from gui.desktop import HEATMAP_COLORS  # lazy: desktop imports this module
-            RepositionWindow(self.window, record, _time_label(record["timestamp"]), HEATMAP_COLORS)
+            RepositionWindow(self.window, record, _time_label(record["timestamp"]), theme.heatmap_cmap())
 
     def _timeline_details(self):
         selection = self.timeline.curselection()

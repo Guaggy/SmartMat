@@ -81,6 +81,8 @@ for m in MATS:
     m["segments"] = make_history(m)
 BY_ID["sm-101"]["markers"].append(dict(t=T0 - 3 * 3600, kind="handled", user=USER))
 
+USERS = [dict(id=1, name=USER, role="admin", active=True)]  # empty list = first-run dialog
+
 ALERTS = [
     dict(id="a1", chip_id="sm-101", kind="high_risk", t_raised=T0 - 540, state="open", by=None),
     dict(id="a2", chip_id="sm-104", kind="offline", t_raised=T0 - 300, state="open", by=None),
@@ -177,7 +179,40 @@ def home():
 
 @app.get("/api/health")
 def health():
-    return jsonify(ok=True, version="mock")
+    return jsonify(ok=True, version="mock", needs_admin=not USERS)
+
+
+@app.get("/api/users")
+def users():
+    return jsonify(users=USERS, needs_admin=not USERS)
+
+
+@app.post("/api/users")
+def add_user():
+    body = request.get_json(silent=True) or {}
+    if USERS:  # the first user needs no PIN; after that the mock's PIN stands for an admin
+        bad = need_pin()
+        if bad:
+            return bad
+    if not str(body.get("name", "")).strip() or body.get("role") not in ("admin", "user"):
+        return jsonify(error="Send a name and a role"), 400
+    user = dict(id=len(USERS) + 1, name=str(body["name"]).strip(), role=body["role"], active=True)
+    USERS.append(user)  # the new PIN is not stored: every write in the mock still takes PIN 1234
+    return jsonify(ok=True, user=USER, created=user), 201
+
+
+@app.put("/api/users/<int:user_id>")
+def change_user(user_id):
+    bad = need_pin()
+    if bad:
+        return bad
+    body = request.get_json(silent=True) or {}
+    user = next((u for u in USERS if u["id"] == user_id), None)
+    if user is None:
+        return jsonify(error="No such user"), 404
+    if isinstance(body.get("active"), bool):
+        user["active"] = body["active"]
+    return jsonify(ok=True, user=USER, updated=user)
 
 
 @app.get("/api/theme")

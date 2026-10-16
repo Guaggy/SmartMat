@@ -50,9 +50,9 @@ do not also open it in the desktop app. The data folder holds `smartmat.db` (use
 timeline; kept `RETENTION_DAYS`), `profiles\` and `mats.json` (nicknames, imported once as mat names).
 
 Users: viewing needs no login. Every change (acknowledge an alert, edit a mat, push a calibration) sends the acting
-user's PIN and is logged with their name. On first start create the admin:
-`POST /api/users {"name": "...", "role": "admin", "new_pin": "1234"}`; afterwards only an admin adds users
-(`"pin"` = the admin's PIN). `PIN_LOCKOUT_ATTEMPTS` (0 = off) locks a client out for `PIN_LOCKOUT_S` after that
+user's PIN and is logged with their name. On first start the web page asks for the first user (admin); the REST
+call is `POST /api/users {"name": "...", "role": "admin", "new_pin": "1234"}`. Afterwards only an admin adds users,
+disables them or resets PINs (the "Users" button in the page, `"pin"` = the admin's PIN, role `admin` or `user` = nurse). `PIN_LOCKOUT_ATTEMPTS` (0 = off) locks a client out for `PIN_LOCKOUT_S` after that
 many wrong PINs in a row.
 
 Start at boot: Raspberry Pi - `deploy/smartmat-server.service` (systemd, steps in the file); Windows -

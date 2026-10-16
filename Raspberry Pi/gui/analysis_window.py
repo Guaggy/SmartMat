@@ -5,7 +5,7 @@ from tkinter import ttk
 
 import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
+from gui import theme
 
 from processing.analysis import load_distribution, pressure_distribution
 
@@ -29,7 +29,7 @@ class AnalysisWindow:
 
         self.distribution_text = tk.StringVar()
         ttk.Label(distribution_tab, textvariable=self.distribution_text, padding=8).pack(fill=tk.X)
-        self.distribution_figure = Figure(figsize=(9, 5))
+        self.distribution_figure = theme.figure(figsize=(9, 5))
         self.distribution_canvas = FigureCanvasTkAgg(self.distribution_figure, master=distribution_tab)
         self.distribution_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 

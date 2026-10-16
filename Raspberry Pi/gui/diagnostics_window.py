@@ -5,17 +5,11 @@ from tkinter import ttk
 
 import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.colors import ListedColormap
-from matplotlib.figure import Figure
+from gui import theme
 
 import config
 from processing.sensor_health import HEALTH_STATES
 from processing.statistics import saturated_cells
-
-HEALTH_COLORS = ListedColormap([
-    "#5b9d61", "#e8b04e", "#9a77bb", "#db7950",
-    "#bd5555", "#777777", "#303030", "#9da7b1",
-])
 
 
 def _value(value):
@@ -44,7 +38,7 @@ class DiagnosticsWindow:
         menu.bind("<<ComboboxSelected>>", lambda _event: self.refresh())
         ttk.Label(bar, text="Received values; noise and drift use unloaded samples").pack(side=tk.LEFT, padx=8)
 
-        self.figure = Figure(figsize=(6, 5))
+        self.figure = theme.figure(figsize=(6, 5))
         self.canvas = FigureCanvasTkAgg(self.figure, master=self.window)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         self.canvas.mpl_connect("button_press_event", self._on_click)
@@ -91,7 +85,7 @@ class DiagnosticsWindow:
         self.axes = self.figure.add_subplot()
         if view == "Health state":
             grid = self.health.states
-            image = self.axes.imshow(grid, cmap=HEALTH_COLORS, vmin=-0.5, vmax=7.5, aspect="auto")
+            image = self.axes.imshow(grid, cmap=theme.health_cmap(), vmin=-0.5, vmax=7.5, aspect="auto")
             bar = self.figure.colorbar(image, ax=self.axes, ticks=range(len(HEALTH_STATES)))
             bar.ax.set_yticklabels(HEALTH_STATES)
         else:

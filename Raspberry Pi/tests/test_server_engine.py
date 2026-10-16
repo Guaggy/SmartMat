@@ -36,8 +36,8 @@ def profile(rows=20, cols=20, mirror_h=False):
 
 class PostureTests(unittest.TestCase):
     def test_classes_from_centre_of_pressure(self):
-        self.assertEqual(classify_posture(blob(9, 3), True, 2.0), "left")
-        self.assertEqual(classify_posture(blob(9, 16), True, 2.0), "right")
+        self.assertEqual(classify_posture(blob(9, 3), True, 2.0), "right")
+        self.assertEqual(classify_posture(blob(9, 16), True, 2.0), "left")
         self.assertEqual(classify_posture(blob(16, 10), True, 2.0), "forward")
         self.assertEqual(classify_posture(blob(10, 10), True, 2.0), "centred")
         self.assertEqual(classify_posture(blob(10, 10), False, 2.0), "none")
@@ -57,7 +57,7 @@ class PostureTests(unittest.TestCase):
         self.assertEqual(tracker.time_in_position(21), 1)
         tracker.update("none", 22)
         tracker.update("none", 25)
-        self.assertIsNone(tracker.time_in_position(26))
+        self.assertEqual(tracker.time_in_position(26), 1)          # unoccupied counts too ("No user for ...")
 
     def test_risk_levels_and_sort_order(self):
         self.assertEqual(risk_from(["over", "ok"], True, True), "high")
@@ -99,7 +99,7 @@ class EngineTests(unittest.TestCase):
 
     def test_orientation_from_the_profile_is_respected(self):
         left = blob(9, 3) / 50 * 1000  # default curve: 1000 = 50 kPa
-        for mirror, expected in ((False, "left"), (True, "right")):
+        for mirror, expected in ((False, "right"), (True, "left")):
             engine = MatEngine("abc", 20, 20, profile=profile(mirror_h=mirror))
             for step in range(60):
                 engine.feed(left, step * 0.1)
@@ -130,15 +130,16 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(alerts.update("m1", "high", True, 0), [])
         self.assertEqual(alerts.update("m1", "high", True, 29), [])
         [(kind, alert)] = alerts.update("m1", "high", True, 30)
-        self.assertEqual((kind, alert["kind"], alert["chip_id"]), ("raised", "high", "m1"))
+        self.assertEqual((kind, alert["kind"], alert["chip_id"]), ("raised", "high_risk", "m1"))
         self.assertEqual(alerts.update("m1", "high", True, 40), [])  # one alert per episode
         self.assertEqual(len(alerts.open_alerts()), 1)
         handled = alerts.acknowledge(alert["id"], "Kari", 41)
-        self.assertEqual((handled["state"], handled["user"]), ("acknowledged", "Kari"))
+        self.assertEqual((handled["state"], handled["by"]), ("acknowledged", "Kari"))
         self.assertEqual(alerts.open_alerts()[0]["state"], "acknowledged")  # open until the condition clears
         [(kind, cleared)] = alerts.update("m1", "medium", True, 50)
         self.assertEqual((kind, cleared["id"], cleared["t_cleared"]), ("cleared", alert["id"], 50))
         self.assertEqual(alerts.open_alerts(), [])
+        self.assertEqual(alerts.recent()[0]["state"], "acknowledged")   # handled alerts stay in the history
         with self.assertRaises(KeyError):
             alerts.ignore(alert["id"], "Kari", 51)
 
@@ -152,7 +153,7 @@ class AlertTests(unittest.TestCase):
         self.assertEqual((kind, alert["kind"]), ("raised", "offline"))
         self.assertEqual(alerts.open_alerts("m2"), [])
         ignored = alerts.ignore(alert["id"], "Ola", 57)
-        self.assertEqual((ignored["state"], ignored["user"]), ("ignored", "Ola"))
+        self.assertEqual((ignored["state"], ignored["by"]), ("ignored", "Ola"))
 
 
 if __name__ == "__main__":

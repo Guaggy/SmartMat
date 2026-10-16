@@ -29,12 +29,14 @@ pauses while the browser tab is hidden. Send `Cache-Control: no-store` on `/api/
   as healthy, and also treats `online: false` as offline whatever `risk` says. An unknown `risk` string is drawn as
   "none" (grey), never green.
 - `posture` `none` means unoccupied. Then `time_in_position_s` is how long it has been unoccupied ("No user for 2:53").
+  `left`/`right` are the sitter's own left and right (clinical convention). With the front at the bottom of the map,
+  column 0 is the sitter's right; the mat's Mirror H setting swaps them.
   For an offline mat `posture` and `time_in_position_s` are ignored by the UI.
 - `since_relief_s` is `null` when unknown (shown as a dash).
 - `saturated_cells >= 1` shows "N cells at sensor limit: load and peak read low".
 - `open_alerts` on a row counts that mat's alerts in state `open`; the top-level `open_alerts` drives the bell.
 - `server_time` lets the browser correct for a wrong clock (alert ages, timeline axis).
-- `unit` may be `""`; the unit filter is built from the distinct non-empty values.
+- `room`, `seat` and `unit` are always strings (`""` when not set); the unit filter is built from the distinct non-empty values.
 - Demo mats are marked with `demo: true` (chip id starts with `demo-`); the UI adds a DEMO label.
 
 ### GET /api/mats/<id>
@@ -63,6 +65,7 @@ The overview row, plus:
 - `age_s`: seconds since the last frame; `stale: true` (age > `STALE_AFTER_S`) dims the map and shows "no new data".
   For an offline mat keep returning the last snapshot with a growing `age_s` and `stale: true`; if there is none,
   send `snapshot: null` (the map stays empty, the note and readouts still show).
+- A mat that has not sent a frame yet has `snapshot: null`, `age_s: null`, `stale: true`.
 - 404 `{"error"}` for an unknown mat; the dashboard drops its selection.
 
 ### GET /api/mats/<id>/timeline?hours=5
@@ -86,7 +89,9 @@ The overview row, plus:
 ```
 
 `by` is the user name once handled. The list is newest first or in any order (the UI sorts open first, then newest,
-and shows at most 30); send recent history, not only open alerts.
+and shows at most 30). The real server sends the alerts whose condition is still present (state `open` or
+`acknowledged`/`ignored`) plus the last 30 handled ones that have cleared since; an unhandled alert that clears
+disappears. Only `open` alerts count in the bell (`open_alerts`).
 
 ### GET /api/theme
 
@@ -100,20 +105,37 @@ variables; keep both in step with `branding.py` when a colour changes.
 
 ### GET /api/health
 
-`{"ok": true, "version": "0.1.0"}`
+`{"ok": true, "version": "0.1.0", "needs_admin": false}`
+
+`needs_admin: true` means the server has no users yet: the dashboard opens "Create first user (admin)". The real
+server adds `time` and `mats` (count).
+
+### GET /api/users
+
+```json
+{"users": [{"id": 1, "name": "Test Nurse", "role": "admin|user", "active": true}], "needs_admin": false}
+```
+
+Viewing needs no login; never any PIN hash. Role `user` is shown as "Nurse" in the dashboard.
 
 ## Writes (all need `pin` in the JSON body)
 
-Wrong PIN: 4xx (the mock uses 403) with `{"error": "Wrong PIN"}`. Success returns the handling user's name; the
-dashboard shows "Acknowledged by <user>".
+Wrong PIN: 403 with `{"error": "Wrong PIN"}`. Success returns the handling user's name in `user`; the
+dashboard shows "Acknowledged by <user>". Error texts start with a capital and are shown as they are.
 
 | Call | Body | Success |
 |---|---|---|
 | `POST /api/alerts/<id>/ack` | `{"pin"}` | `{"ok": true, "user": "name"}` |
 | `POST /api/alerts/<id>/ignore` | `{"pin"}` | `{"ok": true, "user": "name"}` |
-| `PUT /api/mats/<id>/meta` | `{"pin", "name", "room", "seat", "unit"}` | `{"ok": true, "user": "name"}` |
+| `PUT /api/mats/<id>/meta` | `{"pin", "name", "room", "seat", "unit"}` | `{"ok": true, "user": "name"}` (the real server adds the mat's id/name/room/seat/unit/demo) |
+| `POST /api/users` | `{"pin", "name", "role": "admin\|user", "new_pin"}` | 201 `{"ok": true, "user": "acting admin", "created": {id, name, role, active}}` |
+| `PUT /api/users/<id>` | `{"pin", "active"?, "new_pin"?}` | `{"ok": true, "user": "acting admin", "updated": {id, name, role, active}}` |
 
-- Acknowledging or ignoring an alert that is no longer `open`: 409 with an `{"error"}` text.
+- Acknowledging or ignoring an alert that is no longer `open` (handled, cleared or unknown id): 409 with an `{"error"}` text.
+- Users: PINs are per person, 4-8 digits, and unique (a taken PIN is a 400 "That PIN is already in use, choose another").
+  `POST /api/users` needs no `pin` while there are no users, and then only with `role: "admin"` (the first admin);
+  afterwards both user calls need an admin's PIN (403 "Only an admin can do this"). The last active admin cannot be
+  disabled (400). The dashboard's "Users" button lists users and offers add, disable/enable and reset PIN.
 - `meta`: all four fields are sent every time (the edit dialog sends the full set). Reject an empty name with 400.
 - After a write the dashboard re-reads overview, alerts, the mat and the timeline at once.
 
