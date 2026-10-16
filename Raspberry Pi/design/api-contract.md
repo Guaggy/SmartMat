@@ -29,8 +29,8 @@ pauses while the browser tab is hidden. Send `Cache-Control: no-store` on `/api/
   as healthy, and also treats `online: false` as offline whatever `risk` says. An unknown `risk` string is drawn as
   "none" (grey), never green.
 - `posture` `none` means unoccupied. Then `time_in_position_s` is how long it has been unoccupied ("No user for 2:53").
-  `left`/`right` are grid columns: column 0 is "left" as drawn in the map (the sitter's right when seen from above
-  with the front at the bottom); the mat's Mirror H setting swaps them.
+  `left`/`right` are the sitter's own left and right (clinical convention). With the front at the bottom of the map,
+  column 0 is the sitter's right; the mat's Mirror H setting swaps them.
   For an offline mat `posture` and `time_in_position_s` are ignored by the UI.
 - `since_relief_s` is `null` when unknown (shown as a dash).
 - `saturated_cells >= 1` shows "N cells at sensor limit: load and peak read low".
