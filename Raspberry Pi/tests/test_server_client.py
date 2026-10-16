@@ -87,7 +87,7 @@ class ClientTests(unittest.TestCase):
     def test_put_sends_pin_in_the_body_and_reads_user_or_server_error(self):
         self.assertEqual(self.client.put_profile("m1", {"a": 1}, "1234"), (True, {"ok": True, "user": "Kari", "version": 3}))
         self.assertEqual(Stub.seen[-1], {"profile": {"a": 1}, "pin": "1234"})
-        self.assertEqual(self.client.put_profile("m1", {"a": 1}, "0000"), (False, "403 Wrong PIN"))
+        self.assertEqual(self.client.put_profile("m1", {"a": 1}, "0000"), (False, "403 wrong PIN"))
 
     def test_http_errors_become_text(self):
         ok, text = self.client.get_profile("other")
