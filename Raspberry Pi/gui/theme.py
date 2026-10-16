@@ -19,6 +19,7 @@ MODES = ("light", "dark")
 FONT_SIZES = {"small": 9, "body": 10, "title": 12, "big": 16}
 FADE_BELOW = 0.02  # heatmap values below this fraction of full scale fade into the background
 _mode = "light"
+_family = "TkDefaultFont"  # replaced by Segoe UI (or the Tk default's family) in apply_theme
 _figures = weakref.WeakSet()
 
 
@@ -86,6 +87,11 @@ def _font_family(root):
     return "Segoe UI" if "Segoe UI" in families else tkfont.nametofont("TkDefaultFont", root).actual("family")
 
 
+def font(size="small", weight="normal"):
+    """A font tuple in the theme's family and size scale (FONT_SIZES key)"""
+    return (_family, FONT_SIZES[size], weight)
+
+
 def _configure_fonts(root):
     family = _font_family(root)
     small = FONT_SIZES["small"]
@@ -108,7 +114,7 @@ def _style(root, p, family):
     style.map(".", foreground=[("disabled", p["muted"])])
 
     button = {"background": p["panel2"], "lightcolor": p["panel2"], "darkcolor": p["panel2"],
-              "bordercolor": p["line"], "padding": (8, 3)}
+              "bordercolor": p["line"], "padding": (6, 2)}
     style.configure("TButton", **button)
     style.map("TButton", background=[("disabled", p["panel"]), ("pressed", p["line"]), ("active", p["line"])],
               lightcolor=[("pressed", p["line"]), ("active", p["line"])],
@@ -259,10 +265,10 @@ def style_figure(fig, mode=None):
 
 def apply_theme(root, mode):
     """Theme the whole app (root, its open windows, tracked figures) for "light" or "dark"; returns the mode used"""
-    global _mode
+    global _mode, _family
     _mode = mode if mode in MODES else "light"
     p = palette()
-    family = _configure_fonts(root)
+    family = _family = _configure_fonts(root)
     _style(root, p, family)
     options = _tk_options(p)
     for widget_class, settings in options.items():

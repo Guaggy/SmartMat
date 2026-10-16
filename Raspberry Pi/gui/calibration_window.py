@@ -34,7 +34,7 @@ class CalibrationWindow:
         self.on_change = on_change
         self.window = tk.Toplevel(parent)
         self.window.title("Pressure calibration")
-        self.window.geometry("760x860")
+        self.window.geometry("800x860")
         ttk.Label(self.window, text='Teaches the mat what each sensor reading means in kPa. Needed before pressure values and hotspots can be trusted.', wraplength=760, padding=(8, 6)).pack(side=tk.TOP, fill=tk.X)
         if profile_text:
             ttk.Label(self.window, text=profile_text, font=("TkDefaultFont", 9, "bold"),
@@ -246,7 +246,7 @@ class CalibrationWindow:
         if unit == "N":
             area = self.cell_area_getter()
             if area is None:
-                raise ValueError("Set the mat size (Mat size... under Estimated load) to use newtons")
+                raise ValueError("Set the mat size (Mat size... in the Calibrate toolbar group) to use newtons")
             pressure = pressure / (area * 1000 * cell_count)
         return pressure
 
