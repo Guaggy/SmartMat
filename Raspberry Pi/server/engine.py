@@ -161,7 +161,7 @@ class MatEngine:
                     "occupied": occupied, "hotspots": [], "indices": [], "saturated_cells": self.saturated,
                     "posture": (self.posture.posture or "none") if online else "none",
                     "time_in_position_s": self.posture.time_in_position(t) if online else None,
-                    "risk": risk_from(summary, occupied, online), "since_relief_s": None, "online": online,
+                    "risk": risk_from(summary, occupied, online), "since_relief_s": None, "online": online, "peak_kpa": None,
                     "shape": list(self.oriented_shape), "profile_version": self.profile_version}
             if self.frame is None:
                 return snap
@@ -171,6 +171,8 @@ class MatEngine:
             else:  # not calibrated: the tared signal, and say so
                 grid = self.frame["baseline_subtracted"]
             # same shape as gui/web.build_snapshot (the server must not import gui/)
+            peak = np.nanmax(pressure) if pressure is not None and np.isfinite(pressure).any() else None
+            snap["peak_kpa"] = None if peak is None else round(float(peak), 1)  # relative signal: no kPa
             snap["grid"] = [[round(float(v), 2) if np.isfinite(v) else None for v in row] for row in grid]
             snap["hotspots"] = [{"id": tr["id"], "peak_kpa": round(tr["peak_kpa"], 1),
                                  "cells": sorted([int(r), int(c)] for r, c in tr["cells"]),

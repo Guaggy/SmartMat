@@ -246,7 +246,8 @@ class Server:
         states = []
         for chip_id, engine in list(self.engines.items()):
             snap = engine.snapshot()
-            states.append((chip_id, snap["posture"], snap["risk"]))
+            if snap["online"]:  # an offline mat leaves a gap in the timeline ("no data")
+                states.append((chip_id, snap["posture"], snap["risk"]))
             for kind, alert in self.alerts.update(chip_id, snap["risk"], snap["online"], now):
                 self.store.log(now, f"alert {kind}", chip_id, None, {"alert": alert["id"], "kind": alert["kind"]})
         self.store.record_states(now, states)
