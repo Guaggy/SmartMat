@@ -49,7 +49,8 @@ from processing.indices import NEAR, OK, OVER, IndexMonitor
 from processing.signals import SIGNALS, Context, read_signal
 from processing.temporal import TemporalAnalysis
 from processing.timeline import EventTimeline
-from processing.statistics import contact_mask, load_estimate_text, pressure_statistics, weighted_center
+from processing.statistics import (contact_mask, load_estimate_text, pressure_statistics, saturated_cells,
+                                    weighted_center)
 from sources.mqtt_source import MqttSource
 from sources.serial_source import PROFILES, RAW_CAPTURE_S, TEXT_PROFILE, SerialSource, list_ports
 from sources.simulated_source import SCENARIOS, SimulatedSource
@@ -573,7 +574,12 @@ class DesktopApp:
             if variable not in (self.peak_var, self.load_var, self.hotspots_var):
                 self._adv(label)  # Simple view keeps peak, load and hotspots
             if variable is self.load_var:  # the load line says "set mat size", so the button sits under it
-                ttk.Button(stats_panel, text="Mat size...", command=self._set_mat_size).pack(anchor="w")
+                self.mat_size_button = ttk.Button(stats_panel, text="Mat size...", command=self._set_mat_size)
+                self.mat_size_button.pack(anchor="w")
+        # Amber note under the load line; packed only while cells are at the sensor limit (kept in Simple view)
+        self.saturation_var = tk.StringVar()
+        self.saturation_label = ttk.Label(stats_panel, textvariable=self.saturation_var, wraplength=190,
+                                          foreground="#b36b00")
         self._remember_rows(stats_panel)
 
         panel = self._adv(ttk.LabelFrame(sidebar, text="About", padding=8))
@@ -2098,13 +2104,25 @@ class DesktopApp:
             return "Hotspots: none"
         return f"Hotspots: {len(active)} active, longest {max(track['active_s'] for track in active):.0f} s"
 
+    def _show_saturation(self, count):
+        """Amber warning under the load line while cells are at the sensor limit"""
+        if count >= app_config.SATURATION_WARN_CELLS:
+            self.saturation_var.set(f"{count} cells at sensor limit: load and peak read low")
+            if not self.saturation_label.winfo_manager():
+                self.saturation_label.pack(anchor="w", after=self.mat_size_button)
+        else:
+            self.saturation_label.pack_forget()
+
     def _update_stats(self):
         self._update_cell_info()
         self.hotspots_var.set(self._hotspot_text())
         if self.frame is None:
             self.display_cop = (None, None)
+            self._show_saturation(0)
             return
 
+        saturated = saturated_cells(self.frame["raw"])  # received values, not the tare-subtracted ones
+        self._show_saturation(saturated)
         key = self._base_key()  # CoP follows pressure while a signal/index map is shown
         selected_grid = self.frame[key]
         if selected_grid is None:
@@ -2141,7 +2159,7 @@ class DesktopApp:
                           else f"Contact area: {count} cells")
         force = self.stats["force_n"]
         self.force_var.set(f"Force: {force:.1f} N" if force is not None else "Force: set mat size")
-        self.load_var.set(load_estimate_text(force, self.pressure_calibration.is_default_curve))
+        self.load_var.set(load_estimate_text(force, self.pressure_calibration.is_default_curve, saturated))
         x, y = self.display_cop
         label = "CoP" if key == "pressure" else "CoP (relative)"
         self.cop_text_var.set(f"{label}: x={x:.1f}, y={y:.1f} cells" if x is not None else f"{label}: -")

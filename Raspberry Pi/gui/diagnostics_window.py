@@ -10,6 +10,7 @@ from matplotlib.figure import Figure
 
 import config
 from processing.sensor_health import HEALTH_STATES
+from processing.statistics import saturated_cells
 
 HEALTH_COLORS = ListedColormap([
     "#5b9d61", "#e8b04e", "#9a77bb", "#db7950",
@@ -117,7 +118,9 @@ class DiagnosticsWindow:
         else:
             self.detail_var.set("Click a cell to inspect its diagnostic values")
         counts = np.bincount(self.health.states.flatten(), minlength=len(HEALTH_STATES))
-        self.summary_var.set(" | ".join(f"{label}: {count}" for label, count in zip(HEALTH_STATES, counts) if count))
+        parts = [f"{label}: {count}" for label, count in zip(HEALTH_STATES, counts) if count]
+        parts.append(f"At sensor limit now: {saturated_cells(self.health.current)}")
+        self.summary_var.set(" | ".join(parts))
         self.axes.set_xlabel("Column")
         self.axes.set_ylabel("Row")
         self.figure.tight_layout()

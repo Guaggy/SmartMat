@@ -2,6 +2,8 @@
 
 import numpy as np
 
+from config import HEALTH_SATURATION_MARGIN, SATURATION_WARN_CELLS, VALUE_MAX_DEFAULT
+
 
 def contact_mask(pressure_kpa, threshold_kpa):
     return np.isfinite(pressure_kpa) & (pressure_kpa > threshold_kpa)
@@ -43,9 +45,16 @@ def pressure_statistics(pressure_kpa, threshold_kpa, cell_area_m2=None):
     return stats
 
 
-def load_estimate_text(force_n, default_curve=False):
-    """Sidebar line for the indicative load (force / g in kg); an engineering aid, not a measurement"""
+def saturated_cells(raw_scaled_grid, value_max=VALUE_MAX_DEFAULT):
+    """Cells at the sensor limit in a received (0-1000 scaled) grid; NaN cells are ignored"""
+    grid = np.asarray(raw_scaled_grid, dtype=float)
+    return int((np.isfinite(grid) & (grid >= value_max - HEALTH_SATURATION_MARGIN)).sum())
+
+
+def load_estimate_text(force_n, default_curve=False, saturated=0):
+    """Sidebar line for the rough load (force / g in kg); saturated cells make it a lower bound"""
     if force_n is None:
         return "Estimated load: set mat size"
-    text = f"Estimated load: {force_n / 9.81:.1f} kg (indicative)"
+    sign = ">= " if saturated >= SATURATION_WARN_CELLS else "~"
+    text = f"Estimated load: {sign}{force_n / 9.81:.0f} kg (rough)"
     return text + " - default curve, not calibrated" if default_curve else text
