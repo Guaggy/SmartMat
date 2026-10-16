@@ -55,3 +55,25 @@ RESOURCE_DIR = Path(sys._MEIPASS) if FROZEN else APP_DIR  # bundled read-only da
 def resource_path(name):
     """A file shipped with the app (not user data): next to the sources, or inside the frozen bundle"""
     return RESOURCE_DIR / name
+
+
+def fill_config_defaults(example=None):
+    """Add any setting the user's config.py lacks (an older copy) from config.example.py, so a new release never
+    fails to import because of a newly added setting. Existing user values are never touched."""
+    import importlib.util
+    try:
+        import config
+    except ImportError:  # no config.py yet (source checkout before the first copy)
+        return
+    example = Path(example) if example else resource_path("config.example.py")
+    if not example.exists():
+        return
+    spec = importlib.util.spec_from_file_location("_config_example", example)
+    defaults = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(defaults)
+    for name, value in vars(defaults).items():
+        if name.isupper() and not hasattr(config, name):
+            setattr(config, name, value)
+
+
+fill_config_defaults()

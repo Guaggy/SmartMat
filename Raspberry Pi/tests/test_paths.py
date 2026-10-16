@@ -76,3 +76,20 @@ class ConfigDirTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FillConfigDefaultsTests(unittest.TestCase):
+    def test_missing_setting_is_added_and_existing_one_is_kept(self):
+        import config
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            example = Path(folder) / "config.example.py"
+            example.write_text("TOTAL_ROWS = 999\nBRAND_NEW_SETTING = 7\n", encoding="utf-8")
+            had_rows = config.TOTAL_ROWS
+            try:
+                paths.fill_config_defaults(example)
+                self.assertEqual(config.BRAND_NEW_SETTING, 7)
+                self.assertEqual(config.TOTAL_ROWS, had_rows)  # the user's value wins
+            finally:
+                if hasattr(config, "BRAND_NEW_SETTING"):
+                    del config.BRAND_NEW_SETTING
