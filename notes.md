@@ -22,3 +22,6 @@ Still open (everything else from this list is shipped - see "Shipped" in `Raspbe
   available as signals yet (the other layers are in the Data dropdown).
 - Weighing: the load readout is indicative only (the vendor says the mat is for trends, not weighing). A
   known-weight scale-factor calibration is the next step, once real captures show how linear the mat is.
+- Dark/light mode toggle
+- Implement the new logos made recently into the program
+- Make app for andorid and IOS, simple prototype for now. Same functionality and looks as the web UI but with notification capabiltiy 

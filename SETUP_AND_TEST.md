@@ -106,7 +106,10 @@ sudo usermod -aG dialout $USER               # serial access for /dev/ttyUSB0; l
 Mosquitto 2.x refuses remote clients unless you configure a listener and users.
 
 ```bash
+ls /etc/mosquitto/conf.d/                                         # must hold only smartmat.conf (see note below)
 sudo mosquitto_passwd -c /etc/mosquitto/passwd smartmat          # asks for a password
+sudo chown mosquitto:mosquitto /etc/mosquitto/passwd             # the broker runs as user mosquitto
+sudo chmod 640 /etc/mosquitto/passwd
 sudo tee /etc/mosquitto/conf.d/smartmat.conf <<'EOF'
 listener 1883
 allow_anonymous false
@@ -115,6 +118,12 @@ EOF
 sudo systemctl restart mosquitto
 hostname -I                                                       # the Pi's address for the configs below
 ```
+
+If `ls` shows another file with a `listener` line (for example `listener.conf` with `listener 1883 0.0.0.0` and
+`allow_anonymous true`, left by an earlier setup), Mosquitto exits with status 13 and no useful message. Move it away
+(`sudo mv /etc/mosquitto/conf.d/listener.conf ~/`), then `sudo systemctl reset-failed mosquitto` and restart.
+`sudo journalctl -u mosquitto -n 20 --no-pager` shows which files were loaded; `sudo mosquitto -c /etc/mosquitto/mosquitto.conf -v`
+prints the real error in the foreground.
 
 The same host/username/password go into three places:
 the app (**Engineering > Connection**, saved in `settings.json`; or `Raspberry Pi/config.py`
