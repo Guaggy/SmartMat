@@ -20,6 +20,7 @@ class ViewModeTests(unittest.TestCase):
         except tk.TclError:
             self.skipTest("Tk display unavailable")
         self.addCleanup(self.app._on_close)
+        self.show("Advanced")  # the app starts in Simple; these tests compare against the full layout
 
     def order(self):
         return [(parent, [w for w in parent.pack_slaves()]) for parent, _ in self.app._rows]
@@ -76,7 +77,7 @@ class ViewModeTests(unittest.TestCase):
     def test_header_title_and_about_links(self):
         app = self.app
         self.assertEqual(app.root.title(), f"SmartMat {branding.VERSION}")
-        self.assertTrue((resource_path("assets/logo.png")).is_file())
+        self.assertTrue((resource_path("assets/logo_lockup_light.png")).is_file())
         self.assertTrue(app.header.winfo_manager())                 # visible in both views
         self.show("Simple")
         self.assertTrue(app.header.winfo_manager())

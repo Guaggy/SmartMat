@@ -49,7 +49,7 @@ None known. (Hardware validation of the Maxrays mat, the S3 bridge and the resis
 - Export: snapshot CSV + PNG (long format: raw scaled 0-1000, baseline-subtracted, kPa) and recording -> CSV (Engineering > Session & export).
 - Data dropdown with cell signals (Exposure, Burden, Time since relief, Loaded time, Relieved share) and map indices.
 - Mat size config and the indicative load estimate (kg), per mat.
-- Branding: header strip with the Verdian Medical logo/colours (`branding.py`, `assets/logo.png`), About dialog (clickable website link, contact contact@verdianmedical.com, not-a-medical-device wording), window icon.
+- Branding: header strip with the Verdian Medical logo/colours (`branding.py`, `assets/logo_lockup_light.png`), About dialog (clickable website link, contact contact@verdianmedical.com, not-a-medical-device wording), window icon.
 - ROI rework: cell-set based selection (box/polygon/paint) on a frozen snapshot, its own window; remembered per mat. `docs/superpowers/specs/2026-10-08-roi-window-design.md`, `docs/superpowers/plans/2026-10-08-roi-window.md`.
 - Multi-mat MQTT support: chip-ID topics, grid-shape handshake, device list, nicknames (`mats.json`). `docs/superpowers/specs/2026-10-07-multi-mat-mqtt-design.md`, `docs/superpowers/plans/2026-10-08-multi-mat-mqtt.md`.
 - Custom indices: weighted combinations of signals (map + summary layers), near/over-threshold warnings with a hold time. `docs/superpowers/specs/2026-10-08-custom-indices-design.md`, `docs/superpowers/plans/2026-10-08-custom-indices.md`.

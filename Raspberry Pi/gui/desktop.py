@@ -254,7 +254,7 @@ class DesktopApp:
     # ---- window layout
 
     def _build_header(self):
-        """Top strip: logo and name, About, and the Simple / Advanced switch (Simple hides what _adv registered)"""
+        """Top strip: logo lockup, About, and the Simple / Advanced switch (Simple hides what _adv registered)"""
         style = ttk.Style(self.root)
         style.configure("Header.TFrame", background=HEADER_BG)
         style.configure("Header.TLabel", background=HEADER_BG, foreground=DARK)
@@ -265,21 +265,22 @@ class DesktopApp:
         self.header = ttk.Frame(self.root, style="Header.TFrame", padding=(8, 4))
         self.header.pack(side=tk.TOP, fill=tk.X)
         try:
-            self._logo = tk.PhotoImage(file=str(resource_path("assets/logo.png")))
-            self.root.iconphoto(True, self._logo)
-            self._header_logo = self._logo.subsample(2)
-            ttk.Label(self.header, image=self._header_logo, style="Header.TLabel").pack(side=tk.LEFT, padx=(0, 6))
+            self.root.iconphoto(True, tk.PhotoImage(file=str(resource_path("assets/icon_256.png"))))
         except tk.TclError:
-            pass  # no logo file: the text header still works
-        ttk.Label(self.header, text=f"{PRODUCT_NAME} - by {COMPANY_NAME}", style="Header.TLabel",
-                  font=("", 11, "bold")).pack(side=tk.LEFT)
+            pass  # no icon file: default window icon
+        try:
+            self._header_logo = tk.PhotoImage(file=str(resource_path("assets/logo_lockup_light.png"))).subsample(2)
+            ttk.Label(self.header, image=self._header_logo, style="Header.TLabel").pack(side=tk.LEFT)
+        except tk.TclError:  # no logo file: text header
+            ttk.Label(self.header, text=f"{PRODUCT_NAME} - by {COMPANY_NAME}", style="Header.TLabel",
+                      font=("", 11, "bold")).pack(side=tk.LEFT)
 
         switch = ttk.Frame(self.header, style="Header.TFrame")
         switch.pack(side=tk.RIGHT)
         ttk.Button(switch, text="About", command=self._open_about).pack(side=tk.LEFT, padx=(0, 12))
         ttk.Label(switch, text="View:", style="Header.TLabel").pack(side=tk.LEFT, padx=(0, 4))
         self.view_var = tk.StringVar(
-            value="Simple" if getattr(app_config, "START_IN_SIMPLE_MODE", False) else "Advanced")
+            value="Simple" if getattr(app_config, "START_IN_SIMPLE_MODE", True) else "Advanced")
         for label in ("Simple", "Advanced"):
             ttk.Radiobutton(switch, text=label, value=label, variable=self.view_var, style="View.Toolbutton",
                             command=self._apply_view).pack(side=tk.LEFT)
