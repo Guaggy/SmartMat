@@ -181,7 +181,7 @@ def create_app(store, alerts, engines, clock=time.time):
         calibration.PROFILES_DIR.mkdir(parents=True, exist_ok=True)
         calibration.profile_path(chip_id).write_text(json.dumps(new, indent=2), encoding="utf-8")
         store.log(clock(), "calibration pushed", chip_id, user["name"], {"version": new["version"]})
-        return jsonify({"id": chip_id, "version": new["version"]})
+        return jsonify({"ok": True, "user": user["name"], "id": chip_id, "version": new["version"]})
 
     @app.route("/api/users", methods=["GET", "POST"])
     def users():

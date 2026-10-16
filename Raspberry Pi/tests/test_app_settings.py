@@ -86,6 +86,27 @@ class AppSettingsTests(unittest.TestCase):
                                 (18.5, None), ("18.5", None), ("-1", None)):
             self.assertEqual(app_settings.parse_port(value), expected, repr(value))
 
+    def test_server_url_is_validated_and_kept_next_to_the_mqtt_settings(self):
+        self.assertEqual(app_settings.effective_server_url(), "")
+        app_settings.save_mqtt("h", 1, "", "")
+        app_settings.save_server_url(" http://10.0.0.15:8000/ ")
+        self.assertEqual(app_settings.effective_server_url(), "http://10.0.0.15:8000")
+        self.assertEqual(app_settings.effective_mqtt()["host"], "h")
+        for bad in ("10.0.0.15:8000", "ftp://x", "http://", "http://a b", "http://h:99999", "javascript:1"):
+            self.assertIsNone(app_settings.parse_server_url(bad), bad)
+            with self.assertRaises(ValueError):
+                app_settings.save_server_url(bad)
+        self.assertEqual(app_settings.effective_server_url(), "http://10.0.0.15:8000")  # a bad save changed nothing
+        app_settings.save_server_url("https://smartmat.local")
+        self.assertEqual(app_settings.effective_server_url(), "https://smartmat.local")
+        app_settings.save_server_url("  ")  # empty clears it
+        self.assertEqual(app_settings.effective_server_url(), "")
+
+    def test_a_bad_saved_server_url_counts_as_not_configured(self):
+        for bad in ("nonsense", 5, None, ["http://x"], "http://"):
+            self.file.write_text(json.dumps({"server_url": bad}), encoding="utf-8")
+            self.assertEqual(app_settings.effective_server_url(), "", repr(bad))
+
 
 if __name__ == "__main__":
     unittest.main()

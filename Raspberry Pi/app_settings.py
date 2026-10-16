@@ -1,11 +1,12 @@
 """In-app settings kept in settings.json in the user data folder (paths.APP_DIR).
 
-Only the MQTT broker for now. Stored as plain text, on purpose. Never raises on a
+The MQTT broker and the SmartMat server URL. Stored as plain text, on purpose. Never raises on a
 missing or corrupt file: the broker then comes from config.py, then the defaults.
 """
 
 import json
 import os
+from urllib.parse import urlsplit
 
 import config
 import paths
@@ -34,6 +35,10 @@ def save_mqtt(host, port, username, password):
     """Write the broker settings (other saved keys are kept). Raises OSError if the file cannot be written."""
     data = load()
     data["mqtt"] = {"host": host, "port": port, "username": username, "password": password}
+    _write(data)
+
+
+def _write(data):
     path = settings_path()
     temp = path.with_name(path.name + ".tmp")  # write then swap, so a crash mid-write keeps the old file
     temp.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -77,3 +82,32 @@ def effective_mqtt():
                 result[key] = value
                 break
     return result
+
+
+def parse_server_url(value):
+    """'http://10.0.0.15:8000/' -> 'http://10.0.0.15:8000'; None unless a string with an http/https scheme and a host"""
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    try:
+        parts = urlsplit(value)
+        valid = parts.scheme in ("http", "https") and bool(parts.hostname) and not any(c.isspace() for c in value)
+        parts.port  # raises ValueError for a port outside 0-65535
+    except ValueError:
+        return None
+    return value.rstrip("/") if valid else None
+
+
+def effective_server_url():
+    """The saved SmartMat server URL, or "" when not configured (a bad saved value counts as not configured)"""
+    return parse_server_url(load().get("server_url")) or ""
+
+
+def save_server_url(url):
+    """Save a valid URL, or "" to clear it. Raises ValueError for anything else, OSError if the file cannot be written."""
+    clean = parse_server_url(url) if url.strip() else ""
+    if clean is None:
+        raise ValueError("The server address must start with http:// or https://, for example http://10.0.0.15:8000")
+    data = load()
+    data["server_url"] = clean
+    _write(data)

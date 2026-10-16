@@ -236,6 +236,13 @@ JSON body of every write), `__main__.py` = MQTT discovery (one `MqttSource(chip,
 bridge (`SERVER_SERIAL_PORTS`, republished as `usb<port>`), demo mats (`DemoMat`, faster clocks), pump (4 frames/s per
 mat) and 1 s tick. Design: `docs/superpowers/specs/2026-10-16-server-and-ui-design.md`. Tests: `tests/test_server_*.py`.
 
+Desktop server connection (control plane): `server_client.py` (`ServerClient` over urllib, `(ok, data_or_text)` and never raises;
+`profile_fingerprint`/`compare_profiles` ignore `version`, `mat_id` and every `*_at` timestamp) and `gui/server_panel.py` (plain ttk
+group "SmartMat server" at the bottom of Engineering > Connection: URL, Test, Send calibration (PIN dialog), Get from server
+(through `DesktopApp._load_profile`, restores the old state if the profile does not fit), Server log, matches/differs marker). The URL is
+`server_url` in settings.json (`app_settings.effective_server_url`). The mat id is `DesktopApp._profile_mat_id()`. The server's
+profile PUT now also returns `ok` and `user`. Tests: `tests/test_server_client.py`. Not verified against real hardware or a real Pi server.
+
 ## Active design docs
 
 - `docs/superpowers/specs/2026-10-07-multi-mat-mqtt-design.md` - chip-ID MQTT
