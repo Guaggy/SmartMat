@@ -5,7 +5,7 @@ from tkinter import ttk
 
 import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
+from gui import theme
 
 # (label, key in the before/after snapshot, unit)
 STATS = (
@@ -45,7 +45,7 @@ class RepositionWindow:
 
         body = ttk.Frame(self.window)
         body.pack(fill=tk.BOTH, expand=True)
-        self.figure = Figure(figsize=(5, 5))
+        self.figure = theme.figure(figsize=(5, 5))
         self.canvas = FigureCanvasTkAgg(self.figure, master=body)
         self.canvas.get_tk_widget().pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 

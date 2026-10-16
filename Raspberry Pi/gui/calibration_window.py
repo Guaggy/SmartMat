@@ -8,7 +8,7 @@ from tkinter import filedialog, messagebox, ttk
 import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.colors import ListedColormap
-from matplotlib.figure import Figure
+from gui import theme
 
 import config
 
@@ -78,7 +78,7 @@ class CalibrationWindow:
         top.pack(side=tk.TOP, fill=tk.X)
         side = ttk.Frame(top)
         side.pack(side=tk.RIGHT, anchor="n")
-        self.mini_figure = Figure(figsize=(1.9, 2.0))
+        self.mini_figure = theme.figure(figsize=(1.9, 2.0))
         self.mini_axes = self.mini_figure.add_subplot()
         self.mini_canvas = FigureCanvasTkAgg(self.mini_figure, master=side)
         self.mini_canvas.get_tk_widget().pack()
@@ -144,7 +144,7 @@ class CalibrationWindow:
         ttk.Button(bulk, text="Apply model to all", command=self._update_all_models).grid(
             row=2, column=2, padx=4, pady=(6, 0))
 
-        self.figure = Figure(figsize=(5, 2.6))
+        self.figure = theme.figure(figsize=(5, 2.6))
         self.axes = self.figure.add_subplot()
         self.canvas = FigureCanvasTkAgg(self.figure, master=individual)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=10)
@@ -187,7 +187,7 @@ class CalibrationWindow:
         self.uniform_points.pack(fill=tk.X, pady=(6, 0))
         ttk.Button(panel, text="Remove selected point", command=self._uniform_remove_point).pack(
             anchor="w", pady=4)
-        self.uniform_figure = Figure(figsize=(5, 3))
+        self.uniform_figure = theme.figure(figsize=(5, 3))
         self.uniform_axes = self.uniform_figure.add_subplot()
         self.uniform_canvas = FigureCanvasTkAgg(self.uniform_figure, master=panel)
         self.uniform_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)

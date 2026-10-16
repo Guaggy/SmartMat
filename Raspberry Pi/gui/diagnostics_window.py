@@ -6,7 +6,7 @@ from tkinter import ttk
 import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.colors import ListedColormap
-from matplotlib.figure import Figure
+from gui import theme
 
 import config
 from processing.sensor_health import HEALTH_STATES
@@ -44,7 +44,7 @@ class DiagnosticsWindow:
         menu.bind("<<ComboboxSelected>>", lambda _event: self.refresh())
         ttk.Label(bar, text="Received values; noise and drift use unloaded samples").pack(side=tk.LEFT, padx=8)
 
-        self.figure = Figure(figsize=(6, 5))
+        self.figure = theme.figure(figsize=(6, 5))
         self.canvas = FigureCanvasTkAgg(self.figure, master=self.window)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         self.canvas.mpl_connect("button_press_event", self._on_click)

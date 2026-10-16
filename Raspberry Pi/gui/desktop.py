@@ -14,11 +14,10 @@ import numpy as np
 import config as app_config
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.figure import Figure
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 - registers the 3D projection
 
-from branding import (ACCENT, COMPANY_NAME, CONTACT_EMAIL, DARK, DISCLAIMER, HEADER_BG, MUTED, PRODUCT_NAME,
-                      VERSION, WEBSITE_URL)
+import app_settings
+from branding import COMPANY_NAME, CONTACT_EMAIL, DISCLAIMER, PRODUCT_NAME, VERSION, WEBSITE_URL
 from paths import resource_path
 from config import (
     VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT,
@@ -57,7 +56,7 @@ from sources.simulated_source import SCENARIOS, SimulatedSource
 
 DEMO_DEVICE = "Demo: seat take 1"  # entry in the Simulated device list, played from the bundled sample
 DEMO_RECORDING = "samples/seat_take1.json"
-from gui import web
+from gui import theme, web
 from gui.calibration_window import CalibrationWindow
 from gui.analysis_window import AnalysisWindow
 from gui.diagnostics_window import DiagnosticsWindow
@@ -121,6 +120,7 @@ class DesktopApp:
         self.root = tk.Tk()
         self.root.title(f"{PRODUCT_NAME} {VERSION}")
         self.root.geometry("1150x750")
+        self.theme_var = tk.StringVar(value=theme.apply_theme(self.root, app_settings.theme()))
 
         self.source = None
         self._rotation = 0                 # degrees, as last applied (rotation_var is the control)
@@ -259,36 +259,56 @@ class DesktopApp:
     # ---- window layout
 
     def _build_header(self):
-        """Top strip: logo lockup, About, and the Simple / Advanced switch (Simple hides what _adv registered)"""
-        style = ttk.Style(self.root)
-        style.configure("Header.TFrame", background=HEADER_BG)
-        style.configure("Header.TLabel", background=HEADER_BG, foreground=DARK)
-        style.configure("Accent.TButton", foreground=ACCENT, font=("", 9, "bold"))  # primary actions
-        style.configure("View.Toolbutton", foreground=MUTED)
-        style.map("View.Toolbutton", foreground=[("selected", ACCENT)])
-
+        """Brand bar: logo lockup, the Simple / Advanced switch (Simple hides what _adv registered), the
+        Light / Dark switch and About"""
         self.header = ttk.Frame(self.root, style="Header.TFrame", padding=(8, 4))
         self.header.pack(side=tk.TOP, fill=tk.X)
         try:
             self.root.iconphoto(True, tk.PhotoImage(file=str(resource_path("assets/icon_256.png"))))
         except tk.TclError:
             pass  # no icon file: default window icon
-        try:
-            self._header_logo = tk.PhotoImage(file=str(resource_path("assets/logo_lockup_light.png"))).subsample(2)
-            ttk.Label(self.header, image=self._header_logo, style="Header.TLabel").pack(side=tk.LEFT)
-        except tk.TclError:  # no logo file: text header
-            ttk.Label(self.header, text=f"{PRODUCT_NAME} - by {COMPANY_NAME}", style="Header.TLabel",
-                      font=("", 11, "bold")).pack(side=tk.LEFT)
+        self._header_logos = {}
+        for mode in theme.MODES:
+            try:
+                self._header_logos[mode] = tk.PhotoImage(
+                    file=str(resource_path(f"assets/logo_lockup_{mode}.png"))).subsample(2)
+            except tk.TclError:  # no logo file: text header
+                pass
+        self.header_logo = ttk.Label(self.header, style="Header.TLabel", font=("", 12, "bold"),
+                                     text=f"{PRODUCT_NAME} - by {COMPANY_NAME}")
+        self.header_logo.pack(side=tk.LEFT)
+        self._show_header_logo()
 
         switch = ttk.Frame(self.header, style="Header.TFrame")
         switch.pack(side=tk.RIGHT)
-        ttk.Button(switch, text="About", command=self._open_about).pack(side=tk.LEFT, padx=(0, 12))
-        ttk.Label(switch, text="View:", style="Header.TLabel").pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Label(switch, text="View", style="HeaderMuted.TLabel").pack(side=tk.LEFT, padx=(0, 2))
         self.view_var = tk.StringVar(
             value="Simple" if getattr(app_config, "START_IN_SIMPLE_MODE", True) else "Advanced")
         for label in ("Simple", "Advanced"):
-            ttk.Radiobutton(switch, text=label, value=label, variable=self.view_var, style="View.Toolbutton",
+            ttk.Radiobutton(switch, text=label, value=label, variable=self.view_var, style="Header.Toolbutton",
                             command=self._apply_view).pack(side=tk.LEFT)
+        ttk.Separator(switch, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10, pady=4)
+        for mode in theme.MODES:
+            ttk.Radiobutton(switch, text=mode.title(), value=mode, variable=self.theme_var,
+                            style="Header.Toolbutton", command=self._set_theme).pack(side=tk.LEFT)
+        ttk.Separator(switch, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10, pady=4)
+        ttk.Button(switch, text="About", command=self._open_about, style="Header.TButton").pack(side=tk.LEFT)
+
+    def _show_header_logo(self):
+        logo = self._header_logos.get(self.theme_var.get())
+        self.header_logo.configure(image=logo or "", compound="image" if logo else "none")
+
+    def _set_theme(self):
+        """Light / Dark switch: restyle everything that is open now, and remember the choice"""
+        mode = theme.apply_theme(self.root, self.theme_var.get())
+        self._show_header_logo()
+        self._update_occupancy()
+        self._update_index_chips()
+        self._build_plot()  # the heatmap ramp fades into the theme's own background
+        try:
+            app_settings.save_theme(mode)
+        except OSError as error:
+            self.status_var.set(f"Could not save the theme: {error}")
 
     def _open_about(self):
         if self.about_window is not None and self.about_window.winfo_exists():
@@ -309,7 +329,7 @@ class DesktopApp:
     @staticmethod
     def _link(parent, text, url, **options):
         """A label that opens url in the browser when clicked, styled as a link"""
-        link = ttk.Label(parent, text=text, foreground=ACCENT, cursor="hand2", font=("", 9, "underline"), **options)
+        link = ttk.Label(parent, text=text, style="Link.TLabel", cursor="hand2", **options)
         link.pack(anchor="w")
         link.bind("<Button-1>", lambda _event: webbrowser.open(url))
         return link
@@ -735,7 +755,7 @@ class DesktopApp:
         self.cop_marker = None
         self.selected_marker = None
         self.hotspot_labels = []
-        self.figure = Figure(figsize=(6, 6))
+        self.figure = theme.figure(figsize=(6, 6))
         if self.plot_type_var.get() == "3D Surface":
             self.axes = self.figure.add_subplot(projection="3d")
         else:
@@ -1599,7 +1619,7 @@ class DesktopApp:
             return
         window = tk.Toplevel(self.root)
         window.title("Tare baseline")
-        figure = Figure(figsize=(5, 5))
+        figure = theme.figure(figsize=(5, 5))
         axes = figure.add_subplot()
         image = axes.imshow(self.calibration.baseline, cmap=HEATMAP_COLORS, aspect="auto")
         figure.colorbar(image, ax=axes, label="Baseline value")
@@ -2274,7 +2294,7 @@ class DesktopApp:
         self.history_detail_var = tk.StringVar()
         ttk.Label(self.history_window, textvariable=self.history_detail_var,
                   wraplength=680, padding=8).pack(fill=tk.X)
-        self.history_figure = Figure(figsize=(6, 3))
+        self.history_figure = theme.figure(figsize=(6, 3))
         self.history_axes = self.history_figure.add_subplot()
         self.history_canvas = FigureCanvasTkAgg(self.history_figure, master=self.history_window)
         self.history_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)

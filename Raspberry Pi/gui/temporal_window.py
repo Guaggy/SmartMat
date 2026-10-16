@@ -5,7 +5,7 @@ from tkinter import ttk
 
 import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
+from gui import theme
 
 from processing.temporal import WINDOWS_MIN
 
@@ -64,7 +64,7 @@ class TemporalWindow:
             self.parameter_vars[key] = variable
         ttk.Button(settings, text="Apply", command=self._apply).grid(row=0, column=1, padx=5)
 
-        self.figure = Figure(figsize=(7, 4))
+        self.figure = theme.figure(figsize=(7, 4))
         self.axes = self.figure.add_subplot()
         self.canvas = FigureCanvasTkAgg(self.figure, master=self.window)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
@@ -85,7 +85,7 @@ class TemporalWindow:
         history.pack(side=tk.LEFT, padx=4)
         history.bind("<<ComboboxSelected>>", lambda _event: self.refresh())
         ttk.Button(history_bar, text="Add marker...", command=self._marker).pack(side=tk.RIGHT)
-        self.history_figure = Figure(figsize=(7, 1.7))
+        self.history_figure = theme.figure(figsize=(7, 1.7))
         self.history_axes = self.history_figure.add_subplot()
         self.history_canvas = FigureCanvasTkAgg(self.history_figure, master=self.window)
         self.history_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)

@@ -7,7 +7,7 @@ from tkinter import ttk
 import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.colors import ListedColormap
-from matplotlib.figure import Figure
+from gui import theme
 
 import config
 from processing.analysis import roi_statistics
@@ -49,7 +49,7 @@ class RoiWindow:
 
         body = ttk.Frame(self.window)
         body.pack(fill=tk.BOTH, expand=True)
-        self.select_figure = Figure(figsize=(5, 5))
+        self.select_figure = theme.figure(figsize=(5, 5))
         self.select_axes = self.select_figure.add_subplot()
         self.select_canvas = FigureCanvasTkAgg(self.select_figure, master=body)
         self.select_canvas.get_tk_widget().pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -64,7 +64,7 @@ class RoiWindow:
         self.summary_var = tk.StringVar()
         ttk.Label(side, textvariable=self.summary_var, justify=tk.LEFT, wraplength=520,
                   padding=6).pack(fill=tk.X)
-        self.output_figure = Figure(figsize=(5.4, 5.2))
+        self.output_figure = theme.figure(figsize=(5.4, 5.2))
         self.output_canvas = FigureCanvasTkAgg(self.output_figure, master=side)
         self.output_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 

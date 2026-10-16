@@ -12,12 +12,13 @@ DISCLAIMER = ("Not a medical device. SmartMat is an engineering aid: its metrics
 PALETTE_LIGHT = {
     "bg": "#E9EDF1", "panel": "#FFFFFF", "panel2": "#F4F6F8", "line": "#D3DAE2", "ink": "#10182B", "muted": "#586377",
     "accent": "#2F7A62", "accent_fill": "#5E9C83", "on_accent": "#FFFFFF", "brandbar": "#FFFFFF", "hm_bg": "#F1F4F7",
-    "ok": "#2E7D5B", "warn": "#B7791F", "bad": "#A8231B", "idle": "#566074",
+    "ok": "#2E7D5B", "warn": "#B7791F", "warn_text": "#8A5A00", "bad": "#A8231B", "idle": "#566074",
 }
+# brandbar (dark) is the navy behind assets/logo_lockup_dark.png, so the lockup sits on the bar without a seam
 PALETTE_DARK = {
     "bg": "#0A101D", "panel": "#111A2D", "panel2": "#0D1525", "line": "#243049", "ink": "#E6EBF2", "muted": "#93A0B5",
-    "accent": "#74B89C", "accent_fill": "#5E9C83", "on_accent": "#10182B", "brandbar": "#10182B", "hm_bg": "#0A101D",
-    "ok": "#6FC49C", "warn": "#E6B45A", "bad": "#F08A80", "idle": "#9AA6BA",
+    "accent": "#74B89C", "accent_fill": "#5E9C83", "on_accent": "#10182B", "brandbar": "#141824", "hm_bg": "#0A101D",
+    "ok": "#6FC49C", "warn": "#E6B45A", "warn_text": "#E6B45A", "bad": "#F08A80", "idle": "#9AA6BA",
 }
 # Heatmap colour ramp: (t, (r, g, b)); cells below ~2 % of full scale fade into hm_bg.
 HEATMAP_STOPS = [

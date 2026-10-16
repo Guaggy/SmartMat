@@ -5,7 +5,7 @@ from tkinter import ttk
 
 import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
+from gui import theme
 
 
 class IndicesWindow:
@@ -27,7 +27,7 @@ class IndicesWindow:
             self.list.column(column, width=100, anchor="center")
         self.list.pack(fill=tk.X, padx=8, pady=4)
         self.list.bind("<<TreeviewSelect>>", lambda _event: self.refresh())
-        self.figure = Figure(figsize=(6, 4.5))
+        self.figure = theme.figure(figsize=(6, 4.5))
         self.canvas = FigureCanvasTkAgg(self.figure, master=self.window)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         self.refresh()

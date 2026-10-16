@@ -26,7 +26,7 @@ desktop app --REST + PIN (profiles, labels, log)--> server
 Light: bg #E9EDF1, panel #FFFFFF, panel2 #F4F6F8, line #D3DAE2, ink #10182B, muted #586377, accent #2F7A62, accent_fill
 #5E9C83, brandbar #FFFFFF, hm_bg #F1F4F7, ok #2E7D5B, warn #B7791F (text #8A5A00), bad #A8231B, idle #566074.
 Dark: bg #0A101D, panel #111A2D, panel2 #0D1525, line #243049, ink #E6EBF2, muted #93A0B5, accent #74B89C,
-accent_fill #5E9C83, brandbar #10182B, hm_bg #0A101D, ok #6FC49C, warn #E6B45A, bad #F08A80, idle #9AA6BA.
+accent_fill #5E9C83, brandbar #141824 (the navy behind logo_lockup_dark.png), hm_bg #0A101D, ok #6FC49C, warn #E6B45A, bad #F08A80, idle #9AA6BA.
 Heatmap ramp stops: 0 (207,230,222), .25 (126,189,168), .5 (233,196,106), .75 (224,123,57), .9 (179,38,30),
 1 (107,15,26); cells below ~2 % of full scale fade into hm_bg. The web UI reads these via `/api/theme`.
 Style rules (desktop and web): flat, square, hairline rules, no shadows, no card-in-card, no dot-pills, state = text
