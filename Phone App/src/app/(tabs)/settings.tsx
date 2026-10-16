@@ -1,8 +1,9 @@
 import Constants from "expo-constants";
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 
 import { createApi, normalizeUrl } from "../../api";
+import { parseTime } from "../../quietHours";
 import { useApp } from "../../state";
 import type { Lang } from "../../strings";
 import { colors } from "../../theme";
@@ -14,8 +15,18 @@ export default function Settings() {
   const [url, setUrl] = useState(settings.serverUrl);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Result>(null);
+  const [from, setFrom] = useState(settings.quiet.from);
+  const [to, setTo] = useState(settings.quiet.to);
+  const [quietError, setQuietError] = useState(false);
 
   useEffect(() => setUrl(settings.serverUrl), [settings.serverUrl]);
+
+  // Save a quiet-hours time only when it is a valid HH:MM
+  async function commitTime(field: "from" | "to", value: string) {
+    if (parseTime(value) === null) return setQuietError(true);
+    setQuietError(false);
+    await update({ quiet: { ...settings.quiet, [field]: value.trim() } });
+  }
 
   async function test() {
     const address = normalizeUrl(url);
@@ -76,6 +87,28 @@ export default function Settings() {
         ))}
       </View>
 
+      <Text style={styles.label}>{t("quietHours")}</Text>
+      <View style={styles.switchRow}>
+        <Text style={styles.switchLabel}>{t("quietOn")}</Text>
+        <Switch
+          value={settings.quiet.enabled}
+          onValueChange={(enabled) => update({ quiet: { ...settings.quiet, enabled } })}
+          trackColor={{ true: colors.accent, false: colors.line }}
+        />
+      </View>
+      <View style={styles.buttons}>
+        <View style={styles.timeField}>
+          <Text style={styles.hint}>{t("quietFrom")}</Text>
+          <TextInput style={styles.input} value={from} onChangeText={setFrom} onEndEditing={() => commitTime("from", from)} placeholder="22:00" placeholderTextColor={colors.muted} keyboardType="numbers-and-punctuation" maxLength={5} />
+        </View>
+        <View style={styles.timeField}>
+          <Text style={styles.hint}>{t("quietTo")}</Text>
+          <TextInput style={styles.input} value={to} onChangeText={setTo} onEndEditing={() => commitTime("to", to)} placeholder="07:00" placeholderTextColor={colors.muted} keyboardType="numbers-and-punctuation" maxLength={5} />
+        </View>
+      </View>
+      {quietError ? <Text style={[styles.result, { color: colors.bad }]}>{t("quietInvalid")}</Text> : null}
+      <Text style={styles.hint}>{t("quietHint")}</Text>
+
       <Text style={styles.label}>{t("about")}</Text>
       <Text style={styles.hint}>
         {t("appName")} · {t("version", { v: Constants.expoConfig?.version ?? "" })}
@@ -112,4 +145,7 @@ const styles = StyleSheet.create({
   buttonTextSecondary: { color: colors.ink },
   disabled: { opacity: 0.4 },
   result: { fontSize: 14, marginTop: 10 },
+  switchRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  switchLabel: { color: colors.ink, fontSize: 15 },
+  timeField: { flex: 1 },
 });

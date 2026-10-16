@@ -4,7 +4,7 @@ Android and iOS app (Expo / React Native, TypeScript) that shows mat status and 
 server. SmartMat is an engineering / teaching tool, not a validated medical device; the app says "risk level
 (indicative)" and never claims a diagnosis.
 
-Status: Setup/Settings and Overview screens work against the mock server. Mat detail, Alerts and push come next.
+Status: Setup/Settings, Overview, Mat detail (heatmap, key numbers, 1-hour timeline), Alerts with PIN confirmation and quiet hours work against the mock server. Push notifications and the server patch come next.
 
 ## Run it
 
@@ -55,5 +55,5 @@ tile, so the 1024 px icon is upscaled and slightly soft; swap in exported brand 
 
 ## Dependencies
 
-Only what Expo Router needs plus: `expo-secure-store` (server address and language), `jest` + `jest-expo` (tests, dev only), `expo-build-properties` (allow cleartext HTTP on Android), `expo-splash-screen`
+Only what Expo Router needs plus: `expo-secure-store` (server address, language, quiet hours), `react-native-svg` (heatmap and timeline), `jest` + `jest-expo` (tests, dev only), `expo-build-properties` (allow cleartext HTTP on Android), `expo-splash-screen`
 (branded splash). `react-dom` is a peer dependency of Expo Router that npm needs resolved to the SDK's version.

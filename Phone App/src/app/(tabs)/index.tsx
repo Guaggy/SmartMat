@@ -1,5 +1,5 @@
 import { Link } from "expo-router";
-import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 
 import { MatRow } from "../../components/MatRow";
 import { useApp } from "../../state";
@@ -16,7 +16,13 @@ export default function Overview() {
       <FlatList
         data={data?.mats ?? []}
         keyExtractor={(row) => row.id}
-        renderItem={({ item }) => <MatRow row={item} />}
+        renderItem={({ item }) => (
+          <Link href={{ pathname: "/mat/[id]", params: { id: item.id } }} asChild>
+            <Pressable>
+              <MatRow row={item} />
+            </Pressable>
+          </Link>
+        )}
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.accent} />}
         ListEmptyComponent={

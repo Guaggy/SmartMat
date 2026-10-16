@@ -149,14 +149,16 @@ function createMockServer(clock = () => Date.now() / 1000) {
   }
 
   reset();
+  const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Allow-Methods": "GET,POST,OPTIONS" };
   return http.createServer((req, res) => {
+    if (req.method === "OPTIONS") { res.writeHead(204, cors); return res.end(); } // lets a browser/web build call the mock
     const chunks = [];
     req.on("data", (c) => chunks.push(c));
     req.on("end", () => {
       let body = null;
       try { body = JSON.parse(Buffer.concat(chunks).toString() || "null"); } catch (e) { body = null; }
       const [status, payload] = route(req, new URL(req.url, "http://x"), body, clock());
-      res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      res.writeHead(status, Object.assign({ "Content-Type": "application/json", "Cache-Control": "no-store" }, cors));
       res.end(JSON.stringify(payload));
     });
   });
