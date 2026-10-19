@@ -34,6 +34,12 @@ class AlertManager:
                 elif alert["state"] != "open":
                     self._done.append(dict(alert))
 
+    def reset_holds(self):
+        """Start counting every condition that has not opened an alert yet from its next update (after a clock jump
+        the saved start times mean nothing); open alerts stay"""
+        with self._lock:
+            self._since.clear()
+
     def _changed(self, alert):
         if self.on_change is not None:
             self.on_change(dict(alert))

@@ -52,6 +52,11 @@ class Store:
     def __init__(self, path, lockout_attempts=LOCKOUT_ATTEMPTS, lockout_s=LOCKOUT_S):
         self._db = sqlite3.connect(str(path), check_same_thread=False)
         self._db.row_factory = sqlite3.Row
+        try:  # the timeline is written every second: WAL keeps that off the SD card's fsync path and survives a power cut
+            self._db.execute("PRAGMA journal_mode=WAL")
+            self._db.execute("PRAGMA synchronous=NORMAL")
+        except sqlite3.DatabaseError:  # a file system that cannot do it keeps the default journal
+            pass
         self._db.executescript(SCHEMA)
         self._lock = threading.Lock()  # one connection shared by the web requests and the tick
         self.lockout_attempts, self.lockout_s = lockout_attempts, lockout_s

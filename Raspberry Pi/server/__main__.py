@@ -33,6 +33,8 @@ PUMP_S = 0.25   # ponytail: each mat is analysed at most 4 frames/s; the per-cel
 TICK_S = 1.0
 PURGE_EVERY_S = 3600
 OPEN_RETRY_S = 10
+REPORT_EVERY_S = 60   # a repeating fault of one mat is printed this often at most
+CLOCK_JUMP_S = 30     # ticks further apart than this (or going backwards) mean the clock jumped or the loop stalled
 SAMPLE = paths.resource_path("samples/seat_take1.json")
 DEMO_SPEEDS = (1, 3, 5, 2, 4)  # demo clock runs this many times faster (keeps a frame step under TEMPORAL_MAX_GAP_S)
 DEMO_SHIFTS = ((0, 0), (0, -4), (0, 4), (4, 0), (0, 0))  # (rows, cols) the load is moved: centred, left, right, forward
@@ -166,6 +168,8 @@ class Server:
         self._opening = {}  # chip_id -> time an MQTT mat was last tried
         self._stop = threading.Event()
         self._threads = []
+        self._reported = {}   # (chip_id, place) -> when a fault was last printed
+        self._last_tick = None
         self.discovery = None
         if demo:
             frames = load_frames()
@@ -236,24 +240,43 @@ class Server:
 
     # ---- the loops
 
+    def _report(self, chip_id, where, error, now=None):
+        """Print a fault of one mat, at most once a minute per mat and place (the loops run several times a second)"""
+        now = time.time() if now is None else now
+        if now - self._reported.get((chip_id, where), -REPORT_EVERY_S) >= REPORT_EVERY_S:
+            self._reported[(chip_id, where)] = now
+            print(f"{where} {chip_id}: {type(error).__name__}: {error}")
+
     def pump(self):
         for chip_id, feed in list(self.feeds.items()):
-            item = feed.take()
-            if item is not None:
-                self.engines[chip_id].feed(*item)
+            try:  # one failing mat must not stop the others
+                item = feed.take()
+                if item is not None:
+                    self.engines[chip_id].feed(*item)
+            except Exception as error:
+                self._report(chip_id, "pump", error)
 
     def tick(self, now):
         """Once a second: timeline, alerts (logged, a raised one is pushed to the registered phones), MQTT discovery"""
-        self._discover(now)
+        if self._last_tick is not None and not 0 <= now - self._last_tick <= CLOCK_JUMP_S:
+            self.alerts.reset_holds()  # the clock jumped (a Pi sets it from the network after boot) or the loop stalled
+        self._last_tick = now
+        try:
+            self._discover(now)
+        except Exception as error:
+            self._report("mqtt", "discovery", error, now)
         states = []
         for chip_id, engine in list(self.engines.items()):
-            snap = engine.snapshot()
-            if snap["online"]:  # an offline mat leaves a gap in the timeline ("no data")
-                states.append((chip_id, snap["posture"], snap["risk"]))
-            for kind, alert in self.alerts.update(chip_id, snap["risk"], snap["online"], now):
-                self.store.log(now, f"alert {kind}", chip_id, None, {"alert": alert["id"], "kind": alert["kind"]})
-                if kind == "raised":
-                    self.pusher.notify(alert)
+            try:
+                snap = engine.snapshot()
+                if snap["online"]:  # an offline mat leaves a gap in the timeline ("no data")
+                    states.append((chip_id, snap["posture"], snap["risk"]))
+                for kind, alert in self.alerts.update(chip_id, snap["risk"], snap["online"], now):
+                    self.store.log(now, f"alert {kind}", chip_id, None, {"alert": alert["id"], "kind": alert["kind"]})
+                    if kind == "raised":
+                        self.pusher.notify(alert)
+            except Exception as error:
+                self._report(chip_id, "tick", error, now)
         self.store.record_states(now, states)
 
     def run_loops(self):
