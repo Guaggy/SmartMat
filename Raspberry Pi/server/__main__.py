@@ -21,7 +21,7 @@ from werkzeug.serving import make_server
 import app_settings
 import config
 import general
-from passport_link import PahoTransport, PassportLink
+from matlink.passport_link import PahoTransport, PassportLink
 from processing import calibration
 from processing.calibration import IndividualCalibration, UniformCalibration, load_profile
 from server.alerts import AlertManager

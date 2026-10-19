@@ -12,11 +12,11 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-import analysis_sync
+from client import analysis_sync
 import app_settings
 from processing import calibration
 from processing.recording import RECORDINGS_DIR, load_session
-from server_client import ServerClient, compare_profiles
+from client.server_client import ServerClient, compare_profiles
 
 MARKERS = {"matches": "Calibration matches server", "differs": "Calibration differs from server",
            "not_on_server": "Calibration not on server"}

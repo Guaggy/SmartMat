@@ -335,7 +335,7 @@ def part_layers(data, log):
 
 def part_passport(data, log):
     print("\n== 13. the passport kept on a mat: a new mat brings its calibration, backup and restore over a real broker")
-    from passport_link import PahoTransport, PassportLink
+    from matlink.passport_link import PahoTransport, PassportLink
     from processing import passport
     procs["pp-dev"] = spawn("tools/fake_passport_device.py", "--chip-id", "pass-a", "--serial", "SM-0042", "--service-key", "sesame", "--custom", "20x20", log=log)
     time.sleep(2)

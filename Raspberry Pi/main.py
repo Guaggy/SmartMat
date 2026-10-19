@@ -7,21 +7,22 @@ def selftest():
     import branding
     import config
     import general
-    from gui import web
     from processing.recording import RECORDINGS_DIR
-    from urllib.request import urlopen
+    from server.alerts import AlertManager
+    from server.app import create_app
+    from server.store import Store
     RECORDINGS_DIR.mkdir(exist_ok=True)
     general.save_mat_names(general.load_mat_names())
-    server = web.WebServer()
-    server.start()
+    store = Store(paths.APP_DIR / "selftest.db")   # the server's own app, in process: no port needed
     try:
-        api = urlopen(f"http://127.0.0.1:{config.WEB_PORT}/api/mats", timeout=5).read().decode()
+        health = create_app(store, AlertManager(), {}).test_client().get("/api/health").get_json()
     finally:
-        server.stop()
+        store.close()
+        (paths.APP_DIR / "selftest.db").unlink(missing_ok=True)
     (paths.APP_DIR / "selftest.txt").write_text(
         f"version={branding.VERSION}\nfrozen={paths.FROZEN}\napp_dir={paths.APP_DIR}\nmode={paths.DATA_MODE}\n"
         f"config={config.__file__}\nmats={general.MATS_FILE}\n"
-        f"recordings={RECORDINGS_DIR}\nweb /api/mats={api}\n", encoding="utf-8")
+        f"recordings={RECORDINGS_DIR}\nserver /api/health={health}\n", encoding="utf-8")
 
 def main():
     if "--selftest" in sys.argv:

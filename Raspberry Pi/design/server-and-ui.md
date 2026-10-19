@@ -42,7 +42,7 @@ Logos: `assets/logo_*.png|jpg` light and dark variants (lockup + mark); the dark
 - Entry: `python -m server` (and `main.py --server`), options `--demo`, `--port`, `--data-dir`. Data dir = `paths.APP_DIR`.
 - `engine.py` `MatEngine(chip_id, rows, cols, value_max, profile)`: `feed(grid_0_1000, t)` runs orient, tare, pressure
   calibration (profile from `profiles/<mat_id>.json`), occupancy, hotspots, temporal, motion, indices, posture, and
-  exposes `snapshot()` (same JSON shape as `gui/web.build_snapshot` plus posture, time_in_position_s, risk,
+  exposes `snapshot()` (the dashboard's snapshot plus posture, time_in_position_s, risk,
   saturated_cells, online). No tkinter, no matplotlib.
 - Posture (`processing/posture.py`, pure): centre of pressure vs mat centre in oriented cells. |dx| >
   `POSTURE_SIDE_CELLS` (default 2.0) -> "left"/"right"; else dy > `POSTURE_FORWARD_CELLS` (default 2.5) -> "forward";
@@ -69,7 +69,7 @@ Logos: `assets/logo_*.png|jpg` light and dark variants (lockup + mark); the dark
   version int), `GET|POST /api/users`, `PUT /api/users/<id>`, `GET /api/theme`, `GET /api/health`. Errors: JSON `{error}` with 4xx.
 - Deployment: `deploy/smartmat-server.service` (systemd, Pi) and `deploy/install_windows_server.ps1` (startup task);
   windows exe `SmartMatServer.exe` via a second spec (console-less).
-- Config (all in config.example.py): `SERVER_PORT` (default 8000, same as WEB_PORT today), `DEMO_PREFIX`,
+- Config (all in config.example.py): `SERVER_PORT` (default 8000), `DEMO_PREFIX`,
   `POSTURE_*`, `ALERT_*`, `RETENTION_DAYS`, `PIN_LOCKOUT_*`, `SATURATION_WARN_CELLS`.
 - Settings in layers (`server/settings.py`, decided 2026-10-19): factory (config.py + built-in preset) < site < mat. A
   layer stores only its overrides; every change is a numbered, append-only version (`config_layers` table: who, when, why,

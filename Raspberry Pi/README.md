@@ -1,17 +1,30 @@
-# SmartMat Raspberry Pi Application
+# SmartMat Python software
 
-Desktop app that turns a live pressure-sensor mat into heatmaps, calibrated kPa readings, and pressure-injury-relevant metrics - multiple mats, custom risk indices, ROI analysis, patient detection, and a small read-only web dashboard.
+Two programs built from one code base: the **headless server** (a Pi or a PC; analyses every mat on the broker, raises alerts, serves the web dashboard and REST API) and the **desktop app** (Windows; live view, recording and playback, calibration, deep analysis, direct serial). Both use the same analysis code.
 
 ```
-ESP32 --MQTT/Serial--> sources/ --> processing/ (calibration, analysis, detection) --> gui/ (desktop app + web dashboard)
+ESP32 --MQTT/Serial--> sources/ --> processing/ (calibration, analysis, detection) --+--> server/  headless: alerts, REST, dashboard
+                                                                                     +--> gui/     desktop app
 ```
+
+## Layout
+
+| Folder / file | Part | What |
+|---|---|---|
+| `server/`, `deploy/`, `SmartMatServer.spec`, `requirements-server.txt` | headless | The server (`python -m server`), its dashboard (`server/static/`), the Pi/Windows service files. Never imports `gui/` or tkinter; install only `requirements-server.txt` on a Pi. |
+| `main.py`, `gui/`, `client/`, `SmartMat*.spec`, `build_exe*.bat`, `requirements.txt` | desktop | `main.py` starts the desktop app (`--server` starts the server instead). `client/` is the desktop's side of the server and the mats (server API client, settings sync, passport over MQTT), free of tkinter. |
+| `processing/`, `sources/`, `matlink/` | shared | Calibration and analysis; the serial, MQTT and simulated sources; the mat passport format and MQTT link (`matlink/`). |
+| `config.example.py`, `config.py`, `app_settings.py`, `paths.py`, `general.py`, `branding.py`, `assets/`, `samples/` | shared | Settings, where data lives, the logo, a demo recording. `config.py` is yours (not in git); copy it from the example. |
+| `tools/` | both | End-to-end check, demo mat publisher, passport tool, fake passport device, raw capture. |
+| `tests/` | both | `python -m pytest`. The tkinter tests need a display (Windows). |
+| `design/` | headless | REST API contract and server design notes. |
 
 See [STATUS.md](STATUS.md) (architecture map, Claude-oriented) and [notes.md](notes.md) (bugs, limitations, backlog) for the current state in detail.
 
 ## Setup
 
 ```powershell
-python -m pip install -r requirements.txt
+python -m pip install -r requirements.txt   # desktop app (a Pi server: requirements-server.txt)
 Copy-Item config.example.py config.py   # first time only
 python main.py
 ```
@@ -29,14 +42,13 @@ The **View: Simple | Advanced** switch (top right) hides everything but connect,
 build_exe.bat
 ```
 
-Produces `dist\SmartMat\SmartMat.exe` (PyInstaller onedir, windowed) and `dist\SmartMat.zip`; `build_exe_onefile.bat` produces a single file, `dist\onefile\SmartMat.exe` (about 41 MB, starts in 6-8 s because it unpacks to `%TEMP%` on every launch, and antivirus tools dislike one-file builds more than the folder build). The logo in `assets\` is bundled into the exe. Config, `settings.json`, `mats.json`, `recordings\`, profiles and raw captures live in `%LOCALAPPDATA%\SmartMat` (or next to the exe if an empty `portable.txt` sits there, or if data already lives there); on first run `config.py` is copied there from the bundled `config.example.py`. The MQTT broker is set in the app under Engineering > Connection (default `localhost:1883`, no login; stored as plain text in `settings.json`). `SmartMat.exe --selftest` writes `selftest.txt` (app folder, mode, paths, web API answer) without opening the GUI.
+Produces `dist\SmartMat\SmartMat.exe` (PyInstaller onedir, windowed) and `dist\SmartMat.zip`; `build_exe_onefile.bat` produces a single file, `dist\onefile\SmartMat.exe` (about 41 MB, starts in 6-8 s because it unpacks to `%TEMP%` on every launch, and antivirus tools dislike one-file builds more than the folder build). The logo in `assets\` is bundled into the exe. Config, `settings.json`, `mats.json`, `recordings\`, profiles and raw captures live in `%LOCALAPPDATA%\SmartMat` (or next to the exe if an empty `portable.txt` sits there, or if data already lives there); on first run `config.py` is copied there from the bundled `config.example.py`. The MQTT broker is set in the app under Engineering > Connection (default `localhost:1883`, no login; stored as plain text in `settings.json`). `SmartMat.exe --selftest` writes `selftest.txt` (app folder, mode, paths, the server app's health answer) without opening the GUI.
 
 ## Running the server
 
 The server is the always-on, headless part (Pi or Windows PC, no GUI): it analyses every mat on the broker, keeps
 a posture/risk timeline, raises alerts and serves the web dashboard and a REST API on one port (`SERVER_PORT`,
-default 8000 - the same as the desktop's legacy Web UI, which is off by default; if it is turned on while the server runs,
-the desktop says the port is in use and stays off).
+default 8000).
 
 ```powershell
 python -m server              # or: python main.py --server

@@ -1,5 +1,7 @@
 # STATUS.md - context doc for Claude, not for humans
 
+Module moves (2026-10): `passport_link/device/fake` are in `matlink/`; `server_client`, `analysis_sync`, `passport_sync` are in `client/`; `gui/web.py` is gone. Layout table: `README.md`.
+
 Purpose: let a fresh session get oriented on the Pi app without re-reading every
 file. Backlog detail lives in `notes.md` (human + Claude) - this file is the
 architecture map, conventions, and pointers. Keep this updated when the
@@ -109,12 +111,7 @@ ESP32 --MQTT/Serial--> sources/*Source (raw 0..value_max -> 0-1000, general.scal
   (`is_shown`); selecting one refreshes it. Simple view uses the `Bare.TNotebook` style (no tab strip, Live only;
   open tabs stay). About, annotation, mat size, plot options, cell history, hotspot debug and the server log stay
   dialogs. Tests: `tests/test_tabs.py`.
-- `web.py` - local read-only Flask dashboard toggled from the desktop app
-  ("Web UI"). The desktop is the only producer: `_publish_web()` calls
-  `web.update(mats, live_id, snapshot)` about once a second. The About panel shows the two addresses as clickable links
-  (`DesktopApp._link`, webbrowser.open). Addresses: `/`
-  (static page that polls), `/api/mats`, `/api/mats/<id>`. Only the mat the
-  desktop is connected to has data; non-MQTT sources appear as id `local`.
+- (The desktop's old local Web UI, `gui/web.py`, was removed: the headless server shows every mat.)
 
 `sources/` - `mqtt_source.py`, `serial_source.py`, `simulated_source.py`, all
 expose the same `latest`/`quality`/`start`/`stop` shape plus the mat info
@@ -242,7 +239,7 @@ stale. `sources/simulated_source.py` is the one deliberate exception.
 
 `server/` - headless server (`python -m server [--demo [N]]`, `main.py --server`; never imports gui/ or tkinter).
 `engine.py` `MatEngine` = the desktop's per-frame pipeline per mat (orient, tare, pressure calibration from the mat's
-profile, temporal, hotspots, motion, occupancy, indices, `processing/posture.py`), `snapshot()` = gui/web's snapshot
+profile, temporal, hotspots, motion, occupancy, indices, `processing/posture.py`), `snapshot()` = the dashboard's snapshot
 plus posture, time_in_position_s, risk, saturated_cells, since_relief_s, online. processing/* reads the grid size from
 `config.TOTAL_*`, so `engine.grid_shape()` sets it per mat under one global lock. `alerts.py` = alert state machine,
 `store.py` = sqlite (users with scrypt PINs, mats, events, timeline), `app.py` = Flask `create_app` (REST, PIN in the
@@ -250,7 +247,7 @@ JSON body of every write), `__main__.py` = MQTT discovery (one `MqttSource(chip,
 bridge (`SERVER_SERIAL_PORTS`, republished as `usb<port>`), demo mats (`DemoMat`, faster clocks), pump (4 frames/s per
 mat) and 1 s tick. Design: `docs/superpowers/specs/2026-10-16-server-and-ui-design.md`. Tests: `tests/test_server_*.py`.
 
-Desktop server connection (control plane): `server_client.py` (`ServerClient` over urllib, `(ok, data_or_text)` and never raises;
+Desktop server connection (control plane): `client/server_client.py` (`ServerClient` over urllib, `(ok, data_or_text)` and never raises;
 `profile_fingerprint`/`compare_profiles` ignore `version`, `mat_id` and every `*_at` timestamp) and `gui/server_panel.py` (plain ttk
 group "SmartMat server" at the bottom of Engineering > Connection: URL, Test, Send calibration (PIN dialog), Get from server
 (through `DesktopApp._load_profile`, restores the old state if the profile does not fit), Server log, matches/differs marker). The URL is
@@ -275,10 +272,6 @@ profile PUT now also returns `ok` and `user`. Tests: `tests/test_server_client.p
   the ROI window. Built 2026-10-08 from
   `docs/superpowers/plans/2026-10-08-roi-window.md`. Tests in `tests/test_roi.py`.
 
-- `docs/superpowers/specs/2026-10-08-web-dashboard-design.md` - per-mat web
-  dashboard. Built 2026-10-08 from
-  `docs/superpowers/plans/2026-10-08-web-dashboard.md`. Tests in `tests/test_web.py`.
-  Planned follow-up (background listener per mat) is described in the spec.
 
 ## Current backlog
 

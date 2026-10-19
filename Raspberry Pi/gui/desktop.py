@@ -1,7 +1,6 @@
 """The Tkinter desktop app"""
 
 import copy
-import socket
 import threading
 import time
 import webbrowser
@@ -20,7 +19,7 @@ from branding import COMPANY_NAME, CONTACT_EMAIL, DISCLAIMER, PRODUCT_NAME, VERS
 from paths import resource_path
 from config import (
     VALUE_MIN_DEFAULT, VALUE_MAX_DEFAULT,
-    WEB_PORT, STALE_AFTER_S, RECONNECT_INTERVAL_S,
+    STALE_AFTER_S, RECONNECT_INTERVAL_S,
     CONTACT_THRESHOLD_KPA,
     PRESSURE_DISPLAY_MAX_KPA, HISTORY_MAX_FRAMES,
     DISPLAY_SCALE, PRESSURE_CONTOUR_LEVELS_KPA, RELATIVE_CONTOUR_LEVELS,
@@ -55,7 +54,7 @@ from sources.simulated_source import SCENARIOS, SimulatedSource
 
 DEMO_DEVICE = "Demo: seat take 1"  # entry in the Simulated device list, played from the bundled sample
 DEMO_RECORDING = "samples/seat_take1.json"
-from gui import theme, web
+from gui import theme
 from gui.calibration_window import CalibrationWindow
 from gui.analysis_window import AnalysisWindow
 from gui.diagnostics_window import DiagnosticsWindow
@@ -98,23 +97,6 @@ READOUT_WRAP = 230        # pixels, a full-width line in the readouts column
 DEFAULT_SHAPE = (app_config.TOTAL_ROWS, app_config.TOTAL_COLS)  # config.py's own size, used by Serial/Simulated
 
 
-def _get_local_ip():
-    """Machine's LAN IP, so another device can reach the local web server"""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        sock.connect(("8.8.8.8", 80))  # no packet sent, just picks the outbound interface
-        return sock.getsockname()[0]
-    except OSError:
-        return "127.0.0.1"
-    finally:
-        sock.close()
-
-
-def _web_address():
-    """Where the web dashboard is reached: the mDNS name, with the plain IP as a fallback"""
-    return (f"http://{socket.gethostname()}.local:{WEB_PORT}", f"http://{_get_local_ip()}:{WEB_PORT}")
-
-
 class DesktopApp:
     """Owns the window, the active data source, and the current grid"""
 
@@ -129,7 +111,6 @@ class DesktopApp:
         self._grid_rotation = 0            # the rotation the current grid was shaped with (cell_size_mm's axes)
         self._shown_capture = None         # last raw capture result reported in the status line
         self.recorder = None
-        self.web_server = None
         self.mat_names = load_mat_names()  # chip id -> nickname
         self._mats = {}                    # chip id -> (rows, cols), as last shown in the device list
         self._mat_ids = {}                 # device-list label -> chip id
@@ -150,7 +131,6 @@ class DesktopApp:
         self.expression_window = None
         self._live_indices = None    # live definitions kept aside while a recording plays
         self._last_index_update = 0.0
-        self._last_web_publish = 0.0
         self.hotspot_window = None
         self.motion_window = None
         self._last_feature_draw = 0.0
@@ -241,7 +221,6 @@ class DesktopApp:
         self._remember_rows(self.root)
         self._remember_tree(self.toolbar)
         self._build_status_bar()
-        self._toggle_web_ui()  # the legacy Web UI is off by default now: python -m server shows every mat on the same port
         self._refresh_devices()
 
         # Layout B: the live view is the first tab; the tool windows open as closable tabs after it (gui/page.py)
@@ -613,7 +592,6 @@ class DesktopApp:
         self.paused_var = self._checkbox(bar, "Pause", self._toggle_pause)
         self.numbers_var = self._checkbox(bar, "Show numbers", self._toggle_numbers)
         self.auto_reconnect_var = self._checkbox(bar, "Auto-reconnect", default=True)
-        self.web_ui_var = self._checkbox(bar, "Web UI (legacy)", self._toggle_web_ui, default=False)  # the SmartMat server replaces it
         self.show_hotspots_var = self._checkbox(bar, "Show hotspots", self._toggle_hotspots, default=True)
 
     def _checkbox(self, parent, text, command=None, default=False, advanced=False):
@@ -717,10 +695,6 @@ class DesktopApp:
         self._info_line(panel, f"Value range: {VALUE_MIN_DEFAULT}-{VALUE_MAX_DEFAULT}")
 
         self._info_line(panel, "App", header=True, top_pad=8)
-        ttk.Label(panel, text="Web UI (legacy, off by default; use the SmartMat server)", style="Muted.TLabel").pack(anchor="w")
-        self.web_address_var, self.web_ip_var = (tk.StringVar(value=address) for address in _web_address())
-        for variable in (self.web_address_var, self.web_ip_var):  # hostname.local first, the IP as fallback
-            self._link(panel, variable.get(), variable.get(), wraplength=READOUT_WRAP)
         self._info_line(panel, f"Stale after: {STALE_AFTER_S}s")
         self._info_line(panel, f"Reconnect every: {RECONNECT_INTERVAL_S}s")
         self.cell_info_var = tk.StringVar()
@@ -790,7 +764,6 @@ class DesktopApp:
                                             or self._discovery.status != self._status):
             self._mats = dict(self._discovery.mats)
             self._status = dict(self._discovery.status)
-            self._publish_web(force=True)
             if self.source_var.get() == "MQTT":
                 self._refresh_devices()
 
@@ -805,7 +778,6 @@ class DesktopApp:
         if self.status_var.get() == self._discovery_error:
             self.status_var.set("")
         self._mats, self._status, self._discovery_error = {}, {}, None
-        self._publish_web(force=True)
         self._refresh_devices()
 
     def _rename_mat(self):
@@ -827,7 +799,6 @@ class DesktopApp:
         except OSError as error:
             self.status_var.set(f"Could not save mat name: {error}")
         self._refresh_devices()
-        self._publish_web(force=True)
 
     def _build_plot_area(self):
         """Holds the reference buttons directly above the (rebuilt) plot canvas"""
@@ -912,7 +883,6 @@ class DesktopApp:
         self.cop_history.clear()
         self.roi_history.clear()
         self.grid_info_var.set(f"Grid: {rows} x {cols}")
-        self._publish_web(force=True)
         self._update_stats()
         self._build_plot()
         if self.roi_window is not None and self.roi_window.window.winfo_exists():  # grid changed, even if hidden
@@ -1187,13 +1157,11 @@ class DesktopApp:
                 replay_label += " | DEMO: bundled sample recording, not live data"
             self.status_var.set(f"Connected via {source_name} ({device}){replay_label}{profile_label}")
             self._reconnect_since = None
-            self._publish_web(force=True)
         except Exception as error:
             self.source = None
             self._restore_live_state()
             self._applying_playback_event = False
             self.status_var.set(f"Could not connect: {error}")
-            self._publish_web(force=True)
 
     def _load_demo(self):
         """Play the bundled seat recording through the normal Simulated playback path"""
@@ -1223,7 +1191,6 @@ class DesktopApp:
         self.status_var.set("Disconnected")
         self._update_stats()
         self._build_plot()
-        self._publish_web(force=True)
 
     def _close_calibration_windows(self):
         for editor in self.calibration_windows:
@@ -1397,21 +1364,6 @@ class DesktopApp:
             self._build_plot()
         self._update_history_plot()
         self._refresh_analysis()
-
-    def _apply_contact_threshold(self):
-        try:
-            value = float(self.threshold_var.get())
-            if not np.isfinite(value) or value < 0:
-                raise ValueError
-            self.contact_threshold_kpa = value
-            self.motion.invalidate()
-            if self.recorder is not None and not self._applying_playback_event:
-                self.add_event("contact_threshold_changed", payload={"threshold_kpa": value})
-            self._update_stats()
-            self._update_plot()
-        except ValueError:
-            self.threshold_var.set(str(self.contact_threshold_kpa))
-            self.status_var.set("Contact threshold must be a nonnegative number")
 
     def _apply_noise_threshold(self):
         try:
@@ -1836,44 +1788,6 @@ class DesktopApp:
             return
         self._notify(f"Exported snapshot to {path} and {png}")
 
-    # ---- local web server
-
-    def _toggle_web_ui(self):
-        if self.web_ui_var.get():
-            try:
-                self.web_server = web.WebServer()
-                self.web_server.start()
-            except OSError as error:  # the port is taken, most likely by the SmartMat server on this computer
-                self.web_server = None
-                self.web_ui_var.set(False)
-                self.status_var.set(f"Web UI not started: port {WEB_PORT} is in use ({error}). "
-                                    "Is the SmartMat server running on this computer?")
-                return
-            self.status_var.set(f"Web UI running at {_web_address()[0]}")
-        elif self.web_server is not None:
-            self.web_server.stop()
-            self.web_server = None
-
-    def _publish_web(self, force=False):
-        """Send the known mats and a snapshot of the connected one to the web dashboard"""
-        now = time.time()
-        if not force and now - self._last_web_publish < 1.0:
-            return
-        self._last_web_publish = now
-        mats = [{"id": chip_id, "name": self.mat_names.get(chip_id) or chip_id, "rows": rows, "cols": cols}
-                for chip_id, (rows, cols) in sorted(self._mats.items())]
-        live_id = None
-        if self.source is not None:
-            live_id = getattr(self.source, "chip_id", None)
-            if live_id is None:  # Serial, Simulated or a recording: one entry of its own
-                live_id = "local"
-                mats.append({"id": live_id, "name": f"{self.source_var.get()} ({self.device_var.get()})",
-                             "rows": app_config.TOTAL_ROWS, "cols": app_config.TOTAL_COLS})
-        snapshot = None
-        if live_id is not None and self.frame is not None:
-            snapshot = web.build_snapshot(self.frame, self.hotspots.active, self.occupancy.occupied, self.indices)
-        web.update(mats, live_id, snapshot)
-
     # ---- per-frame update
 
     def _poll(self):
@@ -1991,7 +1905,6 @@ class DesktopApp:
             self.recorder.add_frame(self.raw_grid, timestamp=self.frame_timestamp)
         if self._playback_metadata is not None:
             self._playback_frame_index += 1
-        self._publish_web()
 
         # drawing is expensive (esp. with numbers on) - cap the rate
         now = time.time()
@@ -2455,7 +2368,4 @@ class DesktopApp:
             self.source.stop()
         if self._discovery is not None:
             self._discovery.stop()
-        web.update([])
-        if self.web_server is not None:
-            self.web_server.stop()
         self.root.destroy()

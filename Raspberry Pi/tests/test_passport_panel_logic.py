@@ -10,8 +10,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from passport_fake import FakePassportDevice
-from passport_link import LoopbackBus, PassportLink
+from matlink.passport_fake import FakePassportDevice
+from matlink.passport_link import LoopbackBus, PassportLink
 from processing import calibration, passport
 from server.__main__ import demo_profile
 

@@ -17,7 +17,7 @@ import numpy as np
 
 from processing import calibration
 from processing.calibration import Calibration, PressureCalibration
-from server_client import ServerClient, compare_profiles, profile_fingerprint
+from client.server_client import ServerClient, compare_profiles, profile_fingerprint
 from server.engine import grid_shape
 from test_server_engine import profile  # pytest puts tests/ on sys.path
 

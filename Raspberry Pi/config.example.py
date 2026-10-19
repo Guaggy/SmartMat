@@ -126,8 +126,6 @@ HEALTH_STUCK_NEIGHBOR_STD = 60
 HEALTH_STUCK_FRAMES = 30
 HEALTH_INVALID_FRAMES = 3
 
-# Local web server (gui/web.py)
-WEB_PORT = 8000
 
 # Connection health (gui/desktop.py)
 STALE_AFTER_S = 10        # flag the connection as stale if no frame arrives for this long
@@ -145,7 +143,7 @@ SATURATION_WARN_CELLS = 1
 DEMO_PREFIX = "demo-"
 
 # Server (python -m server): headless analysis, alerts and web dashboard for every mat
-SERVER_PORT = 8000            # web UI + REST; same as WEB_PORT, so run the server or the desktop Web UI on one machine
+SERVER_PORT = 8000            # web UI + REST
 SERVER_SERIAL_PORTS = []      # USB mats the server owns and republishes to MQTT, e.g. [("COM3", "Maxrays 20x20 (921600)")]
 POSTURE_SIDE_CELLS = 2.0      # centre of pressure this many cells left/right of the mat centre -> "left"/"right"
 POSTURE_FORWARD_CELLS = 2.5   # ... this many cells towards the last row -> "forward"

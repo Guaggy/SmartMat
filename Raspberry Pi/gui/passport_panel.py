@@ -11,7 +11,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 import config
-import passport_sync
+from client import passport_sync
 from gui.server_panel import apply_profile_to_app
 from processing import calibration
 

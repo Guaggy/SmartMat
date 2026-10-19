@@ -11,7 +11,7 @@ import json
 import threading
 
 from processing import calibration, passport
-from passport_link import PassportError
+from matlink.passport_link import PassportError
 
 ADOPT_ORDER = ("custom", "factory")   # a site's own calibration wins over the factory's
 

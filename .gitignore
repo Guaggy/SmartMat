@@ -19,3 +19,6 @@ Archived/
 # Python build/venv output
 .venv/
 build/
+# PyInstaller output (rebuild with build_exe.bat)
+**/dist/
+**/build/

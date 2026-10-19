@@ -11,7 +11,7 @@ from werkzeug.exceptions import HTTPException
 
 import branding
 import config
-from passport_link import PassportError
+from matlink.passport_link import PassportError
 from processing import calibration, passport
 from processing.posture import risk_sort_key
 from server import push

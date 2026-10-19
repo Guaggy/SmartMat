@@ -1,0 +1,7 @@
+# The headless server only (Raspberry Pi, or a PC without the desktop app): no matplotlib, no tkinter.
+# Desktop app: requirements.txt.
+numpy
+pyserial
+paho-mqtt>=2.0
+flask
+tzdata; platform_system == "Windows"  # time zones for the phones' quiet hours (Windows has no tz database)

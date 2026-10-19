@@ -30,10 +30,6 @@ def palette(mode=None):
     return PALETTE_DARK if (mode or _mode) == "dark" else PALETTE_LIGHT
 
 
-def current_mode():
-    return _mode
-
-
 def _rgb(colour):
     colour = colour.lstrip("#")
     return tuple(int(colour[i:i + 2], 16) for i in (0, 2, 4))

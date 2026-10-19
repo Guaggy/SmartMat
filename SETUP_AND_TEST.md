@@ -95,7 +95,7 @@ Run both from PowerShell as `cmd /c ".\build_exe.bat"` if a plain call does not 
 git clone https://github.com/Guaggy/SmartMat
 cd "SmartMat/Raspberry Pi"
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+.venv/bin/pip install -r requirements-server.txt
 cp config.example.py config.py && nano config.py
 sudo usermod -aG dialout $USER               # serial access for /dev/ttyUSB0; log out and in again
 .venv/bin/python main.py                     # the desktop app: needs a desktop session (VNC / Raspberry Pi Connect screen share)
@@ -286,10 +286,7 @@ crashes, and each mat's tare/calibration/orientation comes back from `profiles\<
    `net dropped` does.
 
 ### Test G - web dashboard
-Legacy: the desktop app's own **Web UI (legacy)** checkbox (off by default now): tick it, open the two links in the About
-panel (hostname.local:8000 and the IP) from a phone or another PC on the same network. Only the mat currently open in the
-desktop app is live there, and it uses the same port as the SmartMat server (if the port is taken the app says so and
-stays off). Use the headless server (test H) instead: it shows every mat.
+The desktop app's old Web UI was removed; use the headless server (test H): it shows every mat.
 
 ### Test H - headless server on the Pi (hardware needed)
 Needs section 4b done, the Pi on the LAN and at least one real mat (or `tools/publish_demo_mat.py` from a PC).
@@ -332,8 +329,7 @@ From `Raspberry Pi\` in PowerShell. Steps 1-3 are automatic; 4-6 are a click-thr
 5. Desktop app: `.venv\Scripts\python main.py`. Use **Load demo recording**, then go through the tabs (Live, Analysis,
    Timeline, Hotspots, Movement, Indices, Diagnostics, Calibration, ROI, Engineering, Help), Simple/Advanced view, light/dark,
    Tools > Expression, record + export CSV, export snapshot (CSV + PNG), Pop out a tab. Then Engineering > Connection >
-   SmartMat server: URL `http://localhost:8000` (server from step 4 running; the legacy Web UI checkbox is off by
-   default, leave it off: it uses the same port), **Test**, **Send calibration to server** (admin PIN), **Get from server**,
+   SmartMat server: URL `http://localhost:8000` (server from step 4 running), **Test**, **Send calibration to server** (admin PIN), **Get from server**,
    **Server log**. These buttons need a real mat id (Serial or MQTT; simulated data and recordings have none, the panel
    says so). With no hardware, make one over MQTT in three more PowerShell windows, from `Raspberry Pi\`:
    `.venv\Scripts\python tools\e2e_check.py --broker` (a throw-away broker on port 1883),

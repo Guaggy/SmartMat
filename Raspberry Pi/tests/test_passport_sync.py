@@ -2,9 +2,9 @@
 
 import unittest
 
-from passport_fake import FakePassportDevice
-from passport_link import LoopbackBus, PassportLink
-import passport_sync
+from matlink.passport_fake import FakePassportDevice
+from matlink.passport_link import LoopbackBus, PassportLink
+from client import passport_sync
 from processing import passport
 from server.__main__ import demo_profile
 

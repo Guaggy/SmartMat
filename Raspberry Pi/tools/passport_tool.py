@@ -21,7 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import app_settings
-from passport_link import PahoTransport, PassportError, PassportLink
+from matlink.passport_link import PahoTransport, PassportError, PassportLink
 from processing import passport
 
 

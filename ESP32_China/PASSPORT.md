@@ -7,7 +7,7 @@ without anyone touching it.
 The firmware never parses it. A slot is an opaque blob of at most 16384 bytes that starts with `SMP1`
 (`SMP1` + zlib(JSON), made by `Raspberry Pi/processing/passport.py`); the board checks the start bytes and the size,
 stores the bytes and reports their CRC-32. Rules live in `src/mat_passport.h` (host test:
-`pio test -e native -f test_passport`); its Python twin is `Raspberry Pi/passport_device.py`, and both are tested
+`pio test -e native -f test_passport`); its Python twin is `Raspberry Pi/matlink/passport_device.py`, and both are tested
 against the same message texts.
 
 Only device-bound data goes in (calibration profile, size, model, optional analysis overrides). Names, rooms,
@@ -48,7 +48,7 @@ A write is stored to a temporary file and renamed, so a power cut leaves the old
 
 ## Who talks to it
 
-* `Raspberry Pi/passport_link.py`: client (verifies the CRC the board reports against the bytes sent).
+* `Raspberry Pi/matlink/passport_link.py`: client (verifies the CRC the board reports against the bytes sent).
 * Server: `GET /api/mats/<id>/passport`, `POST .../passport/adopt` and `.../passport/write` (admin PIN); a mat with no
   saved calibration takes its passport on first contact (custom before factory), logged as `passport adopted`.
 * `Raspberry Pi/tools/passport_tool.py`: command line for show / save / fetch / restore / clear / factory / serial.

@@ -1,7 +1,6 @@
 # SmartMat web dashboard: API contract
 
-What `server/static/app.js` consumes. `tools/mock_api.py` implements exactly this, so run it next to the real
-server to compare shapes (`python tools/mock_api.py`, PIN 1234). Times are unix seconds (float or int), durations
+What `server/static/app.js` consumes (run `python -m server --demo 5` to see it live). Times are unix seconds (float or int), durations
 are seconds. All bodies are JSON. Errors are `{"error": "<text>"}` with a 4xx status; the dashboard shows the text
 as is, so write it for a nurse.
 

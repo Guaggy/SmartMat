@@ -115,9 +115,12 @@ class IndividualCalibration:
         self.path = None
         self.modified_at = None
         self._default_cells = set()
+        self._revision = 0       # bumped by every change, so the compiled form below is rebuilt only when needed
+        self._compiled = None    # (key, linear mask, offsets, slopes, other cells), see apply()
 
     def _touch(self):
         self.modified_at = time.time()
+        self._revision += 1
 
     @classmethod
     def default(cls):
@@ -154,7 +157,8 @@ class IndividualCalibration:
 
     @property
     def calibrated_count(self):
-        return sum(self.is_calibrated(row, col) for row, col in self.cells)
+        _key, linear, _offsets, _slopes, others = self._compile()   # cached: asked once per frame
+        return int(linear.sum()) + len(others)
 
     @property
     def is_complete(self):
@@ -250,11 +254,41 @@ class IndividualCalibration:
     def convert_cell(self, row, col, raw):
         return float(self._convert_cell(np.asarray([raw], dtype=float), self._cell(row, col))[0])
 
+    def _compile(self):
+        """Per-cell curves as arrays, so a frame is converted in a few array operations instead of one Python call per cell.
+        Linear cells (the usual case) become an offset and a slope; other models stay one interp each. Cells without a usable
+        curve stay NaN. Rebuilt only when a cell changed (_revision) or the cell table was replaced."""
+        key = (self._revision, id(self.cells), len(self.cells))
+        if self._compiled is not None and self._compiled[0] == key:
+            return self._compiled
+        shape = (config.TOTAL_ROWS, config.TOTAL_COLS)
+        linear = np.zeros(shape, dtype=bool)
+        offsets = np.zeros(shape)
+        slopes = np.zeros(shape)
+        others = []
+        for (row, col), cell in self.cells.items():
+            points = [(raw, pressure) for raw, pressure in cell["points"] if raw > cell["offset"]]
+            if not points or not any(pressure > 0 for _, pressure in points):
+                continue
+            if cell["model"] == "linear":
+                inputs = np.asarray([raw - cell["offset"] for raw, _ in points])
+                outputs = np.asarray([pressure for _, pressure in points])
+                linear[row, col] = True
+                offsets[row, col] = cell["offset"]
+                slopes[row, col] = float(np.dot(inputs, outputs) / np.dot(inputs, inputs))
+            else:
+                others.append((row, col, cell))
+        self._compiled = (key, linear, offsets, slopes, others)
+        return self._compiled
+
     def apply(self, grid):
         if grid.shape != (config.TOTAL_ROWS, config.TOTAL_COLS):
             raise ValueError("Calibration grid size does not match configuration")
+        _key, linear, offsets, slopes, others = self._compile()
         pressure = np.full(grid.shape, np.nan, dtype=float)
-        for (row, col), cell in self.cells.items():
+        with np.errstate(invalid="ignore"):
+            np.maximum(0.0, (grid - offsets) * slopes, out=pressure, where=linear)
+        for row, col, cell in others:
             pressure[row, col] = self._convert_cell(np.asarray([grid[row, col]]), cell)[0]
         return pressure
 
@@ -284,6 +318,7 @@ class IndividualCalibration:
             for raw, pressure in item["points"]:
                 loaded.add_point(row, col, raw, pressure)
         self.cells = loaded.cells
+        self._revision += 1
         self.modified_at = _parse_date(data.get("calibrated_at"))
         self._default_cells = {(int(row), int(col)) for row, col in data.get("default_cells", [])}
 

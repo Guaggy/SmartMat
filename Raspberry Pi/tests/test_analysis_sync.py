@@ -10,7 +10,7 @@ from pathlib import Path
 
 from werkzeug.serving import make_server
 
-import analysis_sync
+from client import analysis_sync
 import config
 from paths import resource_path
 from processing.indices import default_indices
@@ -21,7 +21,7 @@ from server.app import create_app
 from server.engine import MatEngine
 from server.settings import Settings, keys, spec_of
 from server.store import Store
-from server_client import ServerClient
+from client.server_client import ServerClient
 
 ADMIN, NURSE = "1234", "5678"
 SAMPLE = resource_path("samples/seat_take1.json")

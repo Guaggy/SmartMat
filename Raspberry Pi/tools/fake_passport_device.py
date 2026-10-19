@@ -13,8 +13,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import app_settings
-from passport_fake import FakePassportDevice
-from passport_link import PahoTransport
+from matlink.passport_fake import FakePassportDevice
+from matlink.passport_link import PahoTransport
 from processing import passport
 
 

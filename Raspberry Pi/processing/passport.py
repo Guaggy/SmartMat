@@ -22,7 +22,6 @@ PROFILE_FORMAT = "smartmat_mat_profile_v1"   # processing.calibration.PROFILE_FO
 MAGIC = b"SMP1"
 SLOTS = ("factory", "custom")
 MAX_BYTES = 16384   # per slot, compressed; the firmware refuses more (and its MQTT buffer is sized for it)
-KEEP_KEYS = ("profile", "analysis")
 
 
 def crc32(data):
@@ -96,8 +95,3 @@ def describe(document):
     by = f" by {document['written_by']}" if document.get("written_by") else ""
     note = f" ({document['note']})" if document.get("note") else ""
     return f"{document['slot']} v{document['version']}{by}, {when}{note}"
-
-
-def keep(document):
-    """The part of a document that is the mat's calibration (what is compared and adopted): profile and analysis"""
-    return {key: document.get(key) for key in KEEP_KEYS}

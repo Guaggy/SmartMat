@@ -1,14 +1,18 @@
 # SmartMat
 
-Pressure-sensing smart mat project — resistive sensor firmware, a Raspberry Pi bridge, and a web-based visualization.
+Pressure-sensing smart mat system (Verdian Medical): mats, ESP32 bridges, a headless analysis server with a web dashboard,
+a desktop app for analysis and calibration, and a phone app for alerts. An engineering and teaching tool, not a validated medical device.
 
-**Live site (temporary domain):** https://guaggy.github.io/SmartMat/
+How the system works (pipeline, setups, settings, passport): [system_info.md](system_info.md).
+Setting up and testing devices: [SETUP_AND_TEST.md](SETUP_AND_TEST.md). Backlog and open items: [notes.md](notes.md).
 
-**Setting up and testing the devices:** see [SETUP_AND_TEST.md](SETUP_AND_TEST.md).
+## Folders
 
-## Folder structure
-
-- **`ESP32_Resistive/`** — ESP32 firmware for the resistive pressure mat (16 x 15, multiplexed ADC), built with PlatformIO; see `ESP32_Resistive/README.md`.
-- **`ESP32_China/`** — ESP32-S3 firmware that makes the Maxrays 20 x 20 USB mat wireless: it hosts the mat's USB-serial chip and publishes the frames over MQTT; see `ESP32_China/README.md` (it needs its own PlatformIO setup).
-- **`Website/`** — Two independent pieces: `site/` is the placeholder landing page auto-deployed to GitHub Pages (https://guaggy.github.io/SmartMat/, temporary domain) via `.github/workflows/deploy-pages.yml`, and `smartmat-heatmap-widget.html` is a separate browser-based heatmap widget pasted manually into the smsolutions.no Elementor site; see `Website/README.md`.
-- **`Raspberry Pi/`** — Python desktop app (`main.py`) for viewing and recording the live pressure heatmap over Serial (ESP32 text or the Maxrays USB mat), MQTT, or simulated data, with a Windows exe build; see `Raspberry Pi/README.md` for how it works and `requirements.txt` for dependencies.
+| Folder | What |
+|---|---|
+| `Raspberry Pi/` | All the Python: the **headless server** (`server/`, runs on a Pi or a PC), the **desktop app** (`main.py`, `gui/`, `client/`), and code they share. See `Raspberry Pi/README.md` for the layout. |
+| `ESP32_China/` | ESP32-S3 firmware: USB host for the Maxrays 20x20 mat, publishes frames over MQTT, keeps the mat passport. PlatformIO. |
+| `ESP32_Resistive/` | ESP32 firmware for the resistive 16x15 mat (multiplexed ADC). PlatformIO. |
+| `Phone App/` | Expo (React Native) app for status and alerts. Expo SDK 54, so the App Store's Expo Go can run it. |
+| `Data/` | Reference material: mat datasheet, presentation, logo. |
+| `test_reports/` | Dated reports from test passes on real machines. |

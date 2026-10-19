@@ -6,7 +6,7 @@ import random
 import unittest
 import zlib
 
-from passport_device import DeviceStore, ack, split_key
+from matlink.passport_device import DeviceStore, ack, split_key
 from processing import passport
 from processing.calibration import IndividualCalibration
 from server.__main__ import demo_profile
@@ -29,7 +29,6 @@ class DocumentTests(unittest.TestCase):
         back = passport.decode(passport.encode(doc))
         self.assertEqual(back, doc)
         self.assertEqual((back["slot"], back["version"], back["written_by"], back["analysis"]["hotspots.activate_kpa"]), ("custom", 3, "Admin", 28.0))
-        self.assertEqual(passport.keep(back)["profile"], doc["profile"])
 
     def test_the_same_document_is_always_the_same_bytes(self):
         self.assertEqual(blob_of(), blob_of())
