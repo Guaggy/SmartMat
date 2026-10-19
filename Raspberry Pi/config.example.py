@@ -153,6 +153,10 @@ POSTURE_HOLD_S = 3.0          # a new posture must last this long before it coun
 ALERT_HIGH_HOLD_S = 30.0      # risk "high" this long opens an alert
 ALERT_OFFLINE_S = 30.0        # a mat offline this long opens an alert
 ALERT_RESTORE_GRACE_S = 60.0  # after a server restart, saved open alerts are kept this long while the mats report again
+RISK_RELIEF_MIN = 120         # the server's risk index counts a loaded area as fully "at risk" after this many minutes without relief
+RISK_NEAR_PERCENT = 80        # "medium" risk starts at this percent of the "high" limit
+# Admins can change the alert, risk, posture, stale, saturation and retention values above in the dashboard (the gear
+# icon); the dashboard value wins over this file, and "reset" goes back to what is written here.
 PUSH_ENABLED = True           # push a raised alert to phones registered by the phone app (needs internet access to exp.host)
 PUSH_ACCESS_TOKEN = ""        # optional Expo access token (expo.dev > Access tokens) so only this server can push to the phones
 RETENTION_DAYS = 30           # events and timeline older than this are deleted

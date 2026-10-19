@@ -14,10 +14,10 @@ import config
 from processing import calibration
 from processing.posture import risk_sort_key
 from server import push
+from server.settings import Settings
 from server.store import DEVICE_FIELDS, META_FIELDS
 
 DEMO_PREFIX = getattr(config, "DEMO_PREFIX", "demo-")
-SATURATION_WARN_CELLS = getattr(config, "SATURATION_WARN_CELLS", 1)
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 MAX_TIMELINE_HOURS = 24 * 7
 SNAPSHOT_KEYS = ("unit", "scale_max", "grid", "occupied", "hotspots", "peak_kpa")
@@ -34,8 +34,10 @@ class ApiError(Exception):
         self.status = status
 
 
-def create_app(store, alerts, engines, clock=time.time):
-    """store: server.store.Store, alerts: AlertManager, engines: {chip_id: MatEngine} (the runner adds to it)"""
+def create_app(store, alerts, engines, clock=time.time, settings=None):
+    """store: server.store.Store, alerts: AlertManager, engines: {chip_id: MatEngine} (the runner adds to it),
+    settings: server.settings.Settings (the admin-editable values; defaults from config.py when not given)"""
+    settings = settings if settings is not None else Settings(store)
     app = Flask(__name__, static_folder=None)
 
     @app.errorhandler(ApiError)
@@ -88,7 +90,7 @@ def create_app(store, alerts, engines, clock=time.time):
         return dict(mat_info(chip_id, meta), online=snap["online"], risk=snap["risk"], posture=snap["posture"],
                     time_in_position_s=snap["time_in_position_s"], since_relief_s=snap["since_relief_s"],
                     saturated_cells=snap["saturated_cells"],
-                    saturated=snap["saturated_cells"] >= SATURATION_WARN_CELLS,
+                    saturated=snap["saturated_cells"] >= settings.get("saturation_warn_cells"),
                     open_alerts=sum(a["chip_id"] == chip_id and a["state"] == "open" for a in open_alerts))
 
     # ---- reading
@@ -169,6 +171,23 @@ def create_app(store, alerts, engines, clock=time.time):
             raise ApiError(400, str(error))
         store.log(clock(), "user added", None, by or user["name"], {"name": user["name"], "role": user["role"]})
         return jsonify({"ok": True, "user": by or user["name"], "created": user}), 201
+
+    @app.route("/api/settings", methods=["GET", "PUT"])
+    def settings_route():
+        if request.method == "GET":
+            return jsonify({"settings": settings.describe()})
+        data = body()
+        user = actor(data, admin=True)
+        values = data.get("values")
+        if not isinstance(values, dict) or not values:
+            raise ApiError(400, "send values: {setting: value, or null for the default}")
+        try:
+            changed = settings.update(values)
+        except ValueError as error:
+            raise ApiError(400, str(error))
+        if changed:
+            store.log(clock(), "settings changed", None, user["name"], {key: list(pair) for key, pair in changed.items()})
+        return jsonify({"ok": True, "user": user["name"], "settings": settings.describe()})
 
     # ---- writing (PIN in the body)
 

@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS devices (token TEXT PRIMARY KEY, platform TEXT, name 
     tz TEXT, quiet_from TEXT, quiet_to TEXT, user TEXT, t_registered REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS alerts (id TEXT PRIMARY KEY, chip_id TEXT NOT NULL, kind TEXT NOT NULL, t_raised REAL NOT NULL,
     since REAL, t_cleared REAL, state TEXT NOT NULL, by TEXT, t_handled REAL);
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS timeline_mat ON timeline (chip_id, t_end);
 CREATE INDEX IF NOT EXISTS events_mat ON events (chip_id, id);
 """
@@ -185,6 +186,20 @@ class Store:
     def remove_device(self, token):
         with self._lock, self._db:
             return self._db.execute("DELETE FROM devices WHERE token = ?", (token,)).rowcount > 0
+
+    # ---- settings overrides (server/settings.py): key -> JSON value
+
+    def saved_settings(self):
+        return {row["key"]: json.loads(row["value"]) for row in self._rows("SELECT key, value FROM settings")}
+
+    def save_settings(self, values):
+        """{key: value}; None removes the override"""
+        with self._lock, self._db:
+            for key, value in values.items():
+                if value is None:
+                    self._db.execute("DELETE FROM settings WHERE key = ?", (key,))
+                else:
+                    self._db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, json.dumps(value)))
 
     # ---- alerts (saved so a restart neither forgets them nor raises and pushes them again)
 

@@ -27,6 +27,7 @@ from server.alerts import AlertManager
 from server.app import DEMO_PREFIX, create_app
 from server.engine import MatEngine, grid_shape
 from server.push import PushSender
+from server.settings import Settings
 from server.store import Store
 
 PUMP_S = 0.25   # ponytail: each mat is analysed at most 4 frames/s; the per-cell calibration loop costs ~13 ms a frame
@@ -160,9 +161,10 @@ class MqttMat:
 
 
 class Server:
-    def __init__(self, store, alerts, demo=0, serial_ports=(), use_mqtt=True, pusher=None):
+    def __init__(self, store, alerts, demo=0, serial_ports=(), use_mqtt=True, pusher=None, settings=None):
         self.store, self.alerts = store, alerts
-        self.pusher = pusher if pusher is not None else PushSender(store)
+        self.settings = settings if settings is not None else Settings(store)
+        self.pusher = pusher if pusher is not None else PushSender(store, enabled=self.settings.get("push_enabled"))
         self.engines = {}   # chip_id -> MatEngine (read by the web app)
         self.feeds = {}     # chip_id -> DemoMat / MqttMat / SerialBridge
         self._opening = {}  # chip_id -> time an MQTT mat was last tried
@@ -199,9 +201,17 @@ class Server:
             except Exception as error:
                 print(f"MQTT not started: {type(error).__name__}: {error}")
                 self.discovery = None
+        self.settings.listen(self._apply_settings, call=False)  # a change in the dashboard applies at once
 
     def _add(self, chip_id, engine, feed):
+        engine.configure(self.settings.values())
         self.engines[chip_id], self.feeds[chip_id] = engine, feed
+
+    def _apply_settings(self, values):
+        self.alerts.holds = {"high_risk": values["alert_high_hold_s"], "offline": values["alert_offline_s"]}
+        self.pusher.enabled = values["push_enabled"]
+        for engine in list(self.engines.values()):
+            engine.configure(values)
 
     # ---- MQTT mats come and go
 
@@ -295,7 +305,7 @@ class Server:
                     self.tick(now)
                     if now - last_purge >= PURGE_EVERY_S:
                         last_purge = now
-                        self.store.purge(now)
+                        self.store.purge(now, days=self.settings.get("retention_days"))
                 except Exception as error:
                     print(f"tick: {type(error).__name__}: {error}")
 
@@ -335,11 +345,15 @@ def main(argv=None):
     calibration.PROFILES_DIR = args.data_dir / "profiles"
     store = Store(args.data_dir / "smartmat.db")
     import_nicknames(store, args.data_dir / "mats.json")
-    alerts = AlertManager(on_change=store.save_alert)
+    settings = Settings(store)
+    alerts = AlertManager(high_hold_s=settings.get("alert_high_hold_s"), offline_hold_s=settings.get("alert_offline_s"),
+                          on_change=store.save_alert)
     alerts.restore(store.saved_alerts(), time.time())  # alerts open before a restart stay open and are not pushed again
-    server = Server(store, alerts, demo=args.demo, serial_ports=getattr(config, "SERVER_SERIAL_PORTS", ()))
+    server = Server(store, alerts, demo=args.demo, serial_ports=getattr(config, "SERVER_SERIAL_PORTS", ()),
+                    settings=settings)
     server.run_loops()
-    http = make_server("0.0.0.0", args.port, create_app(store, server.alerts, server.engines), threaded=True)
+    http = make_server("0.0.0.0", args.port, create_app(store, server.alerts, server.engines, settings=settings),
+                       threaded=True)
     stopping = threading.Event()
 
     def shut_down(*_):
