@@ -300,6 +300,38 @@ Needs section 4b done, the Pi on the LAN and at least one real mat (or `tools/pu
 8. Pull the Pi's power cable while it runs, plug it back: the server starts again, the users and mat names are still there.
 9. Phone on mobile data, Tailscale on: the dashboard opens at `http://<pi-tailnet-name>:8000`.
 
+### Test I - everything on one Windows PC (no hardware, no Pi)
+From `Raspberry Pi\` in PowerShell. Steps 1-3 are automatic; 4-6 are a click-through. Write down anything that fails
+(the exact text of the error or what you saw).
+1. Setup, once:
+   ```powershell
+   py -m venv .venv
+   .venv\Scripts\pip install -r requirements.txt pytest amqtt psutil
+   if (-not (Test-Path config.py)) { Copy-Item config.example.py config.py }
+   ```
+2. Unit tests, including the desktop (tkinter) ones that could not run in the cloud: `.venv\Scripts\python -m pytest -q`.
+   Expect no failures (one skipped test is normal).
+3. The whole server pipeline over a real MQTT broker (starts its own broker, server and demo mats in a temp folder,
+   needs port 1883 free and about 6 minutes; allow Python through the Windows Firewall if it asks):
+   `.venv\Scripts\python tools\e2e_check.py` (add `--quick` to skip the one-minute memory watch). Expect `0 failed`.
+   On Windows the "server stops cleanly" check becomes a hard stop, which doubles as a crash/restart test.
+4. Server and dashboard by hand: `.venv\Scripts\python -m server --demo 5`, open `http://localhost:8000`.
+   - First visit asks for the first admin (name + PIN). Then: expand a row (chevron), see the posture timeline and the
+     map ("Foran" on top), search, filter, sort, switch language (EN/NO) and light/dark, press F12 and use the device
+     toolbar to check phone and tablet widths.
+   - Gear button (Innstillinger): change "Tid frakoblet før varsel" to 10, wrong PIN is refused, right PIN saves and says
+     who; Reset puts it back; Users section opens the users dialog; add a nurse and acknowledge something with that PIN.
+   - Settings are admin-only: a nurse PIN on Save must be refused.
+   - Stop the server with Ctrl+C and start it again: users, settings and mat names are still there.
+5. Desktop app: `.venv\Scripts\python main.py`. Use **Load demo recording**, then go through the tabs (Live, Analysis,
+   Timeline, Hotspots, Movement, Indices, Diagnostics, Calibration, ROI, Engineering, Help), Simple/Advanced view, light/dark,
+   Tools > Expression, record + export CSV, export snapshot (CSV + PNG), Pop out a tab. Then Engineering > Connection >
+   SmartMat server: URL `http://localhost:8000` (server from step 4 running; the desktop's own Web UI toggle uses the same
+   port, so leave it off), **Test**, **Send calibration to server** (admin PIN), **Get from server**, **Server log**.
+6. Packaging (optional): `.\build_exe.bat`, then `dist\SmartMat\SmartMat.exe --selftest` and open the exe.
+Not covered without hardware: the real Maxrays/ESP32 mats, the Pi, mDNS (`.local`), push to a real phone. The phone app's own
+tests: `cd "..\Phone App"; npm ci; npm test; npm run typecheck`.
+
 ### Test the MQTT path without hardware
 `Raspberry Pi/tools/publish_demo_mat.py` replays the bundled seat recording to the broker as a fake S3 mat with
 chip id `demo-take1` (retained meta and `online` status, last will `offline`, frames at the recording's own pace,
