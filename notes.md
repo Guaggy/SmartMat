@@ -25,3 +25,4 @@ Still open (everything else from this list is shipped - see "Shipped" in `Raspbe
 - Dark/light mode toggle
 - Implement the new logos made recently into the program
 - Make app for andorid and IOS, simple prototype for now. Same functionality and looks as the web UI but with notification capabiltiy 
+- add completely smooth mode (interpolation infinite or something similar)
