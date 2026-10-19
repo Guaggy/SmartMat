@@ -21,6 +21,12 @@ class Phase3ProcessingTests(unittest.TestCase):
         np.testing.assert_allclose(dense[::4, ::4], real)
         np.testing.assert_array_equal(real, original)
 
+    def test_smooth_upsamples_at_least_four_times_and_keeps_real_cells(self):
+        real = np.arange(240.0).reshape(16, 15)
+        dense = interpolate_grid(real, "Smooth", 2)
+        self.assertEqual(dense.shape, (61, 57))
+        np.testing.assert_allclose(dense[::4, ::4], real)
+
     def test_roi_distribution_and_symmetry_use_real_cells(self):
         pressure = np.zeros((16, 15))
         pressure[1, 1:4] = [10, 20, 30]

@@ -2,12 +2,16 @@
 
 import numpy as np
 
+SMOOTH_MIN_SCALE = 4  # "Smooth" upsamples at least this much; the image is then resampled bicubic by the plot
+
 
 def interpolate_grid(grid, method="None", scale=4):
+    if method == "Smooth":
+        method, scale = "Linear", max(scale, SMOOTH_MIN_SCALE)
     if method == "None" or scale == 1:
         return grid.copy()
     if method != "Linear" or scale < 1:
-        raise ValueError("Choose None or Linear and a positive display scale")
+        raise ValueError("Choose None, Linear or Smooth and a positive display scale")
 
     rows, cols = grid.shape
     dense_rows = (rows - 1) * scale + 1
