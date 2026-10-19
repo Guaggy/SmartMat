@@ -36,8 +36,13 @@ Still open (everything else from this list is shipped - see "Shipped" in `Raspbe
   heading for regulated use, so traceability comes first. Plan, in order:
   1. DONE: analysis settings per mat in layers (factory < site < mat), append-only versions with who/when/why, rollback,
      the version stamped on every alert, "Analyse" page per mat in the dashboard (`server/settings.py`, `design/api-contract.md`).
-  2. Desktop: per mat compare with the server, preview on a recording (which alerts would fire), push / pull with the admin
-     PIN, file import/export in the same format; retire the old desktop "Web UI" toggle (same port as the server).
+  2. DONE in code, UNTESTED in the real window (no tkinter in the cloud; Windows test I step 5): desktop Engineering >
+     Connection > SmartMat server > Compare / Preview on a recording / Send analysis settings / Get analysis settings, per mat
+     (`analysis_sync.py` holds the logic and is tested against the live server; `gui/server_panel.py` is the thin window,
+     tested through a stand-in for tkinter in `tests/test_server_panel_logic.py`). The preview replays a recording through the
+     server's own engine and alert rules, in small steps on the main thread. Files = the existing Save/Load preset. The old
+     desktop Web UI is off by default and says so when the port is taken (it crashed the desktop at start when the server
+     ran on the same PC); removing `gui/web.py` and its selftest use is still open (needs the desktop tests run on Windows).
   3. Mat "passport" on the ESP32 (NVS: serial, calibration profile, size, model, a factory copy and a custom copy, versions
      and checksums; firmware does not listen to commands or store anything yet; zero-touch: the server adopts the passport
      of a new mat when it has nothing; only device-bound data travels with the mat, names/rooms/thresholds/users stay at the site).

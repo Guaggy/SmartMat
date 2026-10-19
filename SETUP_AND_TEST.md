@@ -286,9 +286,10 @@ crashes, and each mat's tare/calibration/orientation comes back from `profiles\<
    `net dropped` does.
 
 ### Test G - web dashboard
-Desktop app: enable **Web UI**; open the two links in the About panel (hostname.local:8000 and the IP) from a phone
-or another PC on the same network. Only the mat currently open in the desktop app is live there. The headless
-server (test H) shows every mat.
+Legacy: the desktop app's own **Web UI (legacy)** checkbox (off by default now): tick it, open the two links in the About
+panel (hostname.local:8000 and the IP) from a phone or another PC on the same network. Only the mat currently open in the
+desktop app is live there, and it uses the same port as the SmartMat server (if the port is taken the app says so and
+stays off). Use the headless server (test H) instead: it shows every mat.
 
 ### Test H - headless server on the Pi (hardware needed)
 Needs section 4b done, the Pi on the LAN and at least one real mat (or `tools/publish_demo_mat.py` from a PC).
@@ -331,8 +332,23 @@ From `Raspberry Pi\` in PowerShell. Steps 1-3 are automatic; 4-6 are a click-thr
 5. Desktop app: `.venv\Scripts\python main.py`. Use **Load demo recording**, then go through the tabs (Live, Analysis,
    Timeline, Hotspots, Movement, Indices, Diagnostics, Calibration, ROI, Engineering, Help), Simple/Advanced view, light/dark,
    Tools > Expression, record + export CSV, export snapshot (CSV + PNG), Pop out a tab. Then Engineering > Connection >
-   SmartMat server: URL `http://localhost:8000` (server from step 4 running; the desktop's own Web UI toggle uses the same
-   port, so leave it off), **Test**, **Send calibration to server** (admin PIN), **Get from server**, **Server log**.
+   SmartMat server: URL `http://localhost:8000` (server from step 4 running; the legacy Web UI checkbox is off by
+   default, leave it off: it uses the same port), **Test**, **Send calibration to server** (admin PIN), **Get from server**,
+   **Server log**. These buttons need a real mat id (Serial or MQTT; simulated data and recordings have none, the panel
+   says so). With no hardware, make one over MQTT in three more PowerShell windows, from `Raspberry Pi\`:
+   `.venv\Scripts\python tools\e2e_check.py --broker` (a throw-away broker on port 1883),
+   `.venv\Scripts\python tools\publish_demo_mat.py --chip-id demo-take1` (a fake mat), and the server from step 4 without
+   `--demo`. In the desktop choose Source **MQTT** and the device `demo-take1`. Then the analysis settings buttons, for that mat:
+   - **Compare** on a fresh start: "Analysis settings match the server's." Change something in Engineering (for example
+     Hotspots > activate kPa 33, Apply values) and **Compare** again: it lists that one row (this desktop 33, server 20, from factory).
+   - **Preview on a recording...**: pick a recording (`samples\seat_take1.json`, or one of yours). A progress window runs, then a
+     table: alerts the server would raise now and with your settings, time at each risk level. The desktop stays usable meanwhile.
+   - **Send analysis settings...**: the dialog lists the differing rows; choose "For this mat only", type a reason and your admin
+     PIN. The status line says "Saved by ...: settings version s0.m1". In the dashboard (gear > the mat's **Analyse**) the value
+     shows "Denne matten" and the history has your reason. A wrong PIN says "403 Wrong PIN" and changes nothing; a nurse PIN is refused.
+   - **Get analysis settings**: change the value on the server's Analyse page, then press it here: it asks, then applies the
+     server's values (check Engineering). **Compare** now shows no differences.
+   - Save preset... / Load preset... (Engineering) are the file import/export of the same settings.
 6. Packaging (optional): `.\build_exe.bat`, then `dist\SmartMat\SmartMat.exe --selftest` and open the exe.
 Not covered without hardware: the real Maxrays/ESP32 mats, the Pi, mDNS (`.local`), push to a real phone. The phone app's own
 tests: `cd "..\Phone App"; npm ci; npm test; npm run typecheck`.

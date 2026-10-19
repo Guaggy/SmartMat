@@ -241,7 +241,7 @@ class DesktopApp:
         self._remember_rows(self.root)
         self._remember_tree(self.toolbar)
         self._build_status_bar()
-        self._toggle_web_ui()  # Web UI defaults to on
+        self._toggle_web_ui()  # the legacy Web UI is off by default now: python -m server shows every mat on the same port
         self._refresh_devices()
 
         # Layout B: the live view is the first tab; the tool windows open as closable tabs after it (gui/page.py)
@@ -613,7 +613,7 @@ class DesktopApp:
         self.paused_var = self._checkbox(bar, "Pause", self._toggle_pause)
         self.numbers_var = self._checkbox(bar, "Show numbers", self._toggle_numbers)
         self.auto_reconnect_var = self._checkbox(bar, "Auto-reconnect", default=True)
-        self.web_ui_var = self._checkbox(bar, "Web UI", self._toggle_web_ui, default=True)
+        self.web_ui_var = self._checkbox(bar, "Web UI (legacy)", self._toggle_web_ui, default=False)  # the SmartMat server replaces it
         self.show_hotspots_var = self._checkbox(bar, "Show hotspots", self._toggle_hotspots, default=True)
 
     def _checkbox(self, parent, text, command=None, default=False, advanced=False):
@@ -717,7 +717,7 @@ class DesktopApp:
         self._info_line(panel, f"Value range: {VALUE_MIN_DEFAULT}-{VALUE_MAX_DEFAULT}")
 
         self._info_line(panel, "App", header=True, top_pad=8)
-        ttk.Label(panel, text="Web UI", style="Muted.TLabel").pack(anchor="w")
+        ttk.Label(panel, text="Web UI (legacy, off by default; use the SmartMat server)", style="Muted.TLabel").pack(anchor="w")
         self.web_address_var, self.web_ip_var = (tk.StringVar(value=address) for address in _web_address())
         for variable in (self.web_address_var, self.web_ip_var):  # hostname.local first, the IP as fallback
             self._link(panel, variable.get(), variable.get(), wraplength=READOUT_WRAP)
@@ -1840,8 +1840,15 @@ class DesktopApp:
 
     def _toggle_web_ui(self):
         if self.web_ui_var.get():
-            self.web_server = web.WebServer()
-            self.web_server.start()
+            try:
+                self.web_server = web.WebServer()
+                self.web_server.start()
+            except OSError as error:  # the port is taken, most likely by the SmartMat server on this computer
+                self.web_server = None
+                self.web_ui_var.set(False)
+                self.status_var.set(f"Web UI not started: port {WEB_PORT} is in use ({error}). "
+                                    "Is the SmartMat server running on this computer?")
+                return
             self.status_var.set(f"Web UI running at {_web_address()[0]}")
         elif self.web_server is not None:
             self.web_server.stop()
