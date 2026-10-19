@@ -33,6 +33,10 @@ CREATE TABLE IF NOT EXISTS timeline (id INTEGER PRIMARY KEY, chip_id TEXT NOT NU
     t_end REAL NOT NULL, posture TEXT, risk TEXT);
 CREATE TABLE IF NOT EXISTS devices (token TEXT PRIMARY KEY, platform TEXT, name TEXT, lang TEXT NOT NULL DEFAULT 'nb',
     tz TEXT, quiet_from TEXT, quiet_to TEXT, user TEXT, t_registered REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS alerts (id TEXT PRIMARY KEY, chip_id TEXT NOT NULL, kind TEXT NOT NULL, t_raised REAL NOT NULL,
+    since REAL, t_cleared REAL, state TEXT NOT NULL, by TEXT, t_handled REAL);
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS hidden_mats (chip_id TEXT PRIMARY KEY, t REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS timeline_mat ON timeline (chip_id, t_end);
 CREATE INDEX IF NOT EXISTS events_mat ON events (chip_id, id);
 """
@@ -50,6 +54,11 @@ class Store:
     def __init__(self, path, lockout_attempts=LOCKOUT_ATTEMPTS, lockout_s=LOCKOUT_S):
         self._db = sqlite3.connect(str(path), check_same_thread=False)
         self._db.row_factory = sqlite3.Row
+        try:  # the timeline is written every second: WAL keeps that off the SD card's fsync path and survives a power cut
+            self._db.execute("PRAGMA journal_mode=WAL")
+            self._db.execute("PRAGMA synchronous=NORMAL")
+        except sqlite3.DatabaseError:  # a file system that cannot do it keeps the default journal
+            pass
         self._db.executescript(SCHEMA)
         self._lock = threading.Lock()  # one connection shared by the web requests and the tick
         self.lockout_attempts, self.lockout_s = lockout_attempts, lockout_s
@@ -179,6 +188,48 @@ class Store:
         with self._lock, self._db:
             return self._db.execute("DELETE FROM devices WHERE token = ?", (token,)).rowcount > 0
 
+    def hidden_mats(self):
+        """Mats an admin removed from the dashboard (retired ones); their name and room are kept for a restore"""
+        return {row["chip_id"] for row in self._rows("SELECT chip_id FROM hidden_mats")}
+
+    def hide_mat(self, chip_id, t):
+        with self._lock, self._db:
+            self._db.execute("INSERT OR REPLACE INTO hidden_mats (chip_id, t) VALUES (?, ?)", (chip_id, t))
+
+    def show_mat(self, chip_id):
+        with self._lock, self._db:
+            return self._db.execute("DELETE FROM hidden_mats WHERE chip_id = ?", (chip_id,)).rowcount > 0
+
+    # ---- settings overrides (server/settings.py): key -> JSON value
+
+    def saved_settings(self):
+        return {row["key"]: json.loads(row["value"]) for row in self._rows("SELECT key, value FROM settings")}
+
+    def save_settings(self, values):
+        """{key: value}; None removes the override"""
+        with self._lock, self._db:
+            for key, value in values.items():
+                if value is None:
+                    self._db.execute("DELETE FROM settings WHERE key = ?", (key,))
+                else:
+                    self._db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, json.dumps(value)))
+
+    # ---- alerts (saved so a restart neither forgets them nor raises and pushes them again)
+
+    ALERT_FIELDS = ("id", "chip_id", "kind", "t_raised", "since", "t_cleared", "state", "by", "t_handled")
+
+    def save_alert(self, alert):
+        with self._lock, self._db:
+            self._db.execute(f"INSERT OR REPLACE INTO alerts ({', '.join(self.ALERT_FIELDS)}) "
+                             f"VALUES ({', '.join('?' * len(self.ALERT_FIELDS))})",
+                             tuple(alert.get(key) for key in self.ALERT_FIELDS))
+
+    def saved_alerts(self, history=30):
+        """Every uncleared alert plus the `history` most recent handled ones that have cleared"""
+        return (self._rows("SELECT * FROM alerts WHERE t_cleared IS NULL")
+                + self._rows("SELECT * FROM alerts WHERE t_cleared IS NOT NULL AND state != 'open' "
+                             "ORDER BY t_cleared DESC LIMIT ?", (int(history),)))
+
     # ---- event log (append-only) and timeline
 
     def log(self, t, kind, chip_id=None, user=None, detail=None):
@@ -225,3 +276,4 @@ class Store:
         with self._lock, self._db:
             self._db.execute("DELETE FROM events WHERE t < ?", (cutoff,))
             self._db.execute("DELETE FROM timeline WHERE t_end < ?", (cutoff,))
+            self._db.execute("DELETE FROM alerts WHERE t_cleared IS NOT NULL AND t_cleared < ?", (cutoff,))

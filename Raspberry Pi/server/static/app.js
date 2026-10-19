@@ -9,7 +9,9 @@ const i18n = {
     sortRisk: "Risiko", sortRoom: "Rom", sortDevice: "Enhet", sortTime: "Tid i stilling",
     searchPh: "Søk rom, enhet, sete", alerts: "Varsler", help: "Hjelp", back: "Tilbake",
     colDevice: "Enhet", colRoom: "Rom", colSeat: "Sete", colOk: "Data OK", colStatus: "Status",
-    dark: "Mørk", light: "Lys", langBtn: "English",
+    theme: "Bytt mellom lys og mørk", langBtn: "EN", filterCount: "Filter ({n} av {m} matter)",
+    details: "Detaljer", live: "sanntid", handleNow: "Handle nå", noOpenAlert: "Ingen åpne varsler for denne matten.",
+    lgPosture: "Stilling", lgRisk: "Risiko",
     p_left: "Venstre side", p_right: "Høyre side", p_forward: "Lent fremover", p_centred: "Sentrert", p_none: "Ingen bruker",
     statusNone: "Ingen bruker i {t}", offline: "Frakoblet, ingen data", alertFlag: "Varsel",
     dataOk: "Data OK", dataLost: "Ingen data",
@@ -40,6 +42,43 @@ const i18n = {
     dlgFirst: "Opprett første bruker (admin)", firstHint: "Det finnes ingen brukere ennå. Denne personen blir administrator.",
     dlgAddUser: "Ny bruker", dlgDisable: "Deaktiver {n}", dlgEnable: "Aktiver {n}", dlgResetPin: "Ny PIN for {n}",
     pinMismatch: "PIN-kodene er ikke like.", userAdded: "Bruker {n} opprettet", userChanged: "Endret av {u}",
+    settings: "Innstillinger", loading: "Laster …",
+    setIntro: "Alle kan se innstillingene. Å endre noe krever PIN til en administrator. Endringene gjelder med en gang og logges med navn.",
+    setMats: "Matter", setMatsHint: "Gi hver mat navn, rom, sete og avdeling. En mat som er tatt ut av bruk kan fjernes når den er frakoblet.",
+    rm: "Fjern", restore: "Gjenopprett", removedMats: "Fjernede matter", noRemoved: "Ingen fjernede matter.",
+    dlgRemove: "Fjern {name}?", dlgRestore: "Gjenopprett {name}?",
+    rmHint: "Matten vises ikke lenger, og åpne varsler for den lukkes. Du kan gjenopprette den her. Bare frakoblede matter kan fjernes.",
+    restoreHint: "Matten vises i listen igjen så snart den sender data.", removedBy: "Fjernet av {u}", restoredBy: "Gjenopprettet av {u}",
+    g_alerts: "Varsler", g_risk: "Risikonivå", g_mats: "Sensor og tilkobling", g_data: "Lagring", g_posture: "Stilling",
+    g_risk_h: "Disse to verdiene styrer hvor følsomme «Middels» og «Høy risiko» er. Endre dem bare etter avtale: de er ikke klinisk validert.",
+    advanced: "Avansert (for ingeniører)", setDefault: "Standard: {v}", resetDefault: "Tilbakestill",
+    setOn: "På", setOff: "Av", u_days: "dager", u_cells: "celler",
+    errNumber: "Skriv et tall.", errWhole: "Bruk et helt tall.", errRange: "Må være mellom {min} og {max}.",
+    saveChanges: "Lagre endringer", nChanges: "{n} endring(er) som ikke er lagret", noChanges: "Ingen endringer", fixErrors: "Rett feilene over først.",
+    dlgSave: "Lagre innstillinger", savedSettings: "Innstillinger lagret av {u}",
+    setUsersHint: "Administratorer og sykepleiere, hver med sin egen PIN.", openUsers: "Åpne brukere",
+    s_alert_high_hold_s: "Tid med høy risiko før varsel",
+    s_alert_high_hold_s_h: "Hvor lenge risikoen må være høy før et varsel utløses. Kortere gir raskere varsel, men flere falske.",
+    s_alert_offline_s: "Tid frakoblet før varsel",
+    s_alert_offline_s_h: "Hvor lenge en mat må være stille før det varsles om at den er frakoblet.",
+    s_push_enabled: "Push-varsler til telefoner",
+    s_push_enabled_h: "Slå av for å stoppe alle push-varsler. Varslene vises fortsatt i dashbordet.",
+    s_relief_minutes: "Tid uten avlastning som regnes som full belastning",
+    s_relief_minutes_h: "Et område regnes som fullt belastet etter så lang tid uten avlastning. Lavere verdi gir tidligere middels og høy risiko.",
+    s_near_percent: "Middels risiko fra",
+    s_near_percent_h: "Middels risiko vises når verdien når denne andelen av grensen for høy risiko.",
+    s_stale_after_s: "Tid uten data før matten regnes som frakoblet",
+    s_stale_after_s_h: "Hvor lenge matten kan være stille før raden blir «Frakoblet».",
+    s_saturation_warn_cells: "Varsle om sensorgrense fra",
+    s_saturation_warn_cells_h: "Antall celler ved sensorgrensen som utløser merknaden om at last og topp leses for lavt.",
+    s_posture_hold_s: "Ny stilling må vare i",
+    s_posture_hold_s_h: "Hvor lenge en ny stilling må holde seg før tiden i stilling starter på nytt.",
+    s_posture_side_cells: "Sidestilling fra",
+    s_posture_side_cells_h: "Hvor mange celler trykkets tyngdepunkt må ligge fra midten for å regnes som venstre eller høyre.",
+    s_posture_forward_cells: "Lent fremover fra",
+    s_posture_forward_cells_h: "Hvor mange celler tyngdepunktet må ligge foran midten for å regnes som lent fremover.",
+    s_retention_days: "Oppbevar logg og tidslinje i",
+    s_retention_days_h: "Eldre hendelser og tidslinje slettes automatisk.",
     foot: "Ingeniørverktøy, ikke medisinsk utstyr. Stilling og risiko er heuristikker. Bruk sammen med vanlig klinisk vurdering.",
     help_: {
       title: "Hjelp",
@@ -76,7 +115,9 @@ const i18n = {
     sortRisk: "Risk", sortRoom: "Room", sortDevice: "Device", sortTime: "Time in position",
     searchPh: "Search room, device, seat", alerts: "Alerts", help: "Help", back: "Back",
     colDevice: "Device", colRoom: "Room", colSeat: "Seat", colOk: "Data OK", colStatus: "Status",
-    dark: "Dark", light: "Light", langBtn: "Norsk",
+    theme: "Switch between light and dark", langBtn: "NO", filterCount: "Filter ({n} of {m} mats)",
+    details: "Details", live: "live", handleNow: "Act now", noOpenAlert: "No open alerts for this mat.",
+    lgPosture: "Posture", lgRisk: "Risk",
     p_left: "Left side", p_right: "Right side", p_forward: "Leaning forward", p_centred: "Centred", p_none: "No user",
     statusNone: "No user for {t}", offline: "Offline, no data", alertFlag: "Alert",
     dataOk: "Data OK", dataLost: "No data",
@@ -107,6 +148,43 @@ const i18n = {
     dlgFirst: "Create first user (admin)", firstHint: "There are no users yet. This person becomes the administrator.",
     dlgAddUser: "Add user", dlgDisable: "Disable {n}", dlgEnable: "Enable {n}", dlgResetPin: "Reset PIN for {n}",
     pinMismatch: "The PINs do not match.", userAdded: "User {n} added", userChanged: "Changed by {u}",
+    settings: "Settings", loading: "Loading …",
+    setIntro: "Anyone can see the settings. Changing anything needs an administrator's PIN. Changes take effect at once and are logged with the name.",
+    setMats: "Mats", setMatsHint: "Give each mat a name, room, seat and unit. A mat taken out of use can be removed once it is offline.",
+    rm: "Remove", restore: "Restore", removedMats: "Removed mats", noRemoved: "No removed mats.",
+    dlgRemove: "Remove {name}?", dlgRestore: "Restore {name}?",
+    rmHint: "The mat is no longer shown and its open alerts are closed. You can restore it here. Only offline mats can be removed.",
+    restoreHint: "The mat shows in the list again as soon as it sends data.", removedBy: "Removed by {u}", restoredBy: "Restored by {u}",
+    g_alerts: "Alerts", g_risk: "Risk level", g_mats: "Sensor and connection", g_data: "Storage", g_posture: "Posture",
+    g_risk_h: "These two values set how sensitive Medium and High risk are. Change them only by agreement: they are not clinically validated.",
+    advanced: "Advanced (for engineers)", setDefault: "Default: {v}", resetDefault: "Reset",
+    setOn: "On", setOff: "Off", u_days: "days", u_cells: "cells",
+    errNumber: "Enter a number.", errWhole: "Use a whole number.", errRange: "Must be between {min} and {max}.",
+    saveChanges: "Save changes", nChanges: "{n} unsaved change(s)", noChanges: "No changes", fixErrors: "Fix the errors above first.",
+    dlgSave: "Save settings", savedSettings: "Settings saved by {u}",
+    setUsersHint: "Administrators and nurses, each with their own PIN.", openUsers: "Open users",
+    s_alert_high_hold_s: "Time at high risk before an alert",
+    s_alert_high_hold_s_h: "How long the risk must stay high before an alert is raised. Shorter is quicker but gives more false alerts.",
+    s_alert_offline_s: "Time offline before an alert",
+    s_alert_offline_s_h: "How long a mat must be silent before an offline alert is raised.",
+    s_push_enabled: "Push notifications to phones",
+    s_push_enabled_h: "Turn off to stop all push notifications. Alerts are still shown in the dashboard.",
+    s_relief_minutes: "Time without relief that counts as full load",
+    s_relief_minutes_h: "An area counts as fully loaded after this long without relief. A lower value gives medium and high risk sooner.",
+    s_near_percent: "Medium risk starts at",
+    s_near_percent_h: "Medium risk shows when the value reaches this share of the limit for high risk.",
+    s_stale_after_s: "Time without data before a mat counts as offline",
+    s_stale_after_s_h: "How long a mat can be silent before its row says Offline.",
+    s_saturation_warn_cells: "Warn about the sensor limit from",
+    s_saturation_warn_cells_h: "Number of cells at the sensor limit that trigger the note that load and peak read low.",
+    s_posture_hold_s: "A new posture must last",
+    s_posture_hold_s_h: "How long a new posture must hold before the time in position starts again.",
+    s_posture_side_cells: "Side posture from",
+    s_posture_side_cells_h: "How many cells the centre of pressure must be from the middle to count as left or right.",
+    s_posture_forward_cells: "Leaning forward from",
+    s_posture_forward_cells_h: "How many cells the centre of pressure must be in front of the middle to count as leaning forward.",
+    s_retention_days: "Keep the log and timeline for",
+    s_retention_days_h: "Older events and timeline are deleted automatically.",
     foot: "Engineering aid, not a medical device. Posture and risk are heuristics. Use alongside normal clinical assessment.",
     help_: {
       title: "Help",
@@ -177,6 +255,7 @@ const clock = (ts) => new Date(ts * 1000).toLocaleTimeString(locale(), { hour: "
 // ---------- state ----------
 const RISK_ORDER = { offline: 0, high: 1, medium: 2, low: 3, none: 4 };
 const RISKS = ["high", "medium", "low", "none"];
+const POSTURES = ["centred", "left", "right", "forward", "none"];
 const S = {
   mats: [], openAlerts: 0, alerts: [], timeline: null, mat: null, offset: 0, lost: false,
   selected: null, open: false, bellOpen: false, needsAdmin: false, setupShown: false,
@@ -236,10 +315,15 @@ function makeRow(id) {
   const row = el("div", "row");
   const head = el("button", "head");
   head.type = "button";
-  const dev = el("span", "c-dev"), name = el("b"), demo = el("span", "demo", "DEMO"), flag = el("span", "flag");
+  const chev = el("span", "c-chev"), dev = el("span", "c-dev"), name = el("b"), demo = el("span", "demo", "DEMO"), flag = el("span", "flag");
+  chev.setAttribute("aria-hidden", "true");
+  const chevIcon = svgEl("svg", { viewBox: "0 0 24 24" });
+  chevIcon.append(svgEl("path", { d: "M6 9l6 6 6-6" }));
+  chev.append(chevIcon);
   dev.append(name, demo, flag);
-  const room = el("span", "c-room"), seat = el("span", "c-seat"), ok = el("span", "c-ok"), st = el("span", "status");
-  head.append(dev, room, seat, ok, st);
+  const room = el("span", "c-room"), seat = el("span", "c-seat"), ok = el("span", "c-ok"), cell = el("span", "c-st"), st = el("span", "status");
+  cell.append(st);
+  head.append(chev, dev, room, seat, ok, cell);
   const detail = el("div", "detail");
   detail.hidden = true;
   const cap = el("div", "cap"), capText = el("span"), toMap = el("button", "link only-narrow");
@@ -251,7 +335,7 @@ function makeRow(id) {
   row.append(head, detail);
   head.addEventListener("click", () => select(id));
   toMap.addEventListener("click", () => $("pm").scrollIntoView());
-  const r = { row, head, name, demo, flag, room, seat, ok, st, detail, capText, toMap, tlHost, legend, legendLang: null };
+  const r = { row, head, name, demo, flag, room, seat, ok, st, detail, capText, toMap, tlHost, legend, legendKey: null };
   rows.set(id, r);
   return r;
 }
@@ -270,8 +354,8 @@ function updateRow(r, m) {
   setText(r.seat, m.seat || "");
   r.seat.dataset.l = t("colSeat");
   const good = m.online && !S.lost;
-  setText(r.ok, good ? "✓" : "✕");
-  r.ok.className = "c-ok " + (good ? "yes" : "no");
+  r.ok.className = "c-ok " + (good ? "yes" : "no"); // the tick or cross is drawn by the stylesheet
+  r.ok.setAttribute("role", "img");
   r.ok.setAttribute("aria-label", good ? t("dataOk") : t("dataLost"));
   setText(r.st, st.text);
   r.st.className = "status " + st.cls;
@@ -280,22 +364,39 @@ function updateRow(r, m) {
   if (open) {
     setText(r.capText, t("tlTitle", { n: 5 }));
     setText(r.toMap, t("showMap"));
-    if (r.legendLang !== lang) { buildLegend(r.legend); r.legendLang = lang; }
+    const key = lang + (m.open_alerts > 0); // the legend is rebuilt only when its text or the "act now" link changes
+    if (r.legendKey !== key) { buildLegend(r.legend, m); r.legendKey = key; }
     drawTimeline(r.tlHost);
   }
 }
 
-function buildLegend(host) {
+function legendItem(swatch, label) {
+  const item = el("span");
+  item.append(swatch, document.createTextNode(label));
+  return item;
+}
+
+function buildLegend(host, m) {
   host.textContent = "";
-  for (const k of RISKS) {
-    const item = el("span");
-    item.append(el("span", "sq " + k), document.createTextNode(t("risk_" + k)));
-    host.append(item);
+  const postures = el("div", "lg-row"), risks = el("div", "lg-row");
+  for (const p of POSTURES) postures.append(legendItem(el("span", "sw p-" + p), t("p_" + p)));
+  for (const k of ["low", "medium", "high"]) risks.append(legendItem(el("span", "sq " + k), t("risk_" + k)));
+  risks.append(legendItem(el("span", "sq hollow"), t("lgNoData")), legendItem(el("span", "sq mk"), t("lgHandled")));
+  if (m.open_alerts > 0) { // the slide's red "Handle nå": opens the acknowledge dialog of this mat's open alert
+    const now = el("button", "act-now");
+    now.type = "button";
+    now.append(el("span", "sq high"), document.createTextNode(t("handleNow")));
+    now.addEventListener("click", () => handleNow(m));
+    postures.append(el("span", "grow"), now);
   }
-  const nodata = el("span"), handled = el("span");
-  nodata.append(el("span", "sq hollow"), document.createTextNode(t("lgNoData")));
-  handled.append(el("span", "sq mk"), document.createTextNode(t("lgHandled")));
-  host.append(nodata, handled);
+  host.append(postures, risks);
+}
+
+async function handleNow(m) {
+  let open = [];
+  try { open = (await api("/api/alerts")).alerts.filter((a) => a.chip_id === m.id && a.state === "open"); }
+  catch (e) { toast(t("netErr")); return; }
+  if (open.length) handleAlert("ack", open[0]); else toast(t("noOpenAlert"));
 }
 
 function renderList() {
@@ -315,6 +416,7 @@ function renderList() {
   for (const [id, r] of rows) if (!seen.has(id)) { r.row.remove(); rows.delete(id); }
   $("empty").hidden = shown.length > 0;
   setText($("empty"), t("noMats"));
+  setText($("unitL"), t("filterCount", { n: shown.length, m: S.mats.length }));
   // first load: show some mat in the pressure panel without opening its timeline
   if (!S.mats.some((m) => m.id === S.selected) && shown.length) { S.selected = shown[0].id; S.open = false; S.mat = null; renderList(); fetchMat(); }
 }
@@ -350,38 +452,40 @@ function drawTimeline(host) {
   host.textContent = "";
   const tl = S.timeline;
   if (!tl || tl.id !== S.selected) return;
-  const W = Math.max(280, host.clientWidth), BAR = 40, H = BAR + 18;
+  // like the slide: a time axis on top, a posture bar in the posture colours, a thin risk strip under it
+  const W = Math.max(280, host.clientWidth), AX = 18, BAR = 24, GAP = 4, STRIP = 8, H = AX + BAR + GAP + STRIP + 8;
   const now = serverNow(), t0 = now - tl.hours * 3600;
   const x = (ts) => ((Math.max(t0, Math.min(now, ts)) - t0) / (now - t0)) * W;
   const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: "img" }, "tl");
   svg.setAttribute("aria-label", t("tlTitle", { n: tl.hours }));
-  svg.append(svgEl("rect", { x: 0.5, y: 0.5, width: W - 1, height: BAR }, "tl-track"));
-  for (let h = Math.ceil(t0 / 3600) * 3600; h < now; h += 3600) {
-    svg.append(svgEl("line", { x1: x(h), x2: x(h), y1: 0, y2: BAR + 4 }, "tick"));
-    const label = svgEl("text", { x: x(h), y: H - 3, "text-anchor": x(h) > W - 20 ? "end" : x(h) < 20 ? "start" : "middle" });
+  const clip = svgEl("clipPath", { id: "tlclip" });
+  clip.append(svgEl("rect", { x: 0, y: AX, width: W, height: BAR + GAP + STRIP, rx: 6 }));
+  svg.append(clip, svgEl("rect", { x: 0, y: AX, width: W, height: BAR, rx: 6 }, "tl-track"));
+  const step = W / tl.hours >= 90 ? 1800 : 3600; // a label every half hour when there is room, else every hour
+  for (let h = Math.ceil(t0 / step) * step; h < now; h += step) {
+    const label = svgEl("text", { x: x(h), y: AX - 5, "text-anchor": x(h) > W - 20 ? "end" : x(h) < 20 ? "start" : "middle" });
     label.textContent = clock(h);
     svg.append(label);
   }
+  const bars = svgEl("g", { "clip-path": "url(#tlclip)" });
   for (const s of tl.segments) {
     if (s.t_end <= t0) continue;
     const x1 = x(s.t_start), w = Math.max(1, x(s.t_end) - x1);
-    const risk = RISKS.includes(s.risk) ? s.risk : "none";
-    const g = svgEl("g", {}, "seg " + risk);
-    g.append(svgEl("rect", { x: x1, y: 1, width: w, height: BAR - 1 }));
+    const risk = RISKS.includes(s.risk) ? s.risk : "none", posture = POSTURES.includes(s.posture) ? s.posture : "none";
+    const g = svgEl("g", {}, "seg");
+    g.append(svgEl("rect", { x: x1, y: AX, width: w, height: BAR }, "pb p-" + posture),
+             svgEl("rect", { x: x1, y: AX + BAR + GAP, width: w, height: STRIP }, "rs r-" + risk));
     const title = svgEl("title");
-    title.textContent = `${t("p_" + s.posture)}, ${t("risk_" + risk)}, ${clock(s.t_start)} - ${clock(s.t_end)}`;
+    title.textContent = `${t("p_" + posture)}, ${t("risk_" + risk)}, ${clock(s.t_start)} - ${clock(s.t_end)}`;
     g.append(title);
-    if (w > 80) {
-      const label = svgEl("text", { x: x1 + 6, y: BAR / 2 + 4 });
-      label.textContent = t("p_" + s.posture);
-      g.append(label);
-    }
-    svg.append(g);
+    bars.append(g);
   }
+  svg.append(bars);
   for (const mk of tl.markers) {
     if (mk.t < t0) continue;
     const g = svgEl("g", {}, "mark");
-    g.append(svgEl("line", { x1: x(mk.t), x2: x(mk.t), y1: 0, y2: BAR + 6 }), svgEl("rect", { x: x(mk.t) - 3, y: BAR + 4, width: 7, height: 7 }));
+    g.append(svgEl("line", { x1: x(mk.t), x2: x(mk.t), y1: AX - 2, y2: AX + BAR + GAP + STRIP + 2 }),
+             svgEl("rect", { x: x(mk.t) - 3, y: AX + BAR + GAP + STRIP, width: 7, height: 7, rx: 2 }));
     const title = svgEl("title");
     title.textContent = t("handledBy", { u: mk.user }) + ", " + clock(mk.t);
     g.append(title);
@@ -404,53 +508,58 @@ async function fetchTimeline() {
 
 // ---------- pressure panel ----------
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
-function hexRgb(h) { const n = parseInt(h.replace("#", ""), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
 
-function ramp(v, bg) { // v 0..1 -> [r,g,b]; below ~2 % of full scale it fades into the background
+function ramp(v) { // v 0..1 -> [r,g,b] along the shared colour ramp
   v = Math.max(0, Math.min(1, v));
   const s = S.ramp;
   let i = 1;
   while (i < s.length - 1 && v > s[i][0]) i++;
   const f = Math.max(0, Math.min(1, (v - s[i - 1][0]) / (s[i][0] - s[i - 1][0] || 1)));
-  const mix = Math.min(1, v / 0.04);
-  return [0, 1, 2].map((k) => (s[i - 1][1][k] + (s[i][1][k] - s[i - 1][1][k]) * f) * mix + bg[k] * (1 - mix));
+  return [0, 1, 2].map((k) => s[i - 1][1][k] + (s[i][1][k] - s[i - 1][1][k]) * f);
 }
 
+// Front is drawn on top, like the slide. Row 0 of the grid is the back of the seat, so the grid is turned half a turn
+// (not mirrored): seen from above the sitter's own left and right stay on the viewer's left and right.
 function drawMap(snap) {
-  const canvas = $("map"), K = 8, rowsN = snap.grid.length, colsN = snap.grid[0].length;
+  const canvas = $("map"), K = 8;
+  const grid = snap.grid.map((row) => [...row].reverse()).reverse();
+  const rowsN = grid.length, colsN = grid[0].length;
+  $("seat").style.setProperty("--cols", colsN);
+  $("seat").style.setProperty("--rows", rowsN);
   canvas.width = colsN * K;
   canvas.height = rowsN * K;
-  const ctx = canvas.getContext("2d"), img = ctx.createImageData(canvas.width, canvas.height), bg = hexRgb(cssVar("--hm-bg"));
-  const at = (r, c) => snap.grid[Math.max(0, Math.min(rowsN - 1, r))][Math.max(0, Math.min(colsN - 1, c))] ?? 0;
+  const ctx = canvas.getContext("2d"), img = ctx.createImageData(canvas.width, canvas.height);
+  const at = (r, c) => grid[Math.max(0, Math.min(rowsN - 1, r))][Math.max(0, Math.min(colsN - 1, c))] ?? 0;
   for (let y = 0; y < canvas.height; y++) {
     const fy = (y + 0.5) / K - 0.5, r0 = Math.floor(fy), ty = fy - r0;
     for (let xp = 0; xp < canvas.width; xp++) {
       const fx = (xp + 0.5) / K - 0.5, c0 = Math.floor(fx), tx = fx - c0;
       const top = at(r0, c0) * (1 - tx) + at(r0, c0 + 1) * tx, bot = at(r0 + 1, c0) * (1 - tx) + at(r0 + 1, c0 + 1) * tx;
-      const rgb = ramp((top * (1 - ty) + bot * ty) / snap.scale_max, bg), p = (y * canvas.width + xp) * 4;
-      img.data.set([rgb[0], rgb[1], rgb[2], 255], p);
+      const v = (top * (1 - ty) + bot * ty) / snap.scale_max, rgb = ramp(v), p = (y * canvas.width + xp) * 4;
+      const a = Math.max(0, Math.min(1, (v - 0.02) / 0.16)); // low pressure fades out: the seat and its dot grid show through
+      img.data.set([rgb[0], rgb[1], rgb[2], Math.round(255 * a * a * (3 - 2 * a))], p);
     }
   }
   ctx.putImageData(img, 0, 0);
-  // hotspots: dashed ink outline round each area on a solid halo, so it reads on any colour
+  // hotspots: a dashed red ring round each area, on a thin light halo so it reads on any colour
   for (const spot of snap.hotspots) {
-    const key = (r, c) => r + "," + c, inside = new Set(spot.cells.map(([r, c]) => key(r, c)));
-    const path = new Path2D();
-    for (const [r, c] of spot.cells) {
-      const x0 = c * K + 1, y0 = r * K + 1, x1 = x0 + K - 2, y1 = y0 + K - 2; // edges with no neighbour in the same area
-      if (!inside.has(key(r - 1, c))) { path.moveTo(x0, y0); path.lineTo(x1, y0); }
-      if (!inside.has(key(r + 1, c))) { path.moveTo(x0, y1); path.lineTo(x1, y1); }
-      if (!inside.has(key(r, c - 1))) { path.moveTo(x0, y0); path.lineTo(x0, y1); }
-      if (!inside.has(key(r, c + 1))) { path.moveTo(x1, y0); path.lineTo(x1, y1); }
-    }
+    const cells = spot.cells.map(([r, c]) => [rowsN - 1 - r, colsN - 1 - c]);
+    const rs = cells.map((c) => c[0]), cs = cells.map((c) => c[1]);
+    const y0 = Math.min(...rs), y1 = Math.max(...rs) + 1, x0 = Math.min(...cs), x1 = Math.max(...cs) + 1;
+    const rx = Math.min(canvas.width / 2 - 2, Math.max(2 * K, ((x1 - x0) / 2) * K * 1.08 + 0.8 * K));
+    const ry = Math.min(canvas.height / 2 - 2, Math.max(2 * K, ((y1 - y0) / 2) * K * 1.08 + 0.8 * K));
+    const cx = Math.min(canvas.width - rx - 1, Math.max(rx + 1, ((x0 + x1) / 2) * K));   // the ring stays on the map
+    const cy = Math.min(canvas.height - ry - 1, Math.max(ry + 1, ((y0 + y1) / 2) * K));
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
     ctx.setLineDash([]);
-    ctx.lineWidth = spot.persistent ? 4 : 3;
+    ctx.lineWidth = spot.persistent ? 3.6 : 3;
     ctx.strokeStyle = cssVar("--panel");
-    ctx.stroke(path);
-    ctx.setLineDash([3, 2]);
-    ctx.lineWidth = spot.persistent ? 2 : 1.4;
-    ctx.strokeStyle = cssVar("--ink");
-    ctx.stroke(path);
+    ctx.stroke();
+    ctx.setLineDash([5, 3.5]);
+    ctx.lineWidth = spot.persistent ? 2 : 1.5;
+    ctx.strokeStyle = cssVar("--bad");
+    ctx.stroke();
   }
 }
 
@@ -474,7 +583,7 @@ function renderPanel() {
   const d = S.mat && S.mat.id === row.id ? S.mat : row, snap = S.mat && S.mat.id === row.id ? S.mat.snapshot : null;
   const stale = S.lost || !row.online || (S.mat && S.mat.id === row.id && S.mat.stale);
   const sub = $("pmSub");
-  sub.textContent = [row.name, row.room, row.seat].filter(Boolean).join(" · ") + " ";
+  sub.textContent = ([row.room, row.seat].filter(Boolean).join(", ") || row.name) + (stale ? "" : ", " + t("live")) + " ";
   if (row.demo) sub.append(el("span", "demo", "DEMO"));
   $("pm").classList.toggle("stale", !!stale);
   const age = S.mat && S.mat.id === row.id ? S.mat.age_s : null;
@@ -611,6 +720,7 @@ $("dlgForm").addEventListener("submit", async (ev) => {
   const values = { pin: $("pin").value };
   for (const input of $("dlgFields").querySelectorAll("input, select")) values[input.name] = input.value;
   $("dlgOk").disabled = true;
+  $("dlgErr").textContent = "";   // an old answer must not look like the new one
   const res = await dialogJob.send(values);
   $("dlgOk").disabled = false;
   if (res.ok) {
@@ -636,7 +746,9 @@ function toast(msg) {
 
 $("editBtn").addEventListener("click", () => {
   const m = S.mats.find((x) => x.id === S.selected);
-  if (!m) return;
+  if (m) editMat(m);
+});
+function editMat(m) {
   writeDialog({
     title: t("dlgEdit"),
     fields: [
@@ -646,7 +758,7 @@ $("editBtn").addEventListener("click", () => {
     send: (v) => send("PUT", "/api/mats/" + encodeURIComponent(m.id) + "/meta", v),
     done: (res) => toast(t("savedBy", { u: res.user })),
   });
-});
+}
 
 // ---------- users (PINs are per person; viewing needs no login, changes need an admin's PIN) ----------
 const pinFields = () => [
@@ -706,12 +818,212 @@ $("userAdd").addEventListener("click", () => writeDialog({
   done: (res) => { renderUsers(); toast(t("userAdded", { n: res.created.name })); },
 }));
 $("usersClose").addEventListener("click", () => $("usersDlg").close());
-$("usersBtn").addEventListener("click", openUsers);
 
 async function checkSetup() { // no users yet: ask for the first admin, once per page load
   const h = await api("/api/health");
   S.needsAdmin = !!h.needs_admin;
   if (S.needsAdmin && !S.setupShown && !$("dlg").open) { S.setupShown = true; firstUserDialog(); }
+}
+
+// ---------- settings page (everyone can read; an admin's PIN saves) ----------
+const SET = { items: null, hidden: [], draft: {}, bad: new Set(), failed: false, matsBox: null, saveBtn: null, saveInfo: null };
+const GROUPS = ["alerts", "risk", "mats", "data", "posture"];
+const maybeT = (key) => i18n[lang][key] ?? i18n.nb[key];   // like t(), but undefined for a key that does not exist
+const fmtNum = (v) => v.toLocaleString(locale(), { maximumFractionDigits: 2 });
+const unitText = (u) => maybeT("u_" + u) ?? u;
+const fmtSetting = (it, v) => (it.type === "bool" ? t(v ? "setOn" : "setOff") : fmtNum(v) + (it.unit ? " " + unitText(it.unit) : ""));
+const settingItem = (key) => SET.items.find((i) => i.key === key);
+
+function problem(it, v) { // "" when the typed number is fine, else the sentence to show under the box
+  if (it.type === "bool") return "";
+  if (!Number.isFinite(v)) return t("errNumber");
+  if (it.type === "int" && !Number.isInteger(v)) return t("errWhole");
+  if (v < it.min || v > it.max) return t("errRange", { min: fmtNum(it.min), max: fmtNum(it.max) });
+  return "";
+}
+
+// the draft holds only what differs from what the server has: a value, or null for "back to the default"
+function setDraft(it, v) {
+  if (v === it.value) delete SET.draft[it.key];      // what the server already has
+  else if (v === it.default) SET.draft[it.key] = null; // only reachable while an override exists: remove it
+  else SET.draft[it.key] = v;
+}
+
+function refreshSave() {
+  if (!SET.saveBtn) return;
+  const n = Object.keys(SET.draft).length;
+  SET.saveBtn.disabled = n === 0 || SET.bad.size > 0;
+  setText(SET.saveInfo, SET.bad.size ? t("fixErrors") : n ? t("nChanges", { n }) : t("noChanges"));
+}
+
+function settingRow(it) {
+  const row = el("div", "setrow"), left = el("div"), right = el("div", "setctl");
+  const draft = SET.draft[it.key];
+  const shown = it.key in SET.draft ? (draft === null ? it.default : draft) : it.value;
+  const label = el("label", "", t("s_" + it.key)), err = el("div", "err"), meta = el("div", "muted small");
+  const input = el("input");
+  input.id = "set_" + it.key;
+  label.htmlFor = input.id;
+  left.append(label, el("div", "muted small", maybeT("s_" + it.key + "_h") || ""));
+  if (it.type === "bool") {
+    input.type = "checkbox";
+    input.checked = shown;
+    input.addEventListener("change", () => { setDraft(it, input.checked); refreshSave(); });
+  } else {
+    input.type = "number";
+    input.step = it.type === "int" ? "1" : "any";
+    input.min = it.min;
+    input.max = it.max;
+    input.setAttribute("inputmode", it.type === "int" ? "numeric" : "decimal");
+    input.value = shown;
+    input.addEventListener("input", () => {
+      const raw = input.value.trim(), v = raw === "" ? NaN : Number(raw.replace(",", "."));
+      const msg = problem(it, v);
+      setText(err, msg);
+      input.setAttribute("aria-invalid", String(!!msg));
+      if (msg) SET.bad.add(it.key);
+      else { SET.bad.delete(it.key); setDraft(it, v); }
+      refreshSave();
+    });
+  }
+  const line = el("div", "setline");
+  line.append(input);
+  if (it.type !== "bool" && it.unit) line.append(el("span", "muted", unitText(it.unit)));
+  meta.append(document.createTextNode(t("setDefault", { v: fmtSetting(it, it.default) })));
+  if (it.changed) {
+    const reset = el("button", "link", t("resetDefault"));
+    reset.type = "button";
+    reset.addEventListener("click", () => {
+      if (it.type === "bool") input.checked = it.default; else input.value = it.default;
+      SET.bad.delete(it.key);
+      setText(err, "");
+      setDraft(it, it.default);
+      refreshSave();
+    });
+    meta.append(document.createTextNode(" · "), reset);
+  }
+  right.append(line, err, meta);
+  row.append(left, right);
+  return row;
+}
+
+function renderSettingsMats() { // rebuilt only when something shown changed, so a click is never lost to the 2 s refresh
+  const box = SET.matsBox;
+  if (!box || !SET.items) return;
+  const sig = lang + JSON.stringify(S.mats.map((m) => [m.id, m.name, m.room, m.seat, m.unit, m.online, m.risk])) +
+    JSON.stringify(SET.hidden.map((h) => [h.id, h.name]));
+  if (box.dataset.sig === sig) return;
+  box.dataset.sig = sig;
+  box.textContent = "";
+  const action = (label, fn) => { const b = el("button", "link", label); b.type = "button"; b.addEventListener("click", fn); return b; };
+  const list = el("ul", "ulist");
+  for (const m of [...S.mats].sort(byName)) {
+    const li = el("li"), who = el("span", "who"), acts = el("span", "acts");
+    const offline = !m.online || m.risk === "offline";
+    who.append(el("span", "sq " + (offline ? "offline" : "low")), el("b", "", m.name));
+    if (m.demo) who.append(document.createTextNode(" "), el("span", "demo", "DEMO"));
+    const details = [m.room, m.seat, m.unit, offline ? t("risk_offline") : ""].filter(Boolean).join(" · ");
+    if (details) who.append(el("span", "muted", " · " + details));
+    acts.append(action(t("edit"), () => editMat(m)));
+    if (offline) acts.append(action(t("rm"), () => writeDialog({
+      title: t("dlgRemove", { name: m.name }), hint: t("rmHint"),
+      send: (v) => send("POST", "/api/mats/" + encodeURIComponent(m.id) + "/hide", { pin: v.pin }),
+      done: async (res) => { toast(t("removedBy", { u: res.user })); await loadHidden(); renderSettingsMats(); },
+    })));
+    li.append(who, acts);
+    list.append(li);
+  }
+  if (!S.mats.length) list.append(el("li", "muted", t("noMats")));
+  box.append(list, el("h3", "", t("removedMats")));
+  const gone = el("ul", "ulist");
+  for (const h of SET.hidden) {
+    const li = el("li"), acts = el("span", "acts");
+    li.append(el("span", "who", h.name + (h.room ? " · " + h.room : "")), acts);
+    acts.append(action(t("restore"), () => writeDialog({
+      title: t("dlgRestore", { name: h.name }), hint: t("restoreHint"),
+      send: (v) => send("POST", "/api/mats/" + encodeURIComponent(h.id) + "/show", { pin: v.pin }),
+      done: async (res) => { toast(t("restoredBy", { u: res.user })); await loadHidden(); renderSettingsMats(); },
+    })));
+    gone.append(li);
+  }
+  if (!SET.hidden.length) gone.append(el("li", "muted", t("noRemoved")));
+  box.append(gone);
+}
+
+function renderSettings() {
+  const page = $("settings");
+  page.textContent = "";
+  SET.saveBtn = SET.saveInfo = SET.matsBox = null;
+  const top = el("p"), back = el("button", "link", "← " + t("back"));
+  back.type = "button";
+  back.addEventListener("click", () => showView("dash"));
+  top.append(back);
+  page.append(top, el("h1", "", t("settings")), el("p", "muted", t("setIntro")));
+  if (!SET.items) { page.append(el("p", "muted", SET.failed ? t("netErr") : t("loading"))); return; }
+
+  page.append(el("h2", "", t("setMats")), el("p", "muted", t("setMatsHint")));
+  SET.matsBox = el("div");
+  page.append(SET.matsBox);
+  renderSettingsMats();
+
+  for (const g of GROUPS) {
+    const items = SET.items.filter((i) => i.group === g);
+    if (!items.length) continue;
+    page.append(el("h2", "", t("g_" + g)));
+    if (maybeT("g_" + g + "_h")) page.append(el("p", "muted", t("g_" + g + "_h")));
+    for (const it of items.filter((i) => !i.advanced)) page.append(settingRow(it));
+    const adv = items.filter((i) => i.advanced);
+    if (adv.length) {
+      const d = el("details", "adv");
+      d.open = adv.some((i) => i.key in SET.draft);
+      d.append(el("summary", "", t("advanced")));
+      for (const it of adv) d.append(settingRow(it));
+      page.append(d);
+    }
+  }
+
+  page.append(el("h2", "", t("users")), el("p", "muted", t("setUsersHint")));
+  const users = el("button", "btn", t("openUsers"));
+  users.type = "button";
+  users.addEventListener("click", openUsers);
+  page.append(users);
+
+  const bar = el("div", "savebar");
+  SET.saveInfo = el("span", "muted");
+  SET.saveBtn = el("button", "btn primary", t("saveChanges"));
+  SET.saveBtn.type = "button";
+  SET.saveBtn.addEventListener("click", saveSettings);
+  bar.append(SET.saveInfo, SET.saveBtn);
+  page.append(bar);
+  refreshSave();
+}
+
+function saveSettings() {
+  const changes = Object.entries(SET.draft).map(([key, v]) => {
+    const it = settingItem(key);
+    return t("s_" + key) + ": " + fmtSetting(it, it.value) + " → " + fmtSetting(it, v === null ? it.default : v);
+  });
+  writeDialog({
+    title: t("dlgSave"), hint: changes.join("; "),
+    send: (v) => send("PUT", "/api/settings", { pin: v.pin, values: SET.draft }),
+    done: (res) => { SET.items = res.settings; SET.draft = {}; SET.bad.clear(); renderSettings(); toast(t("savedSettings", { u: res.user })); },
+  });
+}
+
+async function loadHidden() {
+  try { SET.hidden = (await api("/api/hidden-mats")).mats; } catch (e) { /* the banner already says so */ }
+}
+async function openSettings() {
+  SET.draft = {};
+  SET.bad.clear();
+  SET.failed = false;
+  showView("settings");
+  renderSettings();
+  try {
+    SET.items = (await api("/api/settings")).settings;
+    await loadHidden();
+  } catch (e) { SET.failed = true; }
+  renderSettings();
 }
 
 // ---------- help page ----------
@@ -740,11 +1052,13 @@ function renderHelp() {
   list("map", "ul");
   list("note", "ul");
 }
-function showHelp(on) {
-  $("dash").hidden = on;
-  $("help").hidden = !on;
+function showView(name) { // "dash", "help" or "settings"
+  $("dash").hidden = name !== "dash";
+  $("help").hidden = name !== "help";
+  $("settings").hidden = name !== "settings";
   window.scrollTo(0, 0);
 }
+function showHelp(on) { showView(on ? "help" : "dash"); }
 
 // ---------- language, theme ----------
 function applyLang() {
@@ -752,13 +1066,16 @@ function applyLang() {
   for (const n of document.querySelectorAll("[data-i]")) n.textContent = t(n.dataset.i);
   for (const n of document.querySelectorAll("[data-i-ph]")) n.placeholder = t(n.dataset.iPh);
   for (const n of document.querySelectorAll("[data-i-label]")) n.setAttribute("aria-label", t(n.dataset.iLabel));
+  for (const n of document.querySelectorAll("[data-i-title]")) n.title = t(n.dataset.iTitle);
   setText($("langBtn"), t("langBtn"));
+  $("langBtn").title = lang === "en" ? "Norsk" : "English";
   setText($("foot"), t("foot"));
   $("bellpanel").setAttribute("aria-label", t("alerts"));
   for (const r of rows.values()) r.row.remove();
   rows.clear();
   applyTheme(document.documentElement.dataset.theme, false);
   renderHelp();
+  if (!$("settings").hidden) renderSettings();
   renderList();
   renderBell();
   renderPanel();
@@ -770,7 +1087,6 @@ function applyTheme(mode, save = true) {
   if (save) store.set("theme", dark ? "dark" : "light");
   for (const [id, kind] of [["logo", "lockup"], ["logoMark", "mark"]]) $(id).src = `img/logo_${kind}_${dark ? "dark" : "light"}.png`;
   document.querySelector('meta[name="theme-color"]').content = cssVar("--brandbar") || "#FFFFFF";
-  setText($("themeBtn"), t(dark ? "light" : "dark"));
   const snap = S.mat && S.mat.snapshot;
   if (snap && save) renderPanel();
 }
@@ -782,6 +1098,7 @@ $("unit").addEventListener("change", () => { S.unit = $("unit").value; store.set
 $("search").addEventListener("input", () => { S.q = $("search").value; renderList(); });
 $("bell").addEventListener("click", () => setBell(!S.bellOpen));
 $("helpBtn").addEventListener("click", () => showHelp($("help").hidden));
+$("settingsBtn").addEventListener("click", () => ($("settings").hidden ? openSettings() : showView("dash")));
 $("langBtn").addEventListener("click", () => { lang = lang === "nb" ? "en" : "nb"; store.set("lang", lang); applyLang(); });
 $("themeBtn").addEventListener("click", () => applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
 $("toList").addEventListener("click", () => $("list").scrollIntoView());
@@ -813,6 +1130,7 @@ async function loadOverview() {
   renderBell();
   renderPanel();
   if (S.bellOpen) loadAlerts();
+  renderSettingsMats(); // no-op unless the settings page is open
 }
 
 async function loadAlerts() {

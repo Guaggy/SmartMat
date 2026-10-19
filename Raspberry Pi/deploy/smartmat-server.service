@@ -1,19 +1,26 @@
-# SmartMat server on a Raspberry Pi (systemd). Edit User and the two paths, then:
-#   sudo cp deploy/smartmat-server.service /etc/systemd/system/
+# SmartMat server on a Raspberry Pi (systemd). Edit User and the paths (the project folder and its .venv), then:
+#   sudo cp "deploy/smartmat-server.service" /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now smartmat-server
 #   journalctl -u smartmat-server -f      # its output
+# The database, profiles and mat names live in /var/lib/smartmat (StateDirectory), outside the git checkout, so
+# updating the code never touches them. config.py (broker login, thresholds) is still read from the project folder.
+# A USB mat (SERVER_SERIAL_PORTS in config.py) also needs: sudo usermod -aG dialout <User>
 [Unit]
 Description=SmartMat server (mats, alerts, web dashboard)
 After=network-online.target mosquitto.service
-Wants=network-online.target
+Wants=network-online.target mosquitto.service
+StartLimitIntervalSec=0
 
 [Service]
 User=pi
 WorkingDirectory=/home/pi/SmartMat/Raspberry Pi
-ExecStart=/usr/bin/python3 -m server
+ExecStart="/home/pi/SmartMat/Raspberry Pi/.venv/bin/python" -m server --data-dir /var/lib/smartmat
+StateDirectory=smartmat
 Restart=always
 RestartSec=5
+TimeoutStopSec=15
 Environment=PYTHONUNBUFFERED=1
+NoNewPrivileges=true
 
 [Install]
 WantedBy=multi-user.target

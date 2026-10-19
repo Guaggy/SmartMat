@@ -27,12 +27,15 @@ from server.alerts import AlertManager
 from server.app import DEMO_PREFIX, create_app
 from server.engine import MatEngine, grid_shape
 from server.push import PushSender
+from server.settings import Settings
 from server.store import Store
 
 PUMP_S = 0.25   # ponytail: each mat is analysed at most 4 frames/s; the per-cell calibration loop costs ~13 ms a frame
 TICK_S = 1.0
 PURGE_EVERY_S = 3600
 OPEN_RETRY_S = 10
+REPORT_EVERY_S = 60   # a repeating fault of one mat is printed this often at most
+CLOCK_JUMP_S = 30     # ticks further apart than this (or going backwards) mean the clock jumped or the loop stalled
 SAMPLE = paths.resource_path("samples/seat_take1.json")
 DEMO_SPEEDS = (1, 3, 5, 2, 4)  # demo clock runs this many times faster (keeps a frame step under TEMPORAL_MAX_GAP_S)
 DEMO_SHIFTS = ((0, 0), (0, -4), (0, 4), (4, 0), (0, 0))  # (rows, cols) the load is moved: centred, left, right, forward
@@ -158,14 +161,18 @@ class MqttMat:
 
 
 class Server:
-    def __init__(self, store, alerts, demo=0, serial_ports=(), use_mqtt=True, pusher=None):
+    def __init__(self, store, alerts, demo=0, serial_ports=(), use_mqtt=True, pusher=None, settings=None):
         self.store, self.alerts = store, alerts
-        self.pusher = pusher if pusher is not None else PushSender(store)
+        self.settings = settings if settings is not None else Settings(store)
+        self.pusher = pusher if pusher is not None else PushSender(store, enabled=self.settings.get("push_enabled"))
         self.engines = {}   # chip_id -> MatEngine (read by the web app)
         self.feeds = {}     # chip_id -> DemoMat / MqttMat / SerialBridge
         self._opening = {}  # chip_id -> time an MQTT mat was last tried
         self._stop = threading.Event()
         self._threads = []
+        self._reported = {}   # (chip_id, place) -> when a fault was last printed
+        self._last_tick = None
+        self.hidden = store.hidden_mats()   # retired mats an admin removed: not read, not listed
         self.discovery = None
         if demo:
             frames = load_frames()
@@ -195,9 +202,17 @@ class Server:
             except Exception as error:
                 print(f"MQTT not started: {type(error).__name__}: {error}")
                 self.discovery = None
+        self.settings.listen(self._apply_settings, call=False)  # a change in the dashboard applies at once
 
     def _add(self, chip_id, engine, feed):
+        engine.configure(self.settings.values())
         self.engines[chip_id], self.feeds[chip_id] = engine, feed
+
+    def _apply_settings(self, values):
+        self.alerts.holds = {"high_risk": values["alert_high_hold_s"], "offline": values["alert_offline_s"]}
+        self.pusher.enabled = values["push_enabled"]
+        for engine in list(self.engines.values()):
+            engine.configure(values)
 
     # ---- MQTT mats come and go
 
@@ -205,6 +220,8 @@ class Server:
         if self.discovery is None:
             return
         for chip_id, shape in list(self.discovery.mats.items()):
+            if chip_id in self.hidden:
+                continue
             engine = self.engines.get(chip_id)
             if engine is not None:
                 engine.status = self.discovery.status.get(chip_id)
@@ -228,33 +245,86 @@ class Server:
         except Exception as error:
             print(f"Mat {chip_id} not opened: {error}")
             return
-        if self._stop.is_set():
+        if self._stop.is_set() or chip_id in self.hidden:  # shut down, or removed while it was opening
             source.stop()
             return
         self._add(chip_id, self._mqtt_engine(chip_id), MqttMat(source))
         self.store.log(time.time(), "mat connected", chip_id)
 
+    # ---- removing and restoring a retired mat (admin, from the dashboard)
+
+    def hide(self, chip_id, now):
+        """Stop reading a mat, close its open alerts and keep it out of the lists. ValueError for a mat that is online
+        (only retired ones are removed; a live mat would just come back with its next frame)."""
+        engine = self.engines.get(chip_id)
+        if engine is not None and engine.online(engine.clock()):
+            raise ValueError("Only a mat that is offline can be removed")
+        self.store.hide_mat(chip_id, now)
+        self.hidden.add(chip_id)
+        feed = self.feeds.pop(chip_id, None)
+        self.engines.pop(chip_id, None)
+        if feed is not None and hasattr(feed, "stop"):
+            feed.stop()
+        for alert in self.alerts.forget(chip_id, now):
+            self.store.log(now, "alert cleared", chip_id, None, {"alert": alert["id"], "kind": alert["kind"]})
+
+    def show(self, chip_id):
+        """Bring a removed mat back: the next discovery round opens it again if the broker still has it"""
+        self.hidden.discard(chip_id)
+        self._opening.pop(chip_id, None)
+        return self.store.show_mat(chip_id)
+
     # ---- the loops
+
+    def _report(self, chip_id, where, error, now=None):
+        """Print a fault of one mat, at most once a minute per mat and place (the loops run several times a second)"""
+        now = time.time() if now is None else now
+        if now - self._reported.get((chip_id, where), -REPORT_EVERY_S) >= REPORT_EVERY_S:
+            self._reported[(chip_id, where)] = now
+            print(f"{where} {chip_id}: {type(error).__name__}: {error}")
 
     def pump(self):
         for chip_id, feed in list(self.feeds.items()):
-            item = feed.take()
-            if item is not None:
-                self.engines[chip_id].feed(*item)
+            try:  # one failing mat must not stop the others
+                item = feed.take()
+                engine = self.engines.get(chip_id)   # None: removed while this round ran
+                if item is not None and engine is not None:
+                    engine.feed(*item)
+            except Exception as error:
+                self._report(chip_id, "pump", error)
 
     def tick(self, now):
         """Once a second: timeline, alerts (logged, a raised one is pushed to the registered phones), MQTT discovery"""
-        self._discover(now)
+        if self._last_tick is not None and not 0 <= now - self._last_tick <= CLOCK_JUMP_S:
+            self.alerts.reset_holds()  # the clock jumped (a Pi sets it from the network after boot) or the loop stalled
+        self._last_tick = now
+        try:
+            self._discover(now)
+        except Exception as error:
+            self._report("mqtt", "discovery", error, now)
         states = []
         for chip_id, engine in list(self.engines.items()):
-            snap = engine.snapshot()
-            if snap["online"]:  # an offline mat leaves a gap in the timeline ("no data")
-                states.append((chip_id, snap["posture"], snap["risk"]))
-            for kind, alert in self.alerts.update(chip_id, snap["risk"], snap["online"], now):
-                self.store.log(now, f"alert {kind}", chip_id, None, {"alert": alert["id"], "kind": alert["kind"]})
-                if kind == "raised":
-                    self.pusher.notify(alert)
+            try:
+                snap = engine.snapshot()
+                if snap["online"]:  # an offline mat leaves a gap in the timeline ("no data")
+                    states.append((chip_id, snap["posture"], snap["risk"]))
+                self._update_alerts(chip_id, snap["risk"], snap["online"], now)
+            except Exception as error:
+                self._report(chip_id, "tick", error, now)
+        # an alert saved before a restart for a mat that has no engine (gone from the broker, USB mat no longer set up):
+        # the mat counts as offline, so the alert follows the offline rules instead of staying open for ever
+        for chip_id in {a["chip_id"] for a in self.alerts.open_alerts()} - set(self.engines):
+            try:
+                self._update_alerts(chip_id, "offline", False, now)
+            except Exception as error:
+                self._report(chip_id, "tick", error, now)
         self.store.record_states(now, states)
+
+    def _update_alerts(self, chip_id, risk, online, now):
+        for kind, alert in self.alerts.update(chip_id, risk, online, now):
+            self.store.log(now, f"alert {kind}", chip_id, None, {"alert": alert["id"], "kind": alert["kind"]})
+            if kind == "raised":
+                self.pusher.notify(alert)
 
     def run_loops(self):
         def pump_loop():
@@ -272,7 +342,7 @@ class Server:
                     self.tick(now)
                     if now - last_purge >= PURGE_EVERY_S:
                         last_purge = now
-                        self.store.purge(now)
+                        self.store.purge(now, days=self.settings.get("retention_days"))
                 except Exception as error:
                     print(f"tick: {type(error).__name__}: {error}")
 
@@ -312,9 +382,15 @@ def main(argv=None):
     calibration.PROFILES_DIR = args.data_dir / "profiles"
     store = Store(args.data_dir / "smartmat.db")
     import_nicknames(store, args.data_dir / "mats.json")
-    server = Server(store, AlertManager(), demo=args.demo, serial_ports=getattr(config, "SERVER_SERIAL_PORTS", ()))
+    settings = Settings(store)
+    alerts = AlertManager(high_hold_s=settings.get("alert_high_hold_s"), offline_hold_s=settings.get("alert_offline_s"),
+                          on_change=store.save_alert)
+    alerts.restore(store.saved_alerts(), time.time())  # alerts open before a restart stay open and are not pushed again
+    server = Server(store, alerts, demo=args.demo, serial_ports=getattr(config, "SERVER_SERIAL_PORTS", ()),
+                    settings=settings)
     server.run_loops()
-    http = make_server("0.0.0.0", args.port, create_app(store, server.alerts, server.engines), threaded=True)
+    http = make_server("0.0.0.0", args.port, create_app(store, server.alerts, server.engines, settings=settings, control=server),
+                       threaded=True)
     stopping = threading.Event()
 
     def shut_down(*_):

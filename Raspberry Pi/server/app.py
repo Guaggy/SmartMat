@@ -14,10 +14,10 @@ import config
 from processing import calibration
 from processing.posture import risk_sort_key
 from server import push
+from server.settings import Settings
 from server.store import DEVICE_FIELDS, META_FIELDS
 
 DEMO_PREFIX = getattr(config, "DEMO_PREFIX", "demo-")
-SATURATION_WARN_CELLS = getattr(config, "SATURATION_WARN_CELLS", 1)
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 MAX_TIMELINE_HOURS = 24 * 7
 SNAPSHOT_KEYS = ("unit", "scale_max", "grid", "occupied", "hotspots", "peak_kpa")
@@ -34,8 +34,11 @@ class ApiError(Exception):
         self.status = status
 
 
-def create_app(store, alerts, engines, clock=time.time):
-    """store: server.store.Store, alerts: AlertManager, engines: {chip_id: MatEngine} (the runner adds to it)"""
+def create_app(store, alerts, engines, clock=time.time, settings=None, control=None):
+    """store: server.store.Store, alerts: AlertManager, engines: {chip_id: MatEngine} (the runner adds to it),
+    settings: server.settings.Settings (the admin-editable values; defaults from config.py when not given),
+    control: the runner, for removing and restoring mats (hide(chip_id, now), show(chip_id)); without it those are refused"""
+    settings = settings if settings is not None else Settings(store)
     app = Flask(__name__, static_folder=None)
 
     @app.errorhandler(ApiError)
@@ -71,7 +74,7 @@ def create_app(store, alerts, engines, clock=time.time):
         return user
 
     def known(chip_id):
-        if chip_id not in engines and chip_id not in store.mats():
+        if (chip_id not in engines and chip_id not in store.mats()) or chip_id in store.hidden_mats():
             raise ApiError(404, "unknown mat")
 
     def mat_info(chip_id, meta):
@@ -88,7 +91,7 @@ def create_app(store, alerts, engines, clock=time.time):
         return dict(mat_info(chip_id, meta), online=snap["online"], risk=snap["risk"], posture=snap["posture"],
                     time_in_position_s=snap["time_in_position_s"], since_relief_s=snap["since_relief_s"],
                     saturated_cells=snap["saturated_cells"],
-                    saturated=snap["saturated_cells"] >= SATURATION_WARN_CELLS,
+                    saturated=snap["saturated_cells"] >= settings.get("saturation_warn_cells"),
                     open_alerts=sum(a["chip_id"] == chip_id and a["state"] == "open" for a in open_alerts))
 
     # ---- reading
@@ -111,7 +114,7 @@ def create_app(store, alerts, engines, clock=time.time):
     def overview():
         meta, open_alerts = store.mats(), alerts.open_alerts()
         rows = []
-        for chip_id in set(engines) | set(meta):
+        for chip_id in (set(engines) | set(meta)) - store.hidden_mats():
             engine = engines.get(chip_id)
             rows.append(mat_row(chip_id, meta, engine.snapshot() if engine is not None else offline_snapshot(),
                                 open_alerts))
@@ -170,6 +173,23 @@ def create_app(store, alerts, engines, clock=time.time):
         store.log(clock(), "user added", None, by or user["name"], {"name": user["name"], "role": user["role"]})
         return jsonify({"ok": True, "user": by or user["name"], "created": user}), 201
 
+    @app.route("/api/settings", methods=["GET", "PUT"])
+    def settings_route():
+        if request.method == "GET":
+            return jsonify({"settings": settings.describe()})
+        data = body()
+        user = actor(data, admin=True)
+        values = data.get("values")
+        if not isinstance(values, dict) or not values:
+            raise ApiError(400, "send values: {setting: value, or null for the default}")
+        try:
+            changed = settings.update(values)
+        except ValueError as error:
+            raise ApiError(400, str(error))
+        if changed:
+            store.log(clock(), "settings changed", None, user["name"], {key: list(pair) for key, pair in changed.items()})
+        return jsonify({"ok": True, "user": user["name"], "settings": settings.describe()})
+
     # ---- writing (PIN in the body)
 
     @app.route("/api/alerts/<alert_id>/<action>", methods=["POST"])
@@ -192,7 +212,7 @@ def create_app(store, alerts, engines, clock=time.time):
     def put_meta(chip_id):
         known(chip_id)
         data = body()
-        user = actor(data)
+        user = actor(data, admin=True)   # names and rooms are what the alerts and the nurses' lists show
         fields = {key: data[key] for key in META_FIELDS if key in data}
         if not fields:
             raise ApiError(400, f"send one of {', '.join(META_FIELDS)}")
@@ -201,6 +221,34 @@ def create_app(store, alerts, engines, clock=time.time):
         row = store.set_meta(chip_id, fields)
         store.log(clock(), "config changed", chip_id, user["name"], {"meta": fields})
         return jsonify(dict(mat_info(chip_id, {chip_id: row}), ok=True, user=user["name"]))
+
+    @app.route("/api/hidden-mats")
+    def hidden_mats():
+        meta = store.mats()
+        return jsonify({"mats": [mat_info(chip_id, meta) for chip_id in sorted(store.hidden_mats())]})
+
+    @app.route("/api/mats/<chip_id>/hide", methods=["POST"])
+    def hide_mat(chip_id):
+        known(chip_id)
+        user = actor(body(), admin=True)
+        if control is None:
+            raise ApiError(501, "this server cannot remove mats")
+        try:
+            control.hide(chip_id, clock())
+        except ValueError as error:
+            raise ApiError(409, str(error))
+        store.log(clock(), "mat removed", chip_id, user["name"])
+        return jsonify({"ok": True, "user": user["name"]})
+
+    @app.route("/api/mats/<chip_id>/show", methods=["POST"])
+    def show_mat(chip_id):
+        user = actor(body(), admin=True)
+        if control is None:
+            raise ApiError(501, "this server cannot restore mats")
+        if chip_id not in store.hidden_mats() or not control.show(chip_id):
+            raise ApiError(404, "that mat is not removed")
+        store.log(clock(), "mat restored", chip_id, user["name"])
+        return jsonify({"ok": True, "user": user["name"]})
 
     @app.route("/api/mats/<chip_id>/profile", methods=["GET", "PUT"])
     def profile(chip_id):

@@ -11,11 +11,12 @@ from processing.calibration import (Calibration, IndividualCalibration, Pressure
                                     apply_profile, cell_size_mm, configured_mat_size, profile_size_mm)
 from processing.frames import orient_grid, process_frame
 from processing.hotspots import HotspotTracker
-from processing.indices import IndexMonitor
+from processing.indices import IndexMonitor, default_indices
 from processing.modes import LiveMode
 from processing.motion import MotionAnalyzer
 from processing.occupancy import OccupancyDetector
-from processing.posture import PostureTracker, classify_posture, risk_from
+from processing.posture import (FORWARD_CELLS as POSTURE_FORWARD_CELLS, SIDE_CELLS as POSTURE_SIDE_CELLS,
+                                PostureTracker, classify_posture, risk_from)
 from processing.signals import Context, read_signal
 from processing.statistics import contact_mask
 from processing.temporal import TemporalAnalysis
@@ -24,6 +25,20 @@ STALE_AFTER_S = config.STALE_AFTER_S
 INDEX_UPDATE_INTERVAL_S = config.INDEX_UPDATE_INTERVAL_S
 SATURATION_LIMIT = config.VALUE_MAX_DEFAULT - config.HEALTH_SATURATION_MARGIN
 NO_ORIENTATION = {"rotation": 0, "mirror_h": False, "mirror_v": False}
+ENGINE_SETTINGS = ("stale_after_s", "relief_minutes", "near_percent", "posture_hold_s", "posture_side_cells",
+                   "posture_forward_cells")
+
+
+def tuned_indices(relief_minutes, near_percent):
+    """The default risk indices with the dashboard's two knobs: the time without relief that counts as full
+    risk (the since_relief reference) and where "medium" starts (the near margin)"""
+    definitions = default_indices()
+    for definition in definitions:
+        definition["near_fraction"] = near_percent / 100.0
+        for term in definition["terms"]:
+            if term.get("signal") == "since_relief":
+                term["reference"] = relief_minutes * 60.0
+    return definitions
 
 # processing/* reads the grid size from config.TOTAL_ROWS/COLS, so each mat runs with its own size set.
 # ponytail: one global lock, mats are processed one at a time; fine for a ward of mats at ~10 fps.
@@ -61,6 +76,7 @@ class MatEngine:
         self.status = None                 # "online" / "offline" from the MQTT status topic, None = unknown
         self.clock = time.time             # demo mats replace it with their own (faster) clock
         self.profile_error = None
+        self.params = {}                   # dashboard settings (ENGINE_SETTINGS), see configure()
         self._lock = threading.RLock()
         try:
             self.set_profile(profile)
@@ -120,6 +136,21 @@ class MatEngine:
             self.last_t = None
             self._last_index_t = None
             self.saturated = 0
+            self._apply_params(indices=True)  # the new trackers start from the defaults
+
+    def configure(self, values):
+        """Take the dashboard settings (any dict holding some of ENGINE_SETTINGS) and apply them to the running mat"""
+        with self._lock:
+            new = {key: values[key] for key in ENGINE_SETTINGS if key in values}
+            indices = any(new.get(key) != self.params.get(key) for key in ("relief_minutes", "near_percent"))
+            self.params = new
+            self._apply_params(indices)
+
+    def _apply_params(self, indices):
+        p = self.params
+        self.posture.hold_s = p.get("posture_hold_s", self.posture.hold_s)
+        if indices and "relief_minutes" in p and "near_percent" in p:
+            self.indices.set_definitions(tuned_indices(p["relief_minutes"], p["near_percent"]))  # restarts the warning states
 
     # ---- per frame
 
@@ -141,14 +172,18 @@ class MatEngine:
                 self.indices.update(Context(pressure, t, self.contact_threshold_kpa, self.temporal,
                                             self.hotspots, self.motion, None), t, occupied)
             repositioned = any(kind == "reposition_detected" for kind, _ in events)
-            self.posture.update(classify_posture(pressure, occupied, self.contact_threshold_kpa), t, repositioned)
+            self.posture.update(classify_posture(pressure, occupied, self.contact_threshold_kpa,
+                                                 self.params.get("posture_side_cells", POSTURE_SIDE_CELLS),
+                                                 self.params.get("posture_forward_cells", POSTURE_FORWARD_CELLS)),
+                                t, repositioned)
             self.saturated = _saturated_cells(frame["raw"])
             self.frame, self.last_t = frame, t
 
     # ---- state
 
     def online(self, t):
-        return self.last_t is not None and t - self.last_t <= STALE_AFTER_S and self.status != "offline"
+        stale_after = self.params.get("stale_after_s", STALE_AFTER_S)
+        return self.last_t is not None and t - self.last_t <= stale_after and self.status != "offline"
 
     def snapshot(self, t=None):
         """JSON-ready state: the web dashboard's snapshot plus posture, risk, saturation and online"""
