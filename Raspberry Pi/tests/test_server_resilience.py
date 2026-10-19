@@ -85,6 +85,30 @@ class ServerLoopTests(unittest.TestCase):
         self.assertEqual([a["kind"] for a in server.alerts.open_alerts()], ["offline"])
 
 
+class RestoredAlertWithoutAMatTests(unittest.TestCase):
+    def test_an_alert_for_a_mat_that_never_comes_back_follows_the_offline_rules(self):
+        folder = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, folder, True)
+        store = Store(folder / "smartmat.db")
+        self.addCleanup(store.close)
+        before = AlertManager(high_hold_s=0, offline_hold_s=0, on_change=store.save_alert)
+        before.update("ghost", "high", True, 0)                       # saved as open
+        alerts = AlertManager(high_hold_s=0, offline_hold_s=30, on_change=store.save_alert, grace_s=60)
+        alerts.restore(store.saved_alerts(), 100)
+        server = Server(store, alerts, demo=0, use_mqtt=False)
+        self.addCleanup(server.stop)
+        for second in range(0, 29):                                   # inside the grace and the offline hold: only the saved one
+            server.tick(100 + second)
+        self.assertEqual([a["kind"] for a in alerts.open_alerts()], ["high_risk"])
+        for second in range(29, 59):                                  # the mat has been offline for 30 s: that opens too
+            server.tick(100 + second)
+        self.assertEqual(sorted(a["kind"] for a in alerts.open_alerts()), ["high_risk", "offline"])
+        for second in range(59, 100):                                 # grace over: the high-risk one closes
+            server.tick(100 + second)
+        self.assertEqual([a["kind"] for a in alerts.open_alerts()], ["offline"])
+        self.assertIn("alert raised", [e["kind"] for e in store.events("ghost")])
+
+
 class AlertHoldResetTests(unittest.TestCase):
     def test_reset_holds_restarts_the_count_and_keeps_open_alerts(self):
         alerts = AlertManager(high_hold_s=10, offline_hold_s=10)

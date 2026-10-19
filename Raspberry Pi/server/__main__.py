@@ -308,13 +308,23 @@ class Server:
                 snap = engine.snapshot()
                 if snap["online"]:  # an offline mat leaves a gap in the timeline ("no data")
                     states.append((chip_id, snap["posture"], snap["risk"]))
-                for kind, alert in self.alerts.update(chip_id, snap["risk"], snap["online"], now):
-                    self.store.log(now, f"alert {kind}", chip_id, None, {"alert": alert["id"], "kind": alert["kind"]})
-                    if kind == "raised":
-                        self.pusher.notify(alert)
+                self._update_alerts(chip_id, snap["risk"], snap["online"], now)
+            except Exception as error:
+                self._report(chip_id, "tick", error, now)
+        # an alert saved before a restart for a mat that has no engine (gone from the broker, USB mat no longer set up):
+        # the mat counts as offline, so the alert follows the offline rules instead of staying open for ever
+        for chip_id in {a["chip_id"] for a in self.alerts.open_alerts()} - set(self.engines):
+            try:
+                self._update_alerts(chip_id, "offline", False, now)
             except Exception as error:
                 self._report(chip_id, "tick", error, now)
         self.store.record_states(now, states)
+
+    def _update_alerts(self, chip_id, risk, online, now):
+        for kind, alert in self.alerts.update(chip_id, risk, online, now):
+            self.store.log(now, f"alert {kind}", chip_id, None, {"alert": alert["id"], "kind": alert["kind"]})
+            if kind == "raised":
+                self.pusher.notify(alert)
 
     def run_loops(self):
         def pump_loop():
