@@ -1,0 +1,33 @@
+
+> smartmat-phone@0.1.0 test
+> jest
+
+FAIL __tests__/logic.test.ts
+  ● Test suite failed to run
+
+    Cannot find module 'expo-modules-core' from 'node_modules/jest-expo/src/preset/setup.js'
+
+      at Resolver._throwModNotFoundError (node_modules/jest-resolve/build/resolver.js:427:11)
+      at Object.<anonymous> (node_modules/jest-expo/src/preset/setup.js:233:6)
+
+FAIL __tests__/strings.test.ts
+  ● Test suite failed to run
+
+    Cannot find module 'expo-modules-core' from 'node_modules/jest-expo/src/preset/setup.js'
+
+      at Resolver._throwModNotFoundError (node_modules/jest-resolve/build/resolver.js:427:11)
+      at Object.<anonymous> (node_modules/jest-expo/src/preset/setup.js:233:6)
+
+FAIL __tests__/api.test.ts
+  ● Test suite failed to run
+
+    Cannot find module 'expo-modules-core' from 'node_modules/jest-expo/src/preset/setup.js'
+
+      at Resolver._throwModNotFoundError (node_modules/jest-resolve/build/resolver.js:427:11)
+      at Object.<anonymous> (node_modules/jest-expo/src/preset/setup.js:233:6)
+
+Test Suites: 3 failed, 3 total
+Tests:       0 total
+Snapshots:   0 total
+Time:        12.572 s
+Ran all test suites.

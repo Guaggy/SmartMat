@@ -1,0 +1,61 @@
+› Installing 1 SDK 57.0.0 compatible native module and 1 other package using npm
+> npm install --save @react-native/jest-preset
+npm error code ERESOLVE
+npm error ERESOLVE could not resolve
+npm error
+npm error While resolving: smartmat-phone@0.1.0
+npm error Found: react-native-worklets@0.13.0
+npm error node_modules/react-native-worklets
+npm error   peerOptional react-native-worklets@"*" from @expo/ui@57.0.25
+npm error   node_modules/@expo/ui
+npm error     @expo/ui@"^57.0.25" from expo-router@57.0.28
+npm error     node_modules/expo-router
+npm error       peerOptional expo-router@"*" from @expo/cli@57.0.31
+npm error       node_modules/expo/node_modules/@expo/cli
+npm error         @expo/cli@"^57.0.31" from expo@57.0.30
+npm error         node_modules/expo
+npm error       2 more (@expo/router-server, the root project)
+npm error   peer react-native-worklets@"0.13.x" from react-native-reanimated@4.7.1
+npm error   node_modules/react-native-reanimated
+npm error     peerOptional react-native-reanimated@"*" from expo-router@57.0.28
+npm error     node_modules/expo-router
+npm error       peerOptional expo-router@"*" from @expo/cli@57.0.31
+npm error       node_modules/expo/node_modules/@expo/cli
+npm error         @expo/cli@"^57.0.31" from expo@57.0.30
+npm error         node_modules/expo
+npm error       2 more (@expo/router-server, the root project)
+npm error     peer react-native-reanimated@">= 2.0.0" from react-native-drawer-layout@4.2.12
+npm error     node_modules/react-native-drawer-layout
+npm error       react-native-drawer-layout@"^4.2.2" from expo-router@57.0.28
+npm error       node_modules/expo-router
+npm error         peerOptional expo-router@"*" from @expo/cli@57.0.31
+npm error         node_modules/expo/node_modules/@expo/cli
+npm error         2 more (@expo/router-server, the root project)
+npm error
+npm error Could not resolve dependency:
+npm error expo-modules-core@"~57.0.23" from the root project
+npm error
+npm error Conflicting peer dependency: react-native-worklets@0.10.4
+npm error node_modules/react-native-worklets
+npm error   peerOptional react-native-worklets@"^0.7.4 || ^0.8.0 || ^0.9.0 || ^0.10.0" from expo-modules-core@57.0.23
+npm error   node_modules/expo-modules-core
+npm error     expo-modules-core@"~57.0.23" from the root project
+npm error
+npm error Fix the upstream dependency conflict, or retry this command with --force or --legacy-peer-deps to accept an incorrect (and potentially broken) dependency resolution.
+npm error
+npm error
+npm error For a full report see:
+npm error C:\Users\evenm\AppData\Local\npm-cache\_logs\2026-10-19T14_18_25_197Z-eresolve-report.txt
+npm error A complete log of this run can be found in: C:\Users\evenm\AppData\Local\npm-cache\_logs\2026-10-19T14_18_25_197Z-debug-0.log
+Error: npm install --save @react-native/jest-preset exited with non-zero code: 1
+Error: npm install --save @react-native/jest-preset exited with non-zero code: 1
+    at ChildProcess.completionListener (C:\Users\evenm\AppData\Local\Temp\claude\c--Users-evenm-Projects-Hardware-SmartMat\86dd1f0c-dbb7-4c9d-8b33-dc36ecb76c06\scratchpad\phone57\node_modules\@expo\spawn-async\build\spawnAsync.js:113:23)
+    at Object.onceWrapper (node:events:631:26)
+    at ChildProcess.emit (node:events:509:28)
+    at cp.emit (C:\Users\evenm\AppData\Local\Temp\claude\c--Users-evenm-Projects-Hardware-SmartMat\86dd1f0c-dbb7-4c9d-8b33-dc36ecb76c06\scratchpad\phone57\node_modules\cross-spawn\lib\enoent.js:34:29)
+    at ChildProcess._handle.onexit (node:internal/child_process:295:12)
+    ...
+    at spawnAsync (C:\Users\evenm\AppData\Local\Temp\claude\c--Users-evenm-Projects-Hardware-SmartMat\86dd1f0c-dbb7-4c9d-8b33-dc36ecb76c06\scratchpad\phone57\node_modules\@expo\spawn-async\build\spawnAsync.js:9:23)
+    at NpmPackageManager.runAsync (C:\Users\evenm\AppData\Local\Temp\claude\c--Users-evenm-Projects-Hardware-SmartMat\86dd1f0c-dbb7-4c9d-8b33-dc36ecb76c06\scratchpad\phone57\node_modules\@expo\package-manager\build\node\BasePackageManager.js:75:42)
+    at C:\Users\evenm\AppData\Local\Temp\claude\c--Users-evenm-Projects-Hardware-SmartMat\86dd1f0c-dbb7-4c9d-8b33-dc36ecb76c06\scratchpad\phone57\node_modules\@expo\package-manager\build\node\NpmPackageManager.js:71:23
+    at C:\Users\evenm\AppData\Local\Temp\claude\c--Users-evenm-Projects-Hardware-SmartMat\86dd1f0c-dbb7-4c9d-8b33-dc36ecb76c06\scratchpad\phone57\node_modules\@expo\package-manager\build\utils\spawn.js:20:34

@@ -1,0 +1,50 @@
+npm error code ERESOLVE
+npm error ERESOLVE could not resolve
+npm error
+npm error While resolving: expo-modules-core@57.0.23
+npm error Found: react-native-worklets@0.13.0
+npm error node_modules/react-native-worklets
+npm error   peerOptional react-native-worklets@"*" from @expo/ui@57.0.25
+npm error   node_modules/@expo/ui
+npm error     @expo/ui@"^57.0.25" from expo-router@57.0.28
+npm error     node_modules/expo-router
+npm error       expo-router@"~57.0.28" from the root project
+npm error       1 more (@expo/cli)
+npm error   peer react-native-worklets@"0.13.x" from react-native-reanimated@4.7.1
+npm error   node_modules/react-native-reanimated
+npm error     peerOptional react-native-reanimated@"*" from expo-router@57.0.28
+npm error     node_modules/expo-router
+npm error       expo-router@"~57.0.28" from the root project
+npm error       1 more (@expo/cli)
+npm error     peer react-native-reanimated@">= 2.0.0" from react-native-drawer-layout@4.2.12
+npm error     node_modules/react-native-drawer-layout
+npm error       react-native-drawer-layout@"^4.2.2" from expo-router@57.0.28
+npm error       node_modules/expo-router
+npm error         expo-router@"~57.0.28" from the root project
+npm error         1 more (@expo/cli)
+npm error
+npm error Could not resolve dependency:
+npm error peerOptional react-native-worklets@"^0.7.4 || ^0.8.0 || ^0.9.0 || ^0.10.0" from expo-modules-core@57.0.23
+npm error node_modules/expo-modules-core
+npm error   expo-modules-core@"~57.0.23" from the root project
+npm error   expo-modules-core@"~57.0.23" from expo@57.0.30
+npm error   node_modules/expo
+npm error     expo@"~57.0.30" from the root project
+npm error     29 more (expo-build-properties, expo-constants, ...)
+npm error
+npm error Conflicting peer dependency: react-native-worklets@0.10.4
+npm error node_modules/react-native-worklets
+npm error   peerOptional react-native-worklets@"^0.7.4 || ^0.8.0 || ^0.9.0 || ^0.10.0" from expo-modules-core@57.0.23
+npm error   node_modules/expo-modules-core
+npm error     expo-modules-core@"~57.0.23" from the root project
+npm error     expo-modules-core@"~57.0.23" from expo@57.0.30
+npm error     node_modules/expo
+npm error       expo@"~57.0.30" from the root project
+npm error       29 more (expo-build-properties, expo-constants, ...)
+npm error
+npm error Fix the upstream dependency conflict, or retry this command with --force or --legacy-peer-deps to accept an incorrect (and potentially broken) dependency resolution.
+npm error
+npm error
+npm error For a full report see:
+npm error C:\Users\evenm\AppData\Local\npm-cache\_logs\2026-10-19T14_38_54_238Z-eresolve-report.txt
+npm error A complete log of this run can be found in: C:\Users\evenm\AppData\Local\npm-cache\_logs\2026-10-19T14_38_54_238Z-debug-0.log

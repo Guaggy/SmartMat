@@ -1,0 +1,14 @@
+### log after restart
+{"events":[{"chip_id":"demo-take1","detail":{"analysis":[],"passport_version":1,"profile_version":1,"slot":"custom"},"id":4,"kind":"passport adopted","t":1792416137.4620256,"user":"system"},{"chip_id":"demo-take1","detail":null,"id":3,"kind":"mat connected","t":1792416137.360797,"user":null},{"chip_id":"demo-take1","detail":null,"id":1,"kind":"mat connected","t":1792416042.5713925,"user":null}],"id":"demo-take1"}
+
+### profile
+{"id":"demo-take1","profile":{"active":"uniform","baseline":null,"format":"smartmat_mat_profile_v1","grid_shape":[20,20]
+
+/c/Users/evenm/AppData/Local/Temp/claude/c--Users-evenm-Projects-Hardware-SmartMat/86dd1f0c-dbb7-4c9d-8b33-dc36ecb76c06/scratchpad/datadir_d:
+profiles
+smartmat.db
+smartmat.db-shm
+smartmat.db-wal
+
+/c/Users/evenm/AppData/Local/Temp/claude/c--Users-evenm-Projects-Hardware-SmartMat/86dd1f0c-dbb7-4c9d-8b33-dc36ecb76c06/scratchpad/datadir_d/profiles:
+demo-take1.json

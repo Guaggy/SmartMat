@@ -1,0 +1,6 @@
+npm error code EBUSY
+npm error syscall unlink
+npm error path C:\Users\evenm\Projects\Hardware\SmartMat\Phone App\node_modules\react-native\React\CxxBridge\NSDataBigString.h
+npm error errno -4082
+npm error EBUSY: resource busy or locked, unlink 'C:\Users\evenm\Projects\Hardware\SmartMat\Phone App\node_modules\react-native\React\CxxBridge\NSDataBigString.h'
+npm error A complete log of this run can be found in: C:\Users\evenm\AppData\Local\npm-cache\_logs\2026-10-19T14_44_26_302Z-debug-0.log

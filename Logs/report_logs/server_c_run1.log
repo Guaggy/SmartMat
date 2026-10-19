@@ -1,0 +1,15 @@
+SmartMat server on http://0.0.0.0:8000 (data in C:\Users\evenm\AppData\Local\Temp\claude\c--Users-evenm-Projects-Hardware-SmartMat\86dd1f0c-dbb7-4c9d-8b33-dc36ecb76c06\scratchpad\datadir_c)
+127.0.0.1 - - [19/Oct/2026 21:19:23] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [19/Oct/2026 21:19:23] "GET /api/overview HTTP/1.1" 200 -
+127.0.0.1 - - [19/Oct/2026 21:19:23] "POST /api/users HTTP/1.1" 201 -
+127.0.0.1 - - [19/Oct/2026 21:19:23] "POST /api/users HTTP/1.1" 401 -
+127.0.0.1 - - [19/Oct/2026 21:19:23] "POST /api/users HTTP/1.1" 401 -
+127.0.0.1 - - [19/Oct/2026 21:19:23] "POST /api/users HTTP/1.1" 400 -
+127.0.0.1 - - [19/Oct/2026 21:19:23] "PUT /api/settings HTTP/1.1" 403 -
+127.0.0.1 - - [19/Oct/2026 21:19:23] "PUT /api/settings HTTP/1.1" 403 -
+127.0.0.1 - - [19/Oct/2026 21:19:23] "PUT /api/settings HTTP/1.1" 200 -
+127.0.0.1 - - [19/Oct/2026 21:19:23] "GET /api/mats/demo-1/config HTTP/1.1" 200 -
+127.0.0.1 - - [19/Oct/2026 21:19:23] "GET /api/config/history HTTP/1.1" 200 -
+127.0.0.1 - - [19/Oct/2026 21:19:33] "POST /api/users HTTP/1.1" 201 -
+127.0.0.1 - - [19/Oct/2026 21:19:33] "PUT /api/settings HTTP/1.1" 403 -
+127.0.0.1 - - [19/Oct/2026 21:19:33] "GET /api/settings HTTP/1.1" 200 -

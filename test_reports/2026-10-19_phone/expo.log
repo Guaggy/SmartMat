@@ -1,0 +1,19 @@
+Starting project at C:\Users\evenm\Projects\Hardware\SmartMat\Phone App
+Using src/app as the root directory for Expo Router.
+Starting Metro Bundler
+warning: Bundler cache is empty, rebuilding (this may take a minute)
+Waiting on http://localhost:8081
+Logs for your project will appear below.
+TypeScript: The tsconfig.json#include property has been updated
+ ERROR  Project is incompatible with this version of Expo Go
+
+• The installed version of Expo Go is for SDK 57.0.0.
+• The project you opened uses SDK 54.
+
+How to fix this error:
+
+Either upgrade this project to SDK 57.0.0, or launch it in an iOS simulator. It is not possible to install an older version of Expo Go for iOS devices, only the latest version is supported.
+
+[Learn how to upgrade to SDK 57.](https://docs.expo.dev/workflow/upgrading-expo-sdk-walkthrough/)
+
+[https://expo.dev/go?sdkVersion=54&platform=ios&device=false](Learn how to install Expo Go for SDK 54 in an iOS Simulator.)

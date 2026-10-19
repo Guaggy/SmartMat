@@ -1,13 +1,20 @@
-import { Redirect, Tabs, usePathname } from "expo-router";
+import { Tabs, useRouter } from "expo-router";
+import { useEffect, useRef } from "react";
 
 import { useApp } from "../../state";
 import { colors } from "../../theme";
 
 export default function TabsLayout() {
   const { ready, settings, t } = useApp();
-  const pathname = usePathname();
-  // First run: send the user to Settings once (not again while already there, or it would loop)
-  if (ready && !settings.serverUrl && pathname !== "/settings") return <Redirect href="/settings" />;
+  const router = useRouter();
+  const sent = useRef(false);
+  // First run: send the user to Settings once. (A <Redirect> rendered while pathname !== "/settings" looped with
+  // "Maximum update depth exceeded" on Expo SDK 57.)
+  useEffect(() => {
+    if (!ready || settings.serverUrl || sent.current) return;
+    sent.current = true;
+    router.replace("/settings");
+  }, [ready, settings.serverUrl, router]);
   return (
     <Tabs
       screenOptions={{

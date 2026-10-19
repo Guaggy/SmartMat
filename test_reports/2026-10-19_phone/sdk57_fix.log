@@ -1,0 +1,56 @@
+The following packages should be updated for best compatibility with the installed expo version:
+  expo-build-properties@1.0.10 - expected version: ~57.0.22
+  expo-constants@18.0.14 - expected version: ~57.0.22
+  expo-dev-client@6.0.21 - expected version: ~57.0.20
+  expo-linking@8.0.12 - expected version: ~57.0.13
+  expo-notifications@0.32.17 - expected version: ~57.0.23
+  expo-router@6.0.24 - expected version: ~57.0.28
+  expo-secure-store@15.0.8 - expected version: ~57.0.4
+  expo-splash-screen@31.0.13 - expected version: ~57.0.10
+  expo-status-bar@3.0.9 - expected version: ~57.0.1
+  expo-system-ui@6.0.9 - expected version: ~57.0.4
+  jest-expo@54.0.18 - expected version: ~57.0.6
+  react@19.1.0 - expected version: 19.2.3
+  react-dom@19.1.0 - expected version: 19.2.3
+  react-native@0.81.5 - expected version: 0.86.3
+  react-native-safe-area-context@5.6.2 - expected version: ~5.7.0
+  react-native-screens@4.16.0 - expected version: ~4.26.0
+  react-native-svg@15.12.1 - expected version: 15.15.4
+  @types/react@19.1.17 - expected version: ~19.2.4
+  typescript@5.9.3 - expected version: ~6.0.3
+Your project may not work correctly until you install the expected versions of the packages.
+› Installing 19 SDK 57.0.0 compatible native modules using npm
+> npm install
+npm warn ERESOLVE overriding peer dependency
+
+added 23 packages, removed 115 packages, changed 62 packages, and audited 837 packages in 4m
+
+80 packages are looking for funding
+  run `npm fund` for details
+
+65 vulnerabilities (16 moderate, 49 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+› Added config plugin: expo-status-bar
+> npm install
+
+changed 2 packages, and audited 837 packages in 21s
+
+80 packages are looking for funding
+  run `npm fund` for details
+
+65 vulnerabilities (16 moderate, 49 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.

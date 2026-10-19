@@ -1,0 +1,159 @@
+﻿Comparing files config.py and CONFIG.EXAMPLE.PY
+***** config.py
+"""Config and variables"""
+
+***** CONFIG.EXAMPLE.PY
+"""Copy this file to config.py (already in .gitignore, so it never gets
+pushed to git) and fill in your own values below.
+"""
+
+*****
+
+***** config.py
+
+broker_host = "192.168.1.50"  # static/reserved IP of the Raspberry Pi's Mosquitto broker
+broker_port = 1883
+***** CONFIG.EXAMPLE.PY
+
+broker_host = "localhost"  # set the Pi/broker address here, or in the app under Engineering > Connection
+broker_port = 1883
+*****
+
+***** config.py
+BAUD_RATE = 115200
+
+***** CONFIG.EXAMPLE.PY
+BAUD_RATE = 115200
+# Maxrays USB mats stream ~60 frames/s; frames are averaged down to this rate for the analysis (0 = off).
+SERIAL_TARGET_FPS = 10
+
+*****
+
+***** config.py
+
+# Physical cell dimensions; set both to measured values to enable area and force.
+CELL_WIDTH_MM = None
+***** CONFIG.EXAMPLE.PY
+
+# Physical SENSING size of the whole mat, outer edge of the first sensing element to the outer edge
+# of the last (as built, before any rotation). Cell width = width / columns, cell height = height / rows.
+# Default for mats whose profile has no size; each mat's size is set in the app (Mat size... under Estimated load)
+# and kept in its profile. Enables area, force and the indicative load estimate (engineering aid only).
+MAT_WIDTH_MM = None
+MAT_HEIGHT_MM = None
+# Older alternative: per-cell size, used only when no mat size is known.
+CELL_WIDTH_MM = None
+*****
+
+***** config.py
+
+# Minimum calibrated pressure for a sensor to count as contacted.
+CONTACT_THRESHOLD_KPA = 2.0
+
+***** CONFIG.EXAMPLE.PY
+
+# Minimum calibrated pressure for a sensor to count as contacted. 1.0 kPa is about 5 counts of the
+# Maxrays 8-bit mat on the default curve (idle noise <= 1 count); 2.0 left body-edge cells flagged
+# Noisy/Drifting. Tuned on one seat take (samples/seat_take1.json), re-check with more takes.
+CONTACT_THRESHOLD_KPA = 1.0
+
+*****
+
+***** config.py
+
+# Connected hotspot detection on calibrated sensor cells.
+HOTSPOT_ACTIVATE_KPA = 20.0
+***** CONFIG.EXAMPLE.PY
+
+# Connected hotspot detection on calibrated sensor cells. The kPa values are absolute floors; the
+# fractions raise them to N x the mean over loaded cells, so a hotspot is a pressure concentration
+# rather than "the whole seat" and does not depend on the (uncalibrated) kPa curve (0 = off, kPa only).
+# Tuned on one seat take (samples/seat_take1.json, tools/replay_tune.py), re-check with more takes.
+HOTSPOT_ACTIVATE_KPA = 20.0
+*****
+
+***** config.py
+HOTSPOT_DEACTIVATE_KPA = 15.0
+HOTSPOT_MIN_CELLS = 2
+HOTSPOT_PERSISTENCE_S = 30.0
+***** CONFIG.EXAMPLE.PY
+HOTSPOT_DEACTIVATE_KPA = 15.0
+HOTSPOT_ACTIVATE_FRACTION = 1.7
+HOTSPOT_DEACTIVATE_FRACTION = 1.2
+HOTSPOT_MIN_CELLS = 4
+HOTSPOT_PERSISTENCE_S = 30.0
+*****
+
+***** config.py
+HOTSPOT_MAX_MOVE_CELLS = 2.5
+HOTSPOT_END_RELIEF_S = 3.0
+
+***** CONFIG.EXAMPLE.PY
+HOTSPOT_MAX_MOVE_CELLS = 2.5
+HOTSPOT_END_RELIEF_S = 10.0   # relieved this long before the hotspot ends (its id is reused if it comes back sooner)
+HOTSPOT_RELIEF_GRACE_S = 1.0  # missing for less than this is a dropout, not relief (0 = off)
+
+*****
+
+***** config.py
+
+# Rolling received-value diagnostics; thresholds are engineering defaults.
+HEALTH_WINDOW_FRAMES = 50
+***** CONFIG.EXAMPLE.PY
+
+# Rolling received-value diagnostics; thresholds are engineering defaults (app units, 0-1000; one Maxrays
+# count is 3.9). STUCK_NEIGHBOR_STD and SATURATION_FRAMES tuned on one seat take, re-check with more takes:
+# a 0-count cell beside the body and cells at 255 under the sitting bones are normal for the 8-bit mat.
+HEALTH_WINDOW_FRAMES = 50
+*****
+
+***** config.py
+HEALTH_SATURATION_MARGIN = 10
+HEALTH_SATURATION_FRAMES = 5
+HEALTH_STUCK_STD = 0.5
+HEALTH_STUCK_NEIGHBOR_STD = 15
+HEALTH_STUCK_FRAMES = 30
+***** CONFIG.EXAMPLE.PY
+HEALTH_SATURATION_MARGIN = 10
+HEALTH_SATURATION_FRAMES = 10
+HEALTH_STUCK_STD = 0.5
+HEALTH_STUCK_NEIGHBOR_STD = 60
+HEALTH_STUCK_FRAMES = 30
+*****
+
+***** config.py
+***** CONFIG.EXAMPLE.PY
+
+# Start with the reduced Simple view (connect, tare, record, export, heatmap, key numbers); Advanced shows everything.
+START_IN_SIMPLE_MODE = True
+
+# Saturation warning
+# Warn (and read the load as a lower bound) when at least this many cells are at the sensor limit
+SATURATION_WARN_CELLS = 1
+
+# Demo mats
+# Chip ids starting with this are replayed recordings (tools/publish_demo_mat.py); the app labels them "(demo)".
+DEMO_PREFIX = "demo-"
+
+# Server (python -m server): headless analysis, alerts and web dashboard for every mat
+SERVER_PORT = 8000            # web UI + REST; same as WEB_PORT, so run the server or the desktop Web UI on one machine
+SERVER_SERIAL_PORTS = []      # USB mats the server owns and republishes to MQTT, e.g. [("COM3", "Maxrays 20x20 (921600)")]
+POSTURE_SIDE_CELLS = 2.0      # centre of pressure this many cells left/right of the mat centre -> "left"/"right"
+POSTURE_FORWARD_CELLS = 2.5   # ... this many cells towards the last row -> "forward"
+POSTURE_HOLD_S = 3.0          # a new posture must last this long before it counts
+ALERT_HIGH_HOLD_S = 30.0      # risk "high" this long opens an alert
+ALERT_OFFLINE_S = 30.0        # a mat offline this long opens an alert
+ALERT_RESTORE_GRACE_S = 60.0  # after a server restart, saved open alerts are kept this long while the mats report again
+RISK_RELIEF_MIN = 120         # the server's risk index counts a loaded area as fully "at risk" after this many minutes without
+ relief
+RISK_NEAR_PERCENT = 80        # "medium" risk starts at this percent of the "high" limit
+# Admins can change the alert, risk, posture, stale, saturation and retention values above in the dashboard (the gear
+# icon); the dashboard value wins over this file, and "reset" goes back to what is written here.
+PUSH_ENABLED = True           # push a raised alert to phones registered by the phone app (needs internet access to exp.host)
+PUSH_ACCESS_TOKEN = ""        # optional Expo access token (expo.dev > Access tokens) so only this server can push to the phone
+s
+RETENTION_DAYS = 30           # events and timeline older than this are deleted
+PIN_LOCKOUT_ATTEMPTS = 0      # wrong PINs in a row before a user is locked out (0 = no lockout)
+PIN_LOCKOUT_S = 60            # how long a lockout lasts
+*****
+

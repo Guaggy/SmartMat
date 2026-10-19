@@ -1,0 +1,11 @@
+GET /api/health: 200 PASS  {"mats": 5, "needs_admin": true, "ok": true, "time": 1792415963.6874924, "version": "0.1.0"}
+GET /api/overview: 200 mats=5 PASS
+POST /api/users admin 1234: 201  {"created": {"active": true, "id": 1, "name": "Admin", "role": "admin"}, "ok": true, "user": "Admin"}
+POST /api/users second, no PIN (expect refused): 401 PASS  {"error": "PIN required"}
+POST /api/users nurse WITHOUT acting pin (expect refused): 401 PASS  {"error": "PIN required"}
+POST /api/users nurse by admin: 400 FAIL  {"error": "Role must be one of admin, user"}
+PUT /api/settings wrong pin (expect 403): 403 PASS  {"error": "Wrong PIN"}
+PUT /api/settings nurse pin (expect refused): 403 PASS  {"error": "Wrong PIN"}
+PUT /api/settings admin pin: 200 PASS  {"ok": true, "scope": "site", "settings": [{"advanced": false, "changed": false, "default": 30, "group": "alerts", "key": "alert_high_hold_s", "max": 3600, "min
+GET /api/mats/demo-1/config: 200 PASS  "{'scope': 'demo-1', 'settings': [{'advanced': False, 'changed': False, 'default'"
+GET /api/config/history: 200 PASS  "{'history': [{'changes': {'alert_offline_s': [30, 10]}, 'reason': 'step C', 'sco"

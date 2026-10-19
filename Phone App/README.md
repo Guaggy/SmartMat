@@ -17,8 +17,9 @@ npx expo start
 - **Android emulator (Android Studio):** create a Pixel device with a *Google Play* system image, start it, then press
   `a` in the Expo terminal. The emulator reaches your PC at `http://10.0.2.2:<port>`.
 - **iPhone (no Apple membership needed):** install *Expo Go* from the App Store, put the phone on the same Wi-Fi as
-  the PC and scan the QR code. The project is on **Expo SDK 54** on purpose: the App Store's Expo Go stops at SDK 54, and a newer project
-  gives "Project is incompatible with this version of Expo Go" (https://docs.expo.dev/troubleshooting/expo-go-version-mismatch/). This is for checking the UI. Remote push to iOS needs a paid Apple Developer account.
+  the PC and scan the QR code. The project is on **Expo SDK 57** on purpose: the App Store's Expo Go runs exactly one SDK, and on 2026-10-19 that was 57
+  (SDK 54 and 58 both gave "Project is incompatible with this version of Expo Go", https://docs.expo.dev/troubleshooting/expo-go-version-mismatch/).
+  When the App Store's Expo Go moves on, the project must move with it (`npx expo install expo@sdk-NN --fix`, then `npm run typecheck`, `npm test`, `npm run doctor`). This is for checking the UI. Remote push to iOS needs a paid Apple Developer account.
 - **Mock server (no hardware or real server needed):** in a second terminal run `npm run mock` (port 8000, PIN `1234`).
   In the app's Settings enter `10.0.2.2:8000` on the Android emulator, or `<PC LAN IP>:8000` on a phone. It has six
   mats (never sent a frame, offline with an old picture, high, medium, low, no user), two open alerts and one handled one. `POST /__mock/reset` restores them and

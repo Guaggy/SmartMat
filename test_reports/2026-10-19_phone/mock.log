@@ -1,0 +1,5 @@
+
+> smartmat-phone@0.1.0 mock
+> node mock-server/server.js
+
+SmartMat mock server on http://0.0.0.0:8000 (PIN 1234)

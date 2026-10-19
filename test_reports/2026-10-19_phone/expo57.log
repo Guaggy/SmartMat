@@ -1,0 +1,68 @@
+Starting project at C:\Users\evenm\AppData\Local\Temp\claude\c--Users-evenm-Projects-Hardware-SmartMat\86dd1f0c-dbb7-4c9d-8b33-dc36ecb76c06\scratchpad\phone57
+Using src/app as the root directory for Expo Router.
+Starting Metro Bundler
+
+warning: Bundler cache is empty, rebuilding (this may take a minute)
+Waiting on http://localhost:8081
+
+Logs for your project will appear below.
+| (node:17484) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:17484) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:17484) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:17484) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+iOS Bundled 24957ms node_modules\expo-router\entry.js (1459 modules)
+ WARN  expo-notifications: Android Push notifications (remote notifications) functionality provided by expo-notifications was removed from Expo Go with the release of SDK 53. Use a development build instead of Expo Go. Learn more at https://docs.expo.dev/develop/development-builds/introduction/.
+ WARN  `expo-notifications` functionality is not fully supported in Expo Go:
+We recommend you instead use a development build to avoid limitations. Learn more: https://expo.fyi/dev-client.
+ ERROR  [Error: Maximum update depth exceeded. This can happen when a component repeatedly calls setState inside componentWillUpdate or componentDidUpdate. React limits the number of nested updates to prevent infinite loops.] 
+
+Code: _layout.tsx
+[0m [90m 13 |[39m       [33m<[39m[33mStatusBar[39m style[33m=[39m[32m"light"[39m [33m/[39m[33m>[39m
+ [90m 14 |[39m       {[33mPlatform[39m[33m.[39m[33mOS[39m [33m!==[39m [32m"web"[39m [33m?[39m [33m<[39m[33mNotificationRouter[39m [35m/> : null /[39m[33m*[39m the hook is native[33m-[39monly [33m*[39m[33m/[39m}
+[31m[1m>[22m[39m[90m 15 |[39m       [33m<[39m[33mStack[39m screenOptions[33m=[39m{{ headerShown[33m:[39m [36mfalse[39m[33m,[39m contentStyle[33m:[39m { backgroundColor[33m:[39m colors[33m.[39mbg } }} [33m/[39m[33m>[39m
+ [90m    |[39m       [31m[1m^[22m[39m
+ [90m 16 |[39m     [33m<[39m[33m/[39m[33mAppProvider[39m[33m>[39m
+ [90m 17 |[39m   )[33m;[39m
+ [90m 18 |[39m }[0m
+Call Stack
+  RootLayout (src\app\_layout.tsx:15:7)
+iOS Bundled 84ms node_modules\expo-router\entry.js (1 module)
+ WARN  expo-notifications: Android Push notifications (remote notifications) functionality provided by expo-notifications was removed from Expo Go with the release of SDK 53. Use a development build instead of Expo Go. Learn more at https://docs.expo.dev/develop/development-builds/introduction/.
+ WARN  `expo-notifications` functionality is not fully supported in Expo Go:
+We recommend you instead use a development build to avoid limitations. Learn more: https://expo.fyi/dev-client.
+ ERROR  [Error: Maximum update depth exceeded. This can happen when a component repeatedly calls setState inside componentWillUpdate or componentDidUpdate. React limits the number of nested updates to prevent infinite loops.] 
+
+Code: _layout.tsx
+[0m [90m 13 |[39m       [33m<[39m[33mStatusBar[39m style[33m=[39m[32m"light"[39m [33m/[39m[33m>[39m
+ [90m 14 |[39m       {[33mPlatform[39m[33m.[39m[33mOS[39m [33m!==[39m [32m"web"[39m [33m?[39m [33m<[39m[33mNotificationRouter[39m [35m/> : null /[39m[33m*[39m the hook is native[33m-[39monly [33m*[39m[33m/[39m}
+[31m[1m>[22m[39m[90m 15 |[39m       [33m<[39m[33mStack[39m screenOptions[33m=[39m{{ headerShown[33m:[39m [36mfalse[39m[33m,[39m contentStyle[33m:[39m { backgroundColor[33m:[39m colors[33m.[39mbg } }} [33m/[39m[33m>[39m
+ [90m    |[39m       [31m[1m^[22m[39m
+ [90m 16 |[39m     [33m<[39m[33m/[39m[33mAppProvider[39m[33m>[39m
+ [90m 17 |[39m   )[33m;[39m
+ [90m 18 |[39m }[0m
+Call Stack
+  RootLayout (src\app\_layout.tsx:15:7)
+iOS Bundled 74ms node_modules\expo-router\entry.js (1 module)
+ WARN  expo-notifications: Android Push notifications (remote notifications) functionality provided by expo-notifications was removed from Expo Go with the release of SDK 53. Use a development build instead of Expo Go. Learn more at https://docs.expo.dev/develop/development-builds/introduction/.
+ WARN  `expo-notifications` functionality is not fully supported in Expo Go:
+We recommend you instead use a development build to avoid limitations. Learn more: https://expo.fyi/dev-client.
+ ERROR  [Error: Maximum update depth exceeded. This can happen when a component repeatedly calls setState inside componentWillUpdate or componentDidUpdate. React limits the number of nested updates to prevent infinite loops.] 
+
+Code: _layout.tsx
+[0m [90m 13 |[39m       [33m<[39m[33mStatusBar[39m style[33m=[39m[32m"light"[39m [33m/[39m[33m>[39m
+ [90m 14 |[39m       {[33mPlatform[39m[33m.[39m[33mOS[39m [33m!==[39m [32m"web"[39m [33m?[39m [33m<[39m[33mNotificationRouter[39m [35m/> : null /[39m[33m*[39m the hook is native[33m-[39monly [33m*[39m[33m/[39m}
+[31m[1m>[22m[39m[90m 15 |[39m       [33m<[39m[33mStack[39m screenOptions[33m=[39m{{ headerShown[33m:[39m [36mfalse[39m[33m,[39m contentStyle[33m:[39m { backgroundColor[33m:[39m colors[33m.[39mbg } }} [33m/[39m[33m>[39m
+ [90m    |[39m       [31m[1m^[22m[39m
+ [90m 16 |[39m     [33m<[39m[33m/[39m[33mAppProvider[39m[33m>[39m
+ [90m 17 |[39m   )[33m;[39m
+ [90m 18 |[39m }[0m
+Call Stack
+  RootLayout (src\app\_layout.tsx:15:7)
+iOS Bundled 98ms node_modules\expo-router\entry.js (1 module)
+ WARN  expo-notifications: Android Push notifications (remote notifications) functionality provided by expo-notifications was removed from Expo Go with the release of SDK 53. Use a development build instead of Expo Go. Learn more at https://docs.expo.dev/develop/development-builds/introduction/.
+ WARN  `expo-notifications` functionality is not fully supported in Expo Go:
+We recommend you instead use a development build to avoid limitations. Learn more: https://expo.fyi/dev-client.

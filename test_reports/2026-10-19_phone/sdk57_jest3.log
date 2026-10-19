@@ -1,0 +1,13 @@
+
+> smartmat-phone@0.1.0 test
+> jest
+
+PASS __tests__/logic.test.ts (7.698 s)
+PASS __tests__/strings.test.ts (7.244 s)
+PASS __tests__/api.test.ts (8.849 s)
+
+Test Suites: 3 passed, 3 total
+Tests:       27 passed, 27 total
+Snapshots:   0 total
+Time:        11.373 s
+Ran all test suites.

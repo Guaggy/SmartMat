@@ -1,0 +1,52 @@
+........................................................................ [ 13%]
+............................s......................................s.............................................................. [ 36%]
+........................................................................ [ 50%]
+........................................................................ [ 63%]
+......................................Traceback (most recent call last):
+  File "C:\Users\evenm\AppData\Local\Programs\Python\Python313\Lib\socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\evenm\AppData\Local\Programs\Python\Python313\Lib\socketserver.py", line 766, in __init__
+    self.handle()
+    ~~~~~~~~~~~^^
+  File "C:\Users\evenm\AppData\Local\Programs\Python\Python313\Lib\http\server.py", line 436, in handle
+    self.handle_one_request()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\evenm\AppData\Local\Programs\Python\Python313\Lib\http\server.py", line 424, in handle_one_request
+    method()
+    ~~~~~~^^
+  File "C:\Users\evenm\Projects\Hardware\SmartMat\Raspberry Pi\tests\test_server_client.py", line 49, in do_GET
+    self.reply(200, b"{}")
+    ~~~~~~~~~~^^^^^^^^^^^^
+  File "C:\Users\evenm\Projects\Hardware\SmartMat\Raspberry Pi\tests\test_server_client.py", line 38, in reply
+    self.wfile.write(body)
+    ~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\evenm\AppData\Local\Programs\Python\Python313\Lib\socketserver.py", line 845, in write
+    self._sock.sendall(b)
+    ~~~~~~~~~~~~~~~~~~^^^
+ConnectionAbortedError: [WinError 10053] An established connection was aborted by the software in your host machine
+----------------------------------------
+.................................. [ 76%]
+......................................F................................. [ 89%]
+.........................................................                [100%]
+================================== FAILURES ===================================
+___ PassportApiTests.test_adopting_a_slot_sets_the_calibration_and_logs_it ____
+
+self = <test_server_passport.PassportApiTests testMethod=test_adopting_a_slot_sets_the_calibration_and_logs_it>
+
+    def test_adopting_a_slot_sets_the_calibration_and_logs_it(self):
+        self.give(custom=blob_of())
+        self.assertEqual(self.post("/api/mats/m1/passport/adopt", slot="custom").status_code, 401)
+        self.assertEqual(self.post("/api/mats/m1/passport/adopt", slot="custom", pin=NURSE).status_code, 403)     # admin only
+        self.assertEqual(self.post("/api/mats/m1/passport/adopt", slot="x", pin=ADMIN).status_code, 400)
+        reply = self.post("/api/mats/m1/passport/adopt", slot="custom", pin=ADMIN)
+        self.assertEqual(reply.status_code, 200, reply.get_json())
+        self.assertEqual(self.engines["m1"].profile_version, 1)
+>       self.assertTrue(same_calibration(self.engines["m1"].profile, demo_profile(20, 20)))
+E       AssertionError: False is not true
+
+tests\test_server_passport.py:67: AssertionError
+=========================== short test summary info ===========================
+SKIPPED [1] tests\test_indices.py:347: Tk display unavailable
+SKIPPED [1] tests\test_maxrays.py:82: tests/fixtures/maxrays_capture.bin not present
+1 failed, 544 passed, 2 skipped, 86 subtests passed in 199.43s (0:03:19)

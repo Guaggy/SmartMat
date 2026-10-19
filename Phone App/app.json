@@ -55,7 +55,8 @@
           "color": "#609C86",
           "defaultChannel": "alerts"
         }
-      ]
+      ],
+      "expo-status-bar"
     ]
   }
 }

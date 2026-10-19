@@ -15,6 +15,7 @@ node_modules/
 
 # Local design docs/plans
 docs/
+.claude/
 Archived/
 # Python build/venv output
 .venv/
