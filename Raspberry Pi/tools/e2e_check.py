@@ -297,8 +297,42 @@ def part_mqtt(data, log, quick):
     client.disconnect()
 
 
+def part_layers(data, log):
+    print("\n== 12. per-mat settings over MQTT: own alert delay, the version on the alert, history, restart, rollback")
+    start_pub("lay-a")
+    start_pub("lay-b")
+    check("both mats online", wait(lambda: all(mats().get(c, {}).get("online") for c in ("lay-a", "lay-b")), 40), {c: mats().get(c) for c in ("lay-a", "lay-b")})
+    check("site layer: offline alert after 40 s", http("/api/settings", "PUT", {"pin": ADMIN, "values": {"alert_offline_s": 40}, "reason": "quiet ward"})[0] == 200)
+    check("a nurse cannot set a mat's own value", http("/api/mats/lay-b/config", "PUT", {"pin": NURSE, "values": {"alert_offline_s": 5}})[0] == 403)
+    check("lay-b gets its own 5 s", http("/api/mats/lay-b/config", "PUT", {"pin": ADMIN, "values": {"alert_offline_s": 5}, "reason": "critical chair"})[0] == 200)
+    setting = lambda chip, key: next(i for i in http(f"/api/mats/{chip}/config")[1]["settings"] if i["key"] == key)
+    check("lay-a inherits the site's 40 s", (setting("lay-a", "alert_offline_s")["value"], setting("lay-a", "alert_offline_s")["source"]) == (40, "site"))
+    check("lay-b shows its own 5 s", (setting("lay-b", "alert_offline_s")["value"], setting("lay-b", "alert_offline_s")["source"]) == (5, "mat"))
+    check("a value that breaks the threshold order is refused", http("/api/mats/lay-b/config", "PUT", {"pin": ADMIN, "values": {"hotspots.deactivate_kpa": 99}})[0] == 400)
+    procs["lay-a"].kill()
+    procs["lay-b"].kill()
+    check("lay-b raises its offline alert after its own 5 s", wait(lambda: any(a["chip_id"] == "lay-b" and a["state"] == "open" for a in alerts()), 15), alerts())
+    check("lay-a, on the site's 40 s, has none yet", not any(a["chip_id"] == "lay-a" for a in alerts()))
+    alert = next((a for a in alerts() if a["chip_id"] == "lay-b" and a["state"] == "open"), {})
+    import re
+    check("the alert says which settings version raised it", re.fullmatch(r"s\d+\.m1", alert.get("config") or "") is not None, alert.get("config"))
+    check("server stops", stop_server())
+    check("server starts again", start_server(data, log))
+    check("the mat's own layer survived the restart", wait(lambda: (setting("lay-b", "alert_offline_s")["value"], setting("lay-b", "alert_offline_s")["source"]) == (5, "mat"), 30))
+    kept = [a for a in alerts() if a["chip_id"] == "lay-b" and a["state"] == "open"]
+    check("the restored alert keeps its version stamp", len(kept) == 1 and kept[0]["id"] == alert.get("id") and kept[0]["config"] == alert.get("config"), kept)
+    history = http("/api/config/history?scope=lay-b")[1]["history"]
+    check("history: one version, by Admin, with the reason", [(h["version"], h["user"], h["reason"]) for h in history] == [(1, "Admin", "critical chair")], history)
+    check("the site's history has the reason too", any(h["reason"] == "quiet ward" for h in http("/api/config/history")[1]["history"]))
+    status, body = http("/api/config/rollback", "POST", {"pin": ADMIN, "scope": "lay-b", "version": 0, "reason": "back to the site"})
+    check("rolling lay-b back to version 0 is a new version", status == 200 and body["version"] == 2 and body["changed"] == 1, body)
+    check("lay-b inherits the site again", (setting("lay-b", "alert_offline_s")["value"], setting("lay-b", "alert_offline_s")["source"]) == (40, "site"))
+    check("the history keeps both versions", [h["version"] for h in http("/api/config/history?scope=lay-b")[1]["history"]] == [2, 1])
+    http("/api/settings", "PUT", {"pin": ADMIN, "values": {"alert_offline_s": None}, "reason": "end of the test"})
+
+
 def part_risk(log):
-    print("\n== 12. the risk pipeline reaches high and raises an alert (demo mats run faster than real time)")
+    print("\n== 13. the risk pipeline reaches high and raises an alert (demo mats run faster than real time)")
     stop_server()
     procs["server"] = None
     EXTRA_SERVER_ARGS[:] = ["--demo", "5"]
@@ -354,6 +388,7 @@ def main():
             check("the server starts", False)
             return
         part_mqtt(data, log, args.quick)
+        part_layers(data, log)
         part_risk(log)
         log.flush()
         text = (data / "server.log").read_text(errors="replace")
