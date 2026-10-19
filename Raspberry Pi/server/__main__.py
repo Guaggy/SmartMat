@@ -312,7 +312,9 @@ def main(argv=None):
     calibration.PROFILES_DIR = args.data_dir / "profiles"
     store = Store(args.data_dir / "smartmat.db")
     import_nicknames(store, args.data_dir / "mats.json")
-    server = Server(store, AlertManager(), demo=args.demo, serial_ports=getattr(config, "SERVER_SERIAL_PORTS", ()))
+    alerts = AlertManager(on_change=store.save_alert)
+    alerts.restore(store.saved_alerts(), time.time())  # alerts open before a restart stay open and are not pushed again
+    server = Server(store, alerts, demo=args.demo, serial_ports=getattr(config, "SERVER_SERIAL_PORTS", ()))
     server.run_loops()
     http = make_server("0.0.0.0", args.port, create_app(store, server.alerts, server.engines), threaded=True)
     stopping = threading.Event()

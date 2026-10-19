@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS timeline (id INTEGER PRIMARY KEY, chip_id TEXT NOT NU
     t_end REAL NOT NULL, posture TEXT, risk TEXT);
 CREATE TABLE IF NOT EXISTS devices (token TEXT PRIMARY KEY, platform TEXT, name TEXT, lang TEXT NOT NULL DEFAULT 'nb',
     tz TEXT, quiet_from TEXT, quiet_to TEXT, user TEXT, t_registered REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS alerts (id TEXT PRIMARY KEY, chip_id TEXT NOT NULL, kind TEXT NOT NULL, t_raised REAL NOT NULL,
+    since REAL, t_cleared REAL, state TEXT NOT NULL, by TEXT, t_handled REAL);
 CREATE INDEX IF NOT EXISTS timeline_mat ON timeline (chip_id, t_end);
 CREATE INDEX IF NOT EXISTS events_mat ON events (chip_id, id);
 """
@@ -179,6 +181,22 @@ class Store:
         with self._lock, self._db:
             return self._db.execute("DELETE FROM devices WHERE token = ?", (token,)).rowcount > 0
 
+    # ---- alerts (saved so a restart neither forgets them nor raises and pushes them again)
+
+    ALERT_FIELDS = ("id", "chip_id", "kind", "t_raised", "since", "t_cleared", "state", "by", "t_handled")
+
+    def save_alert(self, alert):
+        with self._lock, self._db:
+            self._db.execute(f"INSERT OR REPLACE INTO alerts ({', '.join(self.ALERT_FIELDS)}) "
+                             f"VALUES ({', '.join('?' * len(self.ALERT_FIELDS))})",
+                             tuple(alert.get(key) for key in self.ALERT_FIELDS))
+
+    def saved_alerts(self, history=30):
+        """Every uncleared alert plus the `history` most recent handled ones that have cleared"""
+        return (self._rows("SELECT * FROM alerts WHERE t_cleared IS NULL")
+                + self._rows("SELECT * FROM alerts WHERE t_cleared IS NOT NULL AND state != 'open' "
+                             "ORDER BY t_cleared DESC LIMIT ?", (int(history),)))
+
     # ---- event log (append-only) and timeline
 
     def log(self, t, kind, chip_id=None, user=None, detail=None):
@@ -225,3 +243,4 @@ class Store:
         with self._lock, self._db:
             self._db.execute("DELETE FROM events WHERE t < ?", (cutoff,))
             self._db.execute("DELETE FROM timeline WHERE t_end < ?", (cutoff,))
+            self._db.execute("DELETE FROM alerts WHERE t_cleared IS NOT NULL AND t_cleared < ?", (cutoff,))
