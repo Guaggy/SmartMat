@@ -35,7 +35,8 @@ Produces `dist\SmartMat\SmartMat.exe` (PyInstaller onedir, windowed) and `dist\S
 
 The server is the always-on, headless part (Pi or Windows PC, no GUI): it analyses every mat on the broker, keeps
 a posture/risk timeline, raises alerts and serves the web dashboard and a REST API on one port (`SERVER_PORT`,
-default 8000 - the same as the desktop's Web UI, so use one or the other on a machine).
+default 8000 - the same as the desktop's legacy Web UI, which is off by default; if it is turned on while the server runs,
+the desktop says the port is in use and stays off).
 
 ```powershell
 python -m server              # or: python main.py --server

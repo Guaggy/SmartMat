@@ -21,13 +21,15 @@ from werkzeug.serving import make_server
 import app_settings
 import config
 import general
+from passport_link import PahoTransport, PassportLink
 from processing import calibration
 from processing.calibration import IndividualCalibration, UniformCalibration, load_profile
 from server.alerts import AlertManager
 from server.app import DEMO_PREFIX, create_app
 from server.engine import MatEngine, grid_shape
+from server.passports import PassportService
 from server.push import PushSender
-from server.settings import Settings
+from server.settings import SITE, Settings
 from server.store import Store
 
 PUMP_S = 0.25   # ponytail: each mat is analysed at most 4 frames/s; the per-cell calibration loop costs ~13 ms a frame
@@ -166,6 +168,7 @@ class Server:
         self.settings = settings if settings is not None else Settings(store)
         self.pusher = pusher if pusher is not None else PushSender(store, enabled=self.settings.get("push_enabled"))
         self.engines = {}   # chip_id -> MatEngine (read by the web app)
+        self.passports = PassportService(self._passport_link, store, self.settings, self.engines, time.time) if use_mqtt else None
         self.feeds = {}     # chip_id -> DemoMat / MqttMat / SerialBridge
         self._opening = {}  # chip_id -> time an MQTT mat was last tried
         self._stop = threading.Event()
@@ -204,15 +207,32 @@ class Server:
                 self.discovery = None
         self.settings.listen(self._apply_settings, call=False)  # a change in the dashboard applies at once
 
+    @staticmethod
+    def _passport_link():
+        mqtt = app_settings.effective_mqtt()
+        transport = PahoTransport(mqtt["host"], mqtt["port"], mqtt["username"], mqtt["password"], "smartmat-server-passport")
+        transport.wait_connected(3)
+        return PassportLink(transport)
+
     def _add(self, chip_id, engine, feed):
-        engine.configure(self.settings.values())
+        self._configure(chip_id, engine)
         self.engines[chip_id], self.feeds[chip_id] = engine, feed
 
-    def _apply_settings(self, values):
-        self.alerts.holds = {"high_risk": values["alert_high_hold_s"], "offline": values["alert_offline_s"]}
-        self.pusher.enabled = values["push_enabled"]
-        for engine in list(self.engines.values()):
-            engine.configure(values)
+    def _configure(self, chip_id, engine):
+        """This mat's settings: its own layer on top of the site layer on top of the factory values"""
+        values = self.settings.resolved(chip_id)
+        engine.configure(values)
+        self.alerts.set_holds(chip_id, values["alert_high_hold_s"], values["alert_offline_s"])
+
+    def _apply_settings(self, scope):
+        """A layer changed: "site" reaches every mat, a mat's id only that mat"""
+        site = self.settings.resolved()
+        if scope == SITE:
+            self.alerts.holds = {"high_risk": site["alert_high_hold_s"], "offline": site["alert_offline_s"]}
+            self.pusher.enabled = site["push_enabled"]
+        for chip_id, engine in list(self.engines.items()):
+            if scope in (SITE, chip_id):
+                self._configure(chip_id, engine)
 
     # ---- MQTT mats come and go
 
@@ -250,6 +270,8 @@ class Server:
             return
         self._add(chip_id, self._mqtt_engine(chip_id), MqttMat(source))
         self.store.log(time.time(), "mat connected", chip_id)
+        if self.passports is not None and self.passports.auto_adopt(chip_id):   # a new mat brings its own calibration
+            self._configure(chip_id, self.engines[chip_id])
 
     # ---- removing and restoring a retired mat (admin, from the dashboard)
 
@@ -384,12 +406,12 @@ def main(argv=None):
     import_nicknames(store, args.data_dir / "mats.json")
     settings = Settings(store)
     alerts = AlertManager(high_hold_s=settings.get("alert_high_hold_s"), offline_hold_s=settings.get("alert_offline_s"),
-                          on_change=store.save_alert)
+                          on_change=store.save_alert, stamp=settings.stamp)
     alerts.restore(store.saved_alerts(), time.time())  # alerts open before a restart stay open and are not pushed again
     server = Server(store, alerts, demo=args.demo, serial_ports=getattr(config, "SERVER_SERIAL_PORTS", ()),
                     settings=settings)
     server.run_loops()
-    http = make_server("0.0.0.0", args.port, create_app(store, server.alerts, server.engines, settings=settings, control=server),
+    http = make_server("0.0.0.0", args.port, create_app(store, server.alerts, server.engines, settings=settings, control=server, passports=server.passports),
                        threaded=True)
     stopping = threading.Event()
 

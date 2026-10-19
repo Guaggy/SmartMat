@@ -71,6 +71,14 @@ Logos: `assets/logo_*.png|jpg` light and dark variants (lockup + mark); the dark
   windows exe `SmartMatServer.exe` via a second spec (console-less).
 - Config (all in config.example.py): `SERVER_PORT` (default 8000, same as WEB_PORT today), `DEMO_PREFIX`,
   `POSTURE_*`, `ALERT_*`, `RETENTION_DAYS`, `PIN_LOCKOUT_*`, `SATURATION_WARN_CELLS`.
+- Settings in layers (`server/settings.py`, decided 2026-10-19): factory (config.py + built-in preset) < site < mat. A
+  layer stores only its overrides; every change is a numbered, append-only version (`config_layers` table: who, when, why,
+  what changed, the full overrides after it), so history and rollback are always available. One flat key space: the server
+  rules, the desktop's engineering preset (`contact_threshold_kpa`, `temporal.*`, `hotspots.*`, `movement.*`, applied with
+  the same `processing.settings.apply_settings` and checked with its `validate_settings` on every full resolved set), and
+  `indices`. Each engine applies its own resolved set (`MatEngine.configure`), alert delays are per mat
+  (`AlertManager.set_holds`), and every alert is stamped with the settings version in force (`s<site>.m<mat>`) when it is
+  raised. The desktop app's compare / preview / push / pull and the on-mat "passport" build on this (see `notes.md`).
 
 ## Web dashboard v2 (`server/static/` index.html, app.js, style.css; plain JS, no build step)
 

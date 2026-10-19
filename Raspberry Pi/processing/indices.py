@@ -32,6 +32,19 @@ def default_indices():
     ]
 
 
+def tuned_indices(relief_minutes, near_percent):
+    """The default risk indices with two knobs: the time without relief that counts as full risk (the since_relief
+    reference, minutes) and where "medium" starts (the near margin, percent of the limit). This is what a mat uses
+    while it has no indices of its own."""
+    definitions = default_indices()
+    for definition in definitions:
+        definition["near_fraction"] = near_percent / 100.0
+        for term in definition["terms"]:
+            if term.get("signal") == "since_relief":
+                term["reference"] = relief_minutes * 60.0
+    return definitions
+
+
 def _number(value, label, positive=False):
     number = float(value)
     if not math.isfinite(number) or (positive and number <= 0):

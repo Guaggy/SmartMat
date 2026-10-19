@@ -37,6 +37,31 @@ class ServerClient:
         """(True, {"version": int, "user": name when the server says who}) or (False, text)"""
         return self._call("PUT", f"/api/mats/{_quote(chip)}/profile", {"profile": profile, "pin": pin})
 
+    def get_config(self, chip=None):
+        """(True, {"scope", "version", "stamp", "settings": [...]}) for one mat's settings (what is in force for it, and
+        where each value comes from), or for the site layer when `chip` is None; (False, text) otherwise"""
+        return self._call("GET", "/api/settings" if chip is None else f"/api/mats/{_quote(chip)}/config")
+
+    def put_config(self, chip, values, pin, reason=""):
+        """Set values of one mat's own layer (`chip`) or of the site layer (None). `values` is {key: value}, a null
+        value meaning "inherit again". (True, the new page + {"user"}) or (False, text such as "403 Wrong PIN")"""
+        path = "/api/settings" if chip is None else f"/api/mats/{_quote(chip)}/config"
+        return self._call("PUT", path, {"values": values, "pin": pin, "reason": reason})
+
+    def get_history(self, chip=None, limit=50):
+        """(True, [version, ...] newest first: {version, t, user, reason, changes}) or (False, text)"""
+        scope = "site" if chip is None else chip
+        ok, data = self._call("GET", f"/api/config/history?scope={_quote(scope)}&limit={int(limit)}")
+        if not ok:
+            return ok, data
+        history = data.get("history") if isinstance(data, dict) else None
+        return (True, history) if isinstance(history, list) else (False, "the server sent no history")
+
+    def rollback(self, chip, version, pin, reason=""):
+        """Put a layer back as it was at an earlier version (a new version again). (True, page) or (False, text)"""
+        return self._call("POST", "/api/config/rollback", {"scope": "site" if chip is None else chip, "version": version,
+                                                           "pin": pin, "reason": reason})
+
     def get_log(self, chip, limit=200):
         """(True, [event, ...] newest first) or (False, text)"""
         ok, data = self._call("GET", f"/api/mats/{_quote(chip)}/log?limit={int(limit)}")

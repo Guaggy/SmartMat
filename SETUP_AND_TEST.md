@@ -129,6 +129,11 @@ curl http://localhost:8000/api/health        # {"ok": true, ...}
   retired mat, alert delays, push on/off, risk sensitivity, storage time, and users. Only an administrator's PIN saves
   changes; they apply at once and are written to the log with the name. `config.py` holds the defaults; "Reset" on a
   setting goes back to the `config.py` value.
+- Per mat: the settings page lists every mat with **Analyse**. A mat can have its own alert delays, risk sensitivity,
+  stale limit, posture values and the engineering values of the desktop app (contact, time analysis, hotspots, movement);
+  what it does not set follows the site's values ("Standard for hele stedet"), which follow the factory values. Every change
+  is a numbered version with name, time and an optional reason, any version can be restored, and every alert shows which
+  settings version raised it.
 - Several mats show up on their own as the broker announces them (a mat that is switched off stays listed as offline).
 - Power cuts: the database runs in WAL mode, so a cut at worst loses the last second or two. Set the Pi's
   time zone (`sudo raspi-config`) and keep NTP on; right after a boot without network the clock may jump once,
@@ -281,9 +286,10 @@ crashes, and each mat's tare/calibration/orientation comes back from `profiles\<
    `net dropped` does.
 
 ### Test G - web dashboard
-Desktop app: enable **Web UI**; open the two links in the About panel (hostname.local:8000 and the IP) from a phone
-or another PC on the same network. Only the mat currently open in the desktop app is live there. The headless
-server (test H) shows every mat.
+Legacy: the desktop app's own **Web UI (legacy)** checkbox (off by default now): tick it, open the two links in the About
+panel (hostname.local:8000 and the IP) from a phone or another PC on the same network. Only the mat currently open in the
+desktop app is live there, and it uses the same port as the SmartMat server (if the port is taken the app says so and
+stays off). Use the headless server (test H) instead: it shows every mat.
 
 ### Test H - headless server on the Pi (hardware needed)
 Needs section 4b done, the Pi on the LAN and at least one real mat (or `tools/publish_demo_mat.py` from a PC).
@@ -299,6 +305,65 @@ Needs section 4b done, the Pi on the LAN and at least one real mat (or `tools/pu
    the restart, and a registered phone does not get a second push.
 8. Pull the Pi's power cable while it runs, plug it back: the server starts again, the users and mat names are still there.
 9. Phone on mobile data, Tailscale on: the dashboard opens at `http://<pi-tailnet-name>:8000`.
+
+### Test I - everything on one Windows PC (no hardware, no Pi)
+From `Raspberry Pi\` in PowerShell. Steps 1-3 are automatic; 4-6 are a click-through. Write down anything that fails
+(the exact text of the error or what you saw).
+1. Setup, once:
+   ```powershell
+   py -m venv .venv
+   .venv\Scripts\pip install -r requirements.txt pytest amqtt psutil
+   if (-not (Test-Path config.py)) { Copy-Item config.example.py config.py }
+   ```
+2. Unit tests, including the desktop (tkinter) ones that could not run in the cloud: `.venv\Scripts\python -m pytest -q`.
+   Expect no failures (one skipped test is normal).
+3. The whole server pipeline over a real MQTT broker (starts its own broker, server and demo mats in a temp folder,
+   needs port 1883 free and about 6 minutes; allow Python through the Windows Firewall if it asks):
+   `.venv\Scripts\python tools\e2e_check.py` (add `--quick` to skip the one-minute memory watch). Expect `0 failed`.
+   On Windows the "server stops cleanly" check becomes a hard stop, which doubles as a crash/restart test.
+4. Server and dashboard by hand: `.venv\Scripts\python -m server --demo 5`, open `http://localhost:8000`.
+   - First visit asks for the first admin (name + PIN). Then: expand a row (chevron), see the posture timeline and the
+     map ("Foran" on top), search, filter, sort, switch language (EN/NO) and light/dark, press F12 and use the device
+     toolbar to check phone and tablet widths.
+   - Gear button (Innstillinger): change "Tid frakoblet før varsel" to 10, wrong PIN is refused, right PIN saves and says
+     who; Reset puts it back; Users section opens the users dialog; add a nurse and acknowledge something with that PIN.
+   - Settings are admin-only: a nurse PIN on Save must be refused.
+   - Stop the server with Ctrl+C and start it again: users, settings and mat names are still there.
+5. Desktop app: `.venv\Scripts\python main.py`. Use **Load demo recording**, then go through the tabs (Live, Analysis,
+   Timeline, Hotspots, Movement, Indices, Diagnostics, Calibration, ROI, Engineering, Help), Simple/Advanced view, light/dark,
+   Tools > Expression, record + export CSV, export snapshot (CSV + PNG), Pop out a tab. Then Engineering > Connection >
+   SmartMat server: URL `http://localhost:8000` (server from step 4 running; the legacy Web UI checkbox is off by
+   default, leave it off: it uses the same port), **Test**, **Send calibration to server** (admin PIN), **Get from server**,
+   **Server log**. These buttons need a real mat id (Serial or MQTT; simulated data and recordings have none, the panel
+   says so). With no hardware, make one over MQTT in three more PowerShell windows, from `Raspberry Pi\`:
+   `.venv\Scripts\python tools\e2e_check.py --broker` (a throw-away broker on port 1883),
+   `.venv\Scripts\python tools\publish_demo_mat.py --chip-id demo-take1` (a fake mat), and the server from step 4 without
+   `--demo`. In the desktop choose Source **MQTT** and the device `demo-take1`. Then the analysis settings buttons, for that mat:
+   - **Compare** on a fresh start: "Analysis settings match the server's." Change something in Engineering (for example
+     Hotspots > activate kPa 33, Apply values) and **Compare** again: it lists that one row (this desktop 33, server 20, from factory).
+   - **Preview on a recording...**: pick a recording (`samples\seat_take1.json`, or one of yours). A progress window runs, then a
+     table: alerts the server would raise now and with your settings, time at each risk level. The desktop stays usable meanwhile.
+   - **Send analysis settings...**: the dialog lists the differing rows; choose "For this mat only", type a reason and your admin
+     PIN. The status line says "Saved by ...: settings version s0.m1". In the dashboard (gear > the mat's **Analyse**) the value
+     shows "Denne matten" and the history has your reason. A wrong PIN says "403 Wrong PIN" and changes nothing; a nurse PIN is refused.
+   - **Get analysis settings**: change the value on the server's Analyse page, then press it here: it asks, then applies the
+     server's values (check Engineering). **Compare** now shows no differences.
+   - Save preset... / Load preset... (Engineering) are the file import/export of the same settings.
+6. The mat passport (calibration kept on the mat), no hardware: a fake mat that has a passport. With the broker, the server
+   (no `--demo`) and the desktop from step 5 running, in a fresh PowerShell window from `Raspberry Pi\`:
+   `.venv\Scripts\python tools\fake_passport_device.py --chip-id demo-take1 --serial SM-0001 --service-key sesame --custom 20x20`
+   (and `tools\publish_demo_mat.py --chip-id demo-take1` running). Then:
+   - Web: gear > the mat's **Analyse** > section "Matteoppsett lagret på matten (pass)": serial SM-0001 and a custom line. **Lagre dagens
+     oppsett på matten** with an admin PIN adds version 2 (note in the log); **Bruk** takes the slot into use (a new calibration version).
+   - Desktop: Engineering > Connection > **Passport on the mat**: **Show** lists serial and both slots; **Save current to mat**
+     (note "school") then **Show** again: custom v2 with the note; **Use custom** asks, then replaces the calibration.
+   - Command line: `.venv\Scripts\python tools\passport_tool.py show demo-take1`; `... fetch demo-take1 custom backup.smp`;
+     `... factory demo-take1 <profile.json> --service-key sesame`; with a wrong key it must say the service key is needed.
+   - Zero-touch: delete `profiles\demo-take1.json`, restart the server: the event log of the mat shows "passport adopted" by system.
+   Real board: flash `ESP32_China` (or `ESP32_Resistive`) with `passport_service_key` set in `secrets.h`, then run `show` against its chip id.
+7. Packaging (optional): `.\build_exe.bat`, then `dist\SmartMat\SmartMat.exe --selftest` and open the exe.
+Not covered without hardware: the real Maxrays/ESP32 mats, the Pi, mDNS (`.local`), push to a real phone. The phone app's own
+tests: `cd "..\Phone App"; npm ci; npm test; npm run typecheck`.
 
 ### Test the MQTT path without hardware
 `Raspberry Pi/tools/publish_demo_mat.py` replays the bundled seat recording to the broker as a fake S3 mat with

@@ -30,3 +30,27 @@ Still open (everything else from this list is shipped - see "Shipped" in `Raspbe
   risk sensitivity, stale limit, retention, advanced posture values, users; admin PIN to save, changes logged). Open:
   the risk-sensitivity defaults (relief time 120 min, medium from 80 %) are untuned placeholders, like the indices
   they drive. Then the web UI polish above.
+- Two setups (decided 2026-10-19): **institution** = headless server + web UI + phone app (hospitals, the Pi can host a
+  private SSID for the mats and use Ethernet to the hospital LAN; only the Pi's own Wi-Fi for schools/pilots) and
+  **individual / education** = desktop app (serial, ESP32 bridge, playback, deep analysis over MQTT). The hospital setup is
+  heading for regulated use, so traceability comes first. Plan, in order:
+  1. DONE: analysis settings per mat in layers (factory < site < mat), append-only versions with who/when/why, rollback,
+     the version stamped on every alert, "Analyse" page per mat in the dashboard (`server/settings.py`, `design/api-contract.md`).
+  2. DONE in code, UNTESTED in the real window (no tkinter in the cloud; Windows test I step 5): desktop Engineering >
+     Connection > SmartMat server > Compare / Preview on a recording / Send analysis settings / Get analysis settings, per mat
+     (`analysis_sync.py` holds the logic and is tested against the live server; `gui/server_panel.py` is the thin window,
+     tested through a stand-in for tkinter in `tests/test_server_panel_logic.py`). The preview replays a recording through the
+     server's own engine and alert rules, in small steps on the main thread. Files = the existing Save/Load preset. The old
+     desktop Web UI is off by default and says so when the port is taken (it crashed the desktop at start when the server
+     ran on the same PC); removing `gui/web.py` and its selftest use is still open (needs the desktop tests run on Windows).
+  3. Mat "passport" on the ESP32: DONE in code, firmware glue UNTESTED on hardware (full PlatformIO build failed here on a
+     certificate problem; `main.cpp` is only syntax-checked against stub headers). Two flash slots (factory: service key;
+     custom: broker login), opaque blob `SMP1`+zlib(JSON) <= 16 KB with CRC-32, MQTT protocol in `ESP32_China/PASSPORT.md`.
+     Rules are in `src/mat_passport.h` (28 host test cases) and mirrored in `passport_device.py`; client `passport_link.py`;
+     server routes `GET /api/mats/<id>/passport`, `POST .../passport/adopt|write` and zero-touch adoption (`server/passports.py`,
+     `tests/test_server_passport.py`, e2e part 13 over a real broker); `tools/passport_tool.py`, `tools/fake_passport_device.py`.
+     Also done: buttons in the web UI (the mat's Analyse page), a "Passport on the mat" panel in the desktop (direct over MQTT,
+     `passport_sync.py`; Tk itself untested like the server panel), and the same code in `ESP32_Resistive`
+     (`passport_service.h` + `mat_passport.h`, identical copies, a test checks it). Still open: flashing and trying a real board.
+  Open for the regulated path: MQTT login + TLS, HTTPS, a golden test that runs one recording through both the desktop
+  pipeline and the server engine, occupancy/index-hold settings are still global (not per mat yet), exporting the audit log.

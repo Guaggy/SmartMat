@@ -79,6 +79,24 @@ const i18n = {
     s_posture_forward_cells_h: "Hvor mange celler tyngdepunktet må ligge foran midten for å regnes som lent fremover.",
     s_retention_days: "Oppbevar logg og tidslinje i",
     s_retention_days_h: "Eldre hendelser og tidslinje slettes automatisk.",
+    analysis: "Analyse", siteDefaults: "Standard for hele stedet",
+    siteDefaultsHint: "Gjelder alle matter som ikke har egne verdier. Hver mat kan overstyre dem under «Analyse».",
+    matCfgTitle: "Analyseinnstillinger: {name}",
+    ppTitle: "Matteoppsett lagret på matten (pass)", ppHint: "Kalibreringen følger matten: lagre den før frakt, bruk den igjen ved behov.",
+    ppSerial: "Serienummer", ppEmpty: "tom", ppNone: "Matten svarer ikke på passet (offline eller eldre programvare).",
+    ppSame: "samme som i bruk", ppDiffers: "avviker fra det som er i bruk", ppUse: "Bruk", ppFactory: "Fabrikk", ppCustom: "Tilpasset",
+    ppSave: "Lagre dagens oppsett på matten", ppNote: "Notat (valgfritt)", dlgPpUse: "Bruke {slot}-passet?", dlgPpSave: "Lagre på matten?",
+    ppUsed: "Passet er tatt i bruk av {u}", ppSaved: "Lagret på matten (versjon {v}) av {u}", ppAnalysis: "med analyseinnstillinger",
+    matCfgIntro: "Verdier som ikke er satt for denne matten følger stedets standard, som igjen følger fabrikkverdiene. Hver endring blir en ny versjon som lagres med navn og begrunnelse.",
+    cfgVersion: "Innstillingsversjon {v}", cfgShort: "innstillinger {v}",
+    src_factory: "Fabrikk", src_site: "Stedet", src_mat: "Denne matten", setDefaultSite: "Stedets verdi: {v}", useSite: "Bruk stedets verdi",
+    g_contact: "Kontakt", g_temporal: "Tidsanalyse", g_hotspots: "Hotspots", g_movement: "Bevegelse",
+    idxBuiltin: "Innebygde risikoindekser", idxCustom: "Egendefinerte risikoindekser ({n})", errMin: "Må være minst {min}.",
+    s_indices: "Risikoindekser", s_indices_h: "Egendefinerte indekser settes fra skrivebordsprogrammet. Her kan de settes tilbake til de innebygde.",
+    reasonLabel: "Begrunnelse (valgfritt)", reasonPh: "Hvorfor endres dette?", saveForMat: "Lagre for denne matten",
+    history: "Endringshistorikk", noHistory: "Ingen endringer ennå.", version: "Versjon", restoreVersion: "Gjenopprett v{v}",
+    factoryVersion: "Fabrikkverdier (versjon 0)", dlgRollback: "Gjenopprett versjon {v}?", rolledBack: "Gjenopprettet av {u}",
+    rollbackHint: "Innstillingene settes tilbake slik de var i denne versjonen. Det blir en ny versjon, og historikken beholdes.",
     foot: "Ingeniørverktøy, ikke medisinsk utstyr. Stilling og risiko er heuristikker. Bruk sammen med vanlig klinisk vurdering.",
     help_: {
       title: "Hjelp",
@@ -185,6 +203,24 @@ const i18n = {
     s_posture_forward_cells_h: "How many cells the centre of pressure must be in front of the middle to count as leaning forward.",
     s_retention_days: "Keep the log and timeline for",
     s_retention_days_h: "Older events and timeline are deleted automatically.",
+    analysis: "Analysis", siteDefaults: "Defaults for the whole site",
+    siteDefaultsHint: "Apply to every mat that has no values of its own. Each mat can override them under \"Analysis\".",
+    matCfgTitle: "Analysis settings: {name}",
+    ppTitle: "Setup kept on the mat (passport)", ppHint: "The calibration travels with the mat: save it before shipping, use it again when needed.",
+    ppSerial: "Serial number", ppEmpty: "empty", ppNone: "The mat does not answer about its passport (offline or older firmware).",
+    ppSame: "same as in use", ppDiffers: "differs from what is in use", ppUse: "Use", ppFactory: "Factory", ppCustom: "Custom",
+    ppSave: "Save the current setup to the mat", ppNote: "Note (optional)", dlgPpUse: "Use the {slot} passport?", dlgPpSave: "Save to the mat?",
+    ppUsed: "Passport taken into use by {u}", ppSaved: "Saved to the mat (version {v}) by {u}", ppAnalysis: "with analysis settings",
+    matCfgIntro: "Values not set for this mat follow the site defaults, which follow the factory values. Every change is a new version, saved with the name and a reason.",
+    cfgVersion: "Settings version {v}", cfgShort: "settings {v}",
+    src_factory: "Factory", src_site: "Site", src_mat: "This mat", setDefaultSite: "Site value: {v}", useSite: "Use the site value",
+    g_contact: "Contact", g_temporal: "Time analysis", g_hotspots: "Hotspots", g_movement: "Movement",
+    idxBuiltin: "Built-in risk indices", idxCustom: "Custom risk indices ({n})", errMin: "Must be at least {min}.",
+    s_indices: "Risk indices", s_indices_h: "Custom indices are set from the desktop app. Here they can be put back to the built-in ones.",
+    reasonLabel: "Reason (optional)", reasonPh: "Why is this changed?", saveForMat: "Save for this mat",
+    history: "Change history", noHistory: "No changes yet.", version: "Version", restoreVersion: "Restore v{v}",
+    factoryVersion: "Factory values (version 0)", dlgRollback: "Restore version {v}?", rolledBack: "Restored by {u}",
+    rollbackHint: "The settings are put back as they were in this version. That makes a new version, and the history stays.",
     foot: "Engineering aid, not a medical device. Posture and risk are heuristics. Use alongside normal clinical assessment.",
     help_: {
       title: "Help",
@@ -659,7 +695,7 @@ function renderBell() {
     head.append(el("b", "", a.name), document.createTextNode(a.room ? " · " + a.room : ""));
     const sq = el("span", "sq " + (a.state === "open" ? (a.kind === "offline" ? "offline" : "high") : "none"));
     meta.append(sq, document.createTextNode(
-      t("kind_" + a.kind) + " · " + t("raised", { t: dur(serverNow() - a.t_raised) }) + " · " + t("st_" + a.state) + (a.by ? " " + t("byUser", { u: a.by }) : "")));
+      t("kind_" + a.kind) + " · " + t("raised", { t: dur(serverNow() - a.t_raised) }) + " · " + t("st_" + a.state) + (a.by ? " " + t("byUser", { u: a.by }) : "") + (a.config ? " · " + t("cfgShort", { v: a.config }) : "")));
     li.append(head, meta);
     if (a.state === "open") {
       const acts = el("div", "acts"), ack = el("button", "btn primary", t("ack")), ign = el("button", "btn", t("ignore"));
@@ -825,86 +861,224 @@ async function checkSetup() { // no users yet: ask for the first admin, once per
   if (S.needsAdmin && !S.setupShown && !$("dlg").open) { S.setupShown = true; firstUserDialog(); }
 }
 
-// ---------- settings page (everyone can read; an admin's PIN saves) ----------
-const SET = { items: null, hidden: [], draft: {}, bad: new Set(), failed: false, matsBox: null, saveBtn: null, saveInfo: null };
-const GROUPS = ["alerts", "risk", "mats", "data", "posture"];
+// ---------- settings pages (everyone can read; an admin's PIN saves) ----------
+// Two pages share the code: the site layer (every mat) and one mat's own layer on top of it. A page state `st` holds what the
+// server sent (items, version, history) and the draft: only what differs from the server, a value or null for "inherit again".
+const newPage = (prefix) => ({ prefix, scope: "site", items: null, version: 0, stamp: "", draft: {}, bad: new Set(), history: [], failed: false, saveBtn: null, saveInfo: null, reason: null });
+const SET = Object.assign(newPage("set_"), { hidden: [], matsBox: null });   // the site page
+const MCFG = Object.assign(newPage("mset_"), { mat: null });                 // one mat's page; scope is the mat's id
+const GROUPS = ["alerts", "risk", "mats", "data", "posture", "contact", "temporal", "hotspots", "movement"];
 const maybeT = (key) => i18n[lang][key] ?? i18n.nb[key];   // like t(), but undefined for a key that does not exist
 const fmtNum = (v) => v.toLocaleString(locale(), { maximumFractionDigits: 2 });
 const unitText = (u) => maybeT("u_" + u) ?? u;
-const fmtSetting = (it, v) => (it.type === "bool" ? t(v ? "setOn" : "setOff") : fmtNum(v) + (it.unit ? " " + unitText(it.unit) : ""));
-const settingItem = (key) => SET.items.find((i) => i.key === key);
+const labelOf = (key) => maybeT("s_" + key) ?? key.split(".").pop().replaceAll("_", " ");   // engineering keys have no translation
+function fmtValue(it, v) {
+  if (v === null || v === undefined) return it && it.type === "list" ? t("idxBuiltin") : "–";
+  if (Array.isArray(v)) return t("idxCustom", { n: v.length });
+  if (typeof v === "boolean") return t(v ? "setOn" : "setOff");
+  if (typeof v === "number") return fmtNum(v) + (it && it.unit ? " " + unitText(it.unit) : "");
+  return String(v);
+}
+const settingItem = (st, key) => st.items.find((i) => i.key === key);
+const pageUrl = (st) => (st === SET ? "/api/settings" : "/api/mats/" + encodeURIComponent(st.scope) + "/config");
 
 function problem(it, v) { // "" when the typed number is fine, else the sentence to show under the box
-  if (it.type === "bool") return "";
+  if (it.type === "bool" || it.type === "choice") return "";
   if (!Number.isFinite(v)) return t("errNumber");
   if (it.type === "int" && !Number.isInteger(v)) return t("errWhole");
+  if (it.max == null) return v < it.min ? t("errMin", { min: fmtNum(it.min) }) : "";
   if (v < it.min || v > it.max) return t("errRange", { min: fmtNum(it.min), max: fmtNum(it.max) });
   return "";
 }
 
-// the draft holds only what differs from what the server has: a value, or null for "back to the default"
-function setDraft(it, v) {
-  if (v === it.value) delete SET.draft[it.key];      // what the server already has
-  else if (v === it.default) SET.draft[it.key] = null; // only reachable while an override exists: remove it
-  else SET.draft[it.key] = v;
+// the draft holds only what differs from what the server has: a value, or null for "inherit again"
+function setDraft(st, it, v) {
+  if (JSON.stringify(v) === JSON.stringify(it.value)) delete st.draft[it.key];      // what the server already has
+  else if (v === it.default) st.draft[it.key] = null;                               // only reachable while an override exists
+  else st.draft[it.key] = v;
 }
 
-function refreshSave() {
-  if (!SET.saveBtn) return;
-  const n = Object.keys(SET.draft).length;
-  SET.saveBtn.disabled = n === 0 || SET.bad.size > 0;
-  setText(SET.saveInfo, SET.bad.size ? t("fixErrors") : n ? t("nChanges", { n }) : t("noChanges"));
+function refreshSave(st) {
+  if (!st.saveBtn) return;
+  const n = Object.keys(st.draft).length;
+  st.saveBtn.disabled = n === 0 || st.bad.size > 0;
+  setText(st.saveInfo, st.bad.size ? t("fixErrors") : n ? t("nChanges", { n }) : t("noChanges"));
 }
 
-function settingRow(it) {
+function settingRow(st, it) {
+  const mat = st !== SET;
   const row = el("div", "setrow"), left = el("div"), right = el("div", "setctl");
-  const draft = SET.draft[it.key];
-  const shown = it.key in SET.draft ? (draft === null ? it.default : draft) : it.value;
-  const label = el("label", "", t("s_" + it.key)), err = el("div", "err"), meta = el("div", "muted small");
-  const input = el("input");
-  input.id = "set_" + it.key;
-  label.htmlFor = input.id;
-  left.append(label, el("div", "muted small", maybeT("s_" + it.key + "_h") || ""));
-  if (it.type === "bool") {
-    input.type = "checkbox";
-    input.checked = shown;
-    input.addEventListener("change", () => { setDraft(it, input.checked); refreshSave(); });
+  const has = it.key in st.draft, draft = st.draft[it.key];
+  const shown = has ? (draft === null ? it.default : draft) : it.value;
+  const label = el("label", "", labelOf(it.key)), err = el("div", "err"), meta = el("div", "muted small");
+  const id = st.prefix + it.key;
+  label.htmlFor = id;
+  const src = el("span", "src " + it.source, t("src_" + it.source));
+  left.append(label, src, el("div", "muted small", maybeT("s_" + it.key + "_h") || ""));
+  const line = el("div", "setline");
+  let control = null;
+  if (it.type === "list") {   // the risk indices are edited from the desktop app; here they can be put back to the built-in ones
+    line.append(el("span", "", fmtValue(it, has ? draft : it.value)));
+  } else if (it.type === "bool") {
+    control = el("input");
+    control.type = "checkbox";
+    control.checked = shown;
+    control.addEventListener("change", () => { setDraft(st, it, control.checked); refreshSave(st); });
+  } else if (it.type === "choice") {
+    control = el("select");
+    for (const c of it.choices) { const o = el("option", "", c); o.value = c; control.append(o); }
+    control.value = shown;
+    control.addEventListener("change", () => { setDraft(st, it, control.value); refreshSave(st); });
   } else {
-    input.type = "number";
-    input.step = it.type === "int" ? "1" : "any";
-    input.min = it.min;
-    input.max = it.max;
-    input.setAttribute("inputmode", it.type === "int" ? "numeric" : "decimal");
-    input.value = shown;
-    input.addEventListener("input", () => {
-      const raw = input.value.trim(), v = raw === "" ? NaN : Number(raw.replace(",", "."));
+    control = el("input");
+    control.type = "number";
+    control.step = it.type === "int" ? "1" : "any";
+    if (it.min != null) control.min = it.min;
+    if (it.max != null) control.max = it.max;
+    control.setAttribute("inputmode", it.type === "int" ? "numeric" : "decimal");
+    control.value = shown;
+    control.addEventListener("input", () => {
+      const raw = control.value.trim(), v = raw === "" ? NaN : Number(raw.replace(",", "."));
       const msg = problem(it, v);
       setText(err, msg);
-      input.setAttribute("aria-invalid", String(!!msg));
-      if (msg) SET.bad.add(it.key);
-      else { SET.bad.delete(it.key); setDraft(it, v); }
-      refreshSave();
+      control.setAttribute("aria-invalid", String(!!msg));
+      if (msg) st.bad.add(it.key);
+      else { st.bad.delete(it.key); setDraft(st, it, v); }
+      refreshSave(st);
     });
   }
-  const line = el("div", "setline");
-  line.append(input);
-  if (it.type !== "bool" && it.unit) line.append(el("span", "muted", unitText(it.unit)));
-  meta.append(document.createTextNode(t("setDefault", { v: fmtSetting(it, it.default) })));
+  if (control) { control.id = id; line.append(control); }
+  if (control && it.type !== "bool" && it.unit) line.append(el("span", "muted", unitText(it.unit)));
+  meta.append(document.createTextNode(t(mat ? "setDefaultSite" : "setDefault", { v: fmtValue(it, it.default) })));
   if (it.changed) {
-    const reset = el("button", "link", t("resetDefault"));
+    const reset = el("button", "link", t(mat ? "useSite" : "resetDefault"));
     reset.type = "button";
     reset.addEventListener("click", () => {
-      if (it.type === "bool") input.checked = it.default; else input.value = it.default;
-      SET.bad.delete(it.key);
-      setText(err, "");
-      setDraft(it, it.default);
-      refreshSave();
+      if (it.type === "list") st.draft[it.key] = null;
+      else {
+        if (control && it.type === "bool") control.checked = it.default; else if (control) control.value = it.default;
+        st.bad.delete(it.key);
+        setText(err, "");
+        setDraft(st, it, it.default);
+      }
+      refreshSave(st);
+      if (it.type === "list") setText(line, fmtValue(it, null));
     });
     meta.append(document.createTextNode(" · "), reset);
   }
   right.append(line, err, meta);
   row.append(left, right);
   return row;
+}
+
+function renderGroups(page, st) {
+  for (const g of GROUPS) {
+    const items = st.items.filter((i) => i.group === g);
+    if (!items.length) continue;
+    const adv = items.filter((i) => i.advanced);
+    if (adv.length === items.length) { // a group for engineers only is one fold-out with its own title
+      const d = el("details", "adv");
+      d.open = adv.some((i) => i.key in st.draft);
+      d.append(el("summary", "", t("g_" + g) + " – " + t("advanced")));
+      for (const it of adv) d.append(settingRow(st, it));
+      page.append(d);
+      continue;
+    }
+    page.append(el("h2", "", t("g_" + g)));
+    if (maybeT("g_" + g + "_h")) page.append(el("p", "muted", t("g_" + g + "_h")));
+    for (const it of items.filter((i) => !i.advanced)) page.append(settingRow(st, it));
+    if (adv.length) {
+      const d = el("details", "adv");
+      d.open = adv.some((i) => i.key in st.draft);
+      d.append(el("summary", "", t("advanced")));
+      for (const it of adv) d.append(settingRow(st, it));
+      page.append(d);
+    }
+  }
+}
+
+function renderHistory(page, st) { // every version of this layer: who, when, why, what changed, and a way back
+  page.append(el("h2", "", t("history")));
+  const list = el("ul", "ulist hist");
+  if (!st.history.length) list.append(el("li", "muted", t("noHistory")));
+  st.history.forEach((h, index) => {
+    const li = el("li"), who = el("span", "who"), acts = el("span", "acts");
+    const when = new Date(h.t * 1000).toLocaleString(locale(), { dateStyle: "short", timeStyle: "short" });
+    who.append(el("b", "", t("version") + " " + h.version), document.createTextNode(" · " + when + " · " + (h.user || "–") + (h.reason ? " · " + h.reason : "")));
+    const lines = el("div", "muted small");
+    for (const [key, [from, to]] of Object.entries(h.changes || {})) {
+      const it = st.items && settingItem(st, key);
+      lines.append(el("div", "", labelOf(key) + ": " + fmtValue(it, from) + " → " + fmtValue(it, to)));
+    }
+    who.append(lines);
+    if (index > 0) { // the newest version is what is in force; older ones can be put back
+      const back = el("button", "link", t("restoreVersion", { v: h.version }));
+      back.type = "button";
+      back.addEventListener("click", () => rollbackDialog(st, h.version));
+      acts.append(back);
+    }
+    li.append(who, acts);
+    list.append(li);
+  });
+  if (st.history.length) {
+    const li = el("li"), acts = el("span", "acts"), back = el("button", "link", t("restoreVersion", { v: 0 }));
+    back.type = "button";
+    back.addEventListener("click", () => rollbackDialog(st, 0));
+    acts.append(back);
+    li.append(el("span", "who muted", t("factoryVersion")), acts);
+    list.append(li);
+  }
+  page.append(list);
+}
+
+function rollbackDialog(st, version) {
+  writeDialog({
+    title: t("dlgRollback", { v: version }), hint: t("rollbackHint"),
+    fields: [{ key: "reason", label: t("reasonLabel") }],
+    send: (v) => send("POST", "/api/config/rollback", { pin: v.pin, scope: st.scope, version, reason: v.reason }),
+    done: async (res) => { st.items = res.settings; st.version = res.version; st.stamp = res.stamp; st.draft = {}; st.bad.clear(); await loadHistory(st); renderPage(st); toast(t("rolledBack", { u: res.user })); },
+  });
+}
+
+function savebar(page, st) {
+  const reasonLabel = el("label", "reason", t("reasonLabel"));
+  st.reason = el("input");
+  st.reason.maxLength = 200;
+  st.reason.placeholder = t("reasonPh");
+  reasonLabel.append(st.reason);
+  const bar = el("div", "savebar");
+  st.saveInfo = el("span", "muted");
+  st.saveBtn = el("button", "btn primary", t(st === SET ? "saveChanges" : "saveForMat"));
+  st.saveBtn.type = "button";
+  st.saveBtn.addEventListener("click", () => saveSettings(st));
+  bar.append(st.saveInfo, st.saveBtn);
+  page.append(reasonLabel, bar);
+  refreshSave(st);
+}
+
+function saveSettings(st) {
+  const changes = Object.entries(st.draft).map(([key, v]) => {
+    const it = settingItem(st, key);
+    return labelOf(key) + ": " + fmtValue(it, it.value) + " → " + fmtValue(it, v === null ? it.default : v);
+  });
+  const reason = st.reason ? st.reason.value.trim() : "";
+  writeDialog({
+    title: t("dlgSave"), hint: changes.join("; "),
+    send: (v) => send("PUT", pageUrl(st), { pin: v.pin, values: st.draft, reason }),
+    done: async (res) => {
+      st.items = res.settings; st.version = res.version; st.stamp = res.stamp; st.draft = {}; st.bad.clear();
+      await loadHistory(st);
+      renderPage(st);
+      toast(t("savedSettings", { u: res.user }));
+    },
+  });
+}
+
+async function loadHistory(st) {
+  try { st.history = (await api("/api/config/history?scope=" + encodeURIComponent(st.scope))).history; } catch (e) { /* the banner already says so */ }
+}
+async function loadHidden() {
+  try { SET.hidden = (await api("/api/hidden-mats")).mats; } catch (e) { /* the banner already says so */ }
 }
 
 function renderSettingsMats() { // rebuilt only when something shown changed, so a click is never lost to the 2 s refresh
@@ -924,7 +1098,7 @@ function renderSettingsMats() { // rebuilt only when something shown changed, so
     if (m.demo) who.append(document.createTextNode(" "), el("span", "demo", "DEMO"));
     const details = [m.room, m.seat, m.unit, offline ? t("risk_offline") : ""].filter(Boolean).join(" · ");
     if (details) who.append(el("span", "muted", " · " + details));
-    acts.append(action(t("edit"), () => editMat(m)));
+    acts.append(action(t("edit"), () => editMat(m)), action(t("analysis"), () => openMatConfig(m)));
     if (offline) acts.append(action(t("rm"), () => writeDialog({
       title: t("dlgRemove", { name: m.name }), hint: t("rmHint"),
       send: (v) => send("POST", "/api/mats/" + encodeURIComponent(m.id) + "/hide", { pin: v.pin }),
@@ -950,6 +1124,10 @@ function renderSettingsMats() { // rebuilt only when something shown changed, so
   box.append(gone);
 }
 
+function renderPage(st) {
+  if (st === SET) renderSettings(); else renderMatConfig();
+}
+
 function renderSettings() {
   const page = $("settings");
   page.textContent = "";
@@ -960,59 +1138,85 @@ function renderSettings() {
   top.append(back);
   page.append(top, el("h1", "", t("settings")), el("p", "muted", t("setIntro")));
   if (!SET.items) { page.append(el("p", "muted", SET.failed ? t("netErr") : t("loading"))); return; }
+  page.append(el("p", "muted small", t("cfgVersion", { v: SET.stamp })));
 
   page.append(el("h2", "", t("setMats")), el("p", "muted", t("setMatsHint")));
   SET.matsBox = el("div");
   page.append(SET.matsBox);
   renderSettingsMats();
 
-  for (const g of GROUPS) {
-    const items = SET.items.filter((i) => i.group === g);
-    if (!items.length) continue;
-    page.append(el("h2", "", t("g_" + g)));
-    if (maybeT("g_" + g + "_h")) page.append(el("p", "muted", t("g_" + g + "_h")));
-    for (const it of items.filter((i) => !i.advanced)) page.append(settingRow(it));
-    const adv = items.filter((i) => i.advanced);
-    if (adv.length) {
-      const d = el("details", "adv");
-      d.open = adv.some((i) => i.key in SET.draft);
-      d.append(el("summary", "", t("advanced")));
-      for (const it of adv) d.append(settingRow(it));
-      page.append(d);
-    }
-  }
+  page.append(el("h2", "", t("siteDefaults")), el("p", "muted", t("siteDefaultsHint")));
+  renderGroups(page, SET);
 
   page.append(el("h2", "", t("users")), el("p", "muted", t("setUsersHint")));
   const users = el("button", "btn", t("openUsers"));
   users.type = "button";
   users.addEventListener("click", openUsers);
   page.append(users);
-
-  const bar = el("div", "savebar");
-  SET.saveInfo = el("span", "muted");
-  SET.saveBtn = el("button", "btn primary", t("saveChanges"));
-  SET.saveBtn.type = "button";
-  SET.saveBtn.addEventListener("click", saveSettings);
-  bar.append(SET.saveInfo, SET.saveBtn);
-  page.append(bar);
-  refreshSave();
+  renderHistory(page, SET);
+  savebar(page, SET);
 }
 
-function saveSettings() {
-  const changes = Object.entries(SET.draft).map(([key, v]) => {
-    const it = settingItem(key);
-    return t("s_" + key) + ": " + fmtSetting(it, it.value) + " → " + fmtSetting(it, v === null ? it.default : v);
-  });
-  writeDialog({
-    title: t("dlgSave"), hint: changes.join("; "),
-    send: (v) => send("PUT", "/api/settings", { pin: v.pin, values: SET.draft }),
-    done: (res) => { SET.items = res.settings; SET.draft = {}; SET.bad.clear(); renderSettings(); toast(t("savedSettings", { u: res.user })); },
-  });
+function renderMatConfig() {
+  const page = $("matcfg"), st = MCFG;
+  page.textContent = "";
+  st.saveBtn = st.saveInfo = null;
+  const top = el("p"), back = el("button", "link", "← " + t("settings"));
+  back.type = "button";
+  back.addEventListener("click", () => showView("settings"));
+  top.append(back);
+  const name = st.mat ? st.mat.name : st.scope;
+  page.append(top, el("h1", "", t("matCfgTitle", { name })), el("p", "muted", t("matCfgIntro")));
+  if (!st.items) { page.append(el("p", "muted", st.failed ? t("netErr") : t("loading"))); return; }
+  page.append(el("p", "muted small", t("cfgVersion", { v: st.stamp })));
+  renderGroups(page, st);
+  renderHistory(page, st);
+  renderPassport(page, st);
+  savebar(page, st);
 }
 
-async function loadHidden() {
-  try { SET.hidden = (await api("/api/hidden-mats")).mats; } catch (e) { /* the banner already says so */ }
+// The calibration kept on the mat itself: look at both slots, take one into use, save the current setup to the custom slot
+function renderPassport(page, st) {
+  const box = el("section", "card");
+  box.append(el("h2", "", t("ppTitle")), el("p", "muted small", t("ppHint")));
+  const p = st.passport;
+  if (!p) { box.append(el("p", "muted", st.passportFailed ? t("ppNone") : t("loading"))); page.append(box); return; }
+  box.append(el("p", "small", t("ppSerial") + ": " + (p.serial || "–")));
+  for (const slot of ["factory", "custom"]) {
+    const info = p.slots[slot], row = el("div", "row");
+    row.append(el("strong", "", t(slot === "factory" ? "ppFactory" : "ppCustom") + ": "));
+    if (!info) row.append(el("span", "muted", t("ppEmpty")));
+    else if (info.error) row.append(el("span", "muted", info.error));
+    else {
+      row.append(el("span", "", info.info + (info.has_analysis ? " – " + t("ppAnalysis") : "") + " – " + t(info.same_as_now ? "ppSame" : "ppDiffers")));
+      const use = el("button", "btn", t("ppUse"));
+      use.type = "button";
+      use.addEventListener("click", () => writeDialog({
+        title: t("dlgPpUse", { slot: t(slot === "factory" ? "ppFactory" : "ppCustom") }), hint: info.info,
+        send: (v) => send("POST", "/api/mats/" + encodeURIComponent(st.scope) + "/passport/adopt", { pin: v.pin, slot, reason: "passport " + slot }),
+        done: async (res) => { toast(t("ppUsed", { u: res.user })); await openMatConfig(st.mat); },
+      }));
+      row.append(use);
+    }
+    box.append(row);
+  }
+  const note = el("input"), save = el("button", "btn primary", t("ppSave"));
+  note.type = "text"; note.maxLength = 120; note.placeholder = t("ppNote");
+  save.type = "button";
+  save.addEventListener("click", () => writeDialog({
+    title: t("dlgPpSave"), hint: note.value,
+    send: (v) => send("POST", "/api/mats/" + encodeURIComponent(st.scope) + "/passport/write", { pin: v.pin, note: note.value }),
+    done: async (res) => { toast(t("ppSaved", { v: res.version, u: res.user })); await loadPassport(st); renderMatConfig(); },
+  }));
+  box.append(el("div", "row", ""), note, save);
+  page.append(box);
 }
+
+async function loadPassport(st) {
+  st.passport = null; st.passportFailed = false;
+  try { st.passport = await api("/api/mats/" + encodeURIComponent(st.scope) + "/passport"); } catch (e) { st.passportFailed = true; }
+}
+
 async function openSettings() {
   SET.draft = {};
   SET.bad.clear();
@@ -1020,10 +1224,26 @@ async function openSettings() {
   showView("settings");
   renderSettings();
   try {
-    SET.items = (await api("/api/settings")).settings;
-    await loadHidden();
+    const page = await api("/api/settings");
+    Object.assign(SET, { items: page.settings, version: page.version, stamp: page.stamp });
+    await Promise.all([loadHidden(), loadHistory(SET)]);
   } catch (e) { SET.failed = true; }
   renderSettings();
+}
+
+async function openMatConfig(m) {
+  Object.assign(MCFG, { scope: m.id, mat: m, items: null, history: [], draft: {}, failed: false, passport: null, passportFailed: false });
+  MCFG.bad.clear();
+  showView("matcfg");
+  renderMatConfig();
+  try {
+    const page = await api("/api/mats/" + encodeURIComponent(m.id) + "/config");
+    Object.assign(MCFG, { items: page.settings, version: page.version, stamp: page.stamp });
+    await loadHistory(MCFG);
+  } catch (e) { MCFG.failed = true; }
+  renderMatConfig();
+  await loadPassport(MCFG);   // slower than the page (the mat answers over MQTT): it fills in when it arrives
+  if (MCFG.scope === m.id && !$("matcfg").hidden) renderMatConfig();
 }
 
 // ---------- help page ----------
@@ -1052,10 +1272,11 @@ function renderHelp() {
   list("map", "ul");
   list("note", "ul");
 }
-function showView(name) { // "dash", "help" or "settings"
+function showView(name) { // "dash", "help", "settings" or "matcfg" (one mat's analysis settings)
   $("dash").hidden = name !== "dash";
   $("help").hidden = name !== "help";
   $("settings").hidden = name !== "settings";
+  $("matcfg").hidden = name !== "matcfg";
   window.scrollTo(0, 0);
 }
 function showHelp(on) { showView(on ? "help" : "dash"); }
@@ -1076,6 +1297,7 @@ function applyLang() {
   applyTheme(document.documentElement.dataset.theme, false);
   renderHelp();
   if (!$("settings").hidden) renderSettings();
+  if (!$("matcfg").hidden) renderMatConfig();
   renderList();
   renderBell();
   renderPanel();

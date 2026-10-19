@@ -14,9 +14,12 @@ RESTORE_GRACE_S = getattr(config, "ALERT_RESTORE_GRACE_S", 60.0)  # after a rest
 
 
 class AlertManager:
-    def __init__(self, high_hold_s=HIGH_HOLD_S, offline_hold_s=OFFLINE_HOLD_S, on_change=None, grace_s=RESTORE_GRACE_S):
+    def __init__(self, high_hold_s=HIGH_HOLD_S, offline_hold_s=OFFLINE_HOLD_S, on_change=None, grace_s=RESTORE_GRACE_S,
+                 stamp=None):
         self.holds = {"high_risk": high_hold_s, "offline": offline_hold_s}
+        self.chip_holds = {}   # chip_id -> {kind: seconds} for mats that have their own delays
         self.on_change, self.grace_s = on_change, grace_s
+        self.stamp = stamp     # stamp(chip_id) -> the settings version in force, written on every alert that is raised
         self._grace_until = {}  # alert id -> a restored alert is not cleared by "inactive" before this time
         self._since = {}   # (chip_id, kind) -> when the condition started
         self._open = {}    # alert id -> alert dict
@@ -49,6 +52,14 @@ class AlertManager:
                 self._changed(alert)
                 closed.append(dict(alert))
         return closed
+
+    def set_holds(self, chip_id, high_hold_s, offline_hold_s):
+        """The delays of one mat (what its settings resolve to)"""
+        with self._lock:
+            self.chip_holds[chip_id] = {"high_risk": high_hold_s, "offline": offline_hold_s}
+
+    def _hold(self, chip_id, kind):
+        return self.chip_holds.get(chip_id, {}).get(kind, self.holds[kind])
 
     def reset_holds(self):
         """Start counting every condition that has not opened an alert yet from its next update (after a clock jump
@@ -83,9 +94,10 @@ class AlertManager:
                 if alert is not None:
                     self._grace_until.pop(alert["id"], None)  # reporting again and still the same condition
                 since = self._since.setdefault(key, t)
-                if alert is None and t - since >= self.holds[kind]:
+                if alert is None and t - since >= self._hold(chip_id, kind):
                     alert = {"id": uuid.uuid4().hex[:12], "chip_id": chip_id, "kind": kind, "t_raised": t,
-                             "since": since, "t_cleared": None, "state": "open", "by": None, "t_handled": None}
+                             "since": since, "t_cleared": None, "state": "open", "by": None, "t_handled": None,
+                             "config": self.stamp(chip_id) if self.stamp is not None else None}
                     self._open[alert["id"]] = alert
                     self._changed(alert)
                     events.append(("raised", dict(alert)))

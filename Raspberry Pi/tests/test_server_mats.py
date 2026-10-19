@@ -31,6 +31,7 @@ class RemoveMatTests(unittest.TestCase):
         self.old = MatEngine("old-mat", 20, 20)                                  # never reported: offline
         self.old.clock = lambda: self.now
         self.server._add("old-mat", self.old, feed=mock.Mock(spec=["take", "stop"], **{"take.return_value": None}))
+        self.alerts.set_holds("old-mat", 0, 0)   # the server gives every mat the delays of its settings; this test wants none
         self.server.pump()
         self.client = create_app(self.store, self.alerts, self.server.engines, clock=lambda: self.now,
                                  settings=self.server.settings, control=self.server).test_client()

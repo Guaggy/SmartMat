@@ -11,10 +11,12 @@ from werkzeug.exceptions import HTTPException
 
 import branding
 import config
-from processing import calibration
+from passport_link import PassportError
+from processing import calibration, passport
 from processing.posture import risk_sort_key
 from server import push
-from server.settings import Settings
+from server.passports import apply_profile
+from server.settings import SITE, Settings
 from server.store import DEVICE_FIELDS, META_FIELDS
 
 DEMO_PREFIX = getattr(config, "DEMO_PREFIX", "demo-")
@@ -34,10 +36,11 @@ class ApiError(Exception):
         self.status = status
 
 
-def create_app(store, alerts, engines, clock=time.time, settings=None, control=None):
+def create_app(store, alerts, engines, clock=time.time, settings=None, control=None, passports=None):
     """store: server.store.Store, alerts: AlertManager, engines: {chip_id: MatEngine} (the runner adds to it),
     settings: server.settings.Settings (the admin-editable values; defaults from config.py when not given),
-    control: the runner, for removing and restoring mats (hide(chip_id, now), show(chip_id)); without it those are refused"""
+    control: the runner, for removing and restoring mats (hide(chip_id, now), show(chip_id)); without it those are refused,
+    passports: server.passports.PassportService (the mats' calibration kept on the mats); without it the passport routes answer 501"""
     settings = settings if settings is not None else Settings(store)
     app = Flask(__name__, static_folder=None)
 
@@ -173,22 +176,83 @@ def create_app(store, alerts, engines, clock=time.time, settings=None, control=N
         store.log(clock(), "user added", None, by or user["name"], {"name": user["name"], "role": user["role"]})
         return jsonify({"ok": True, "user": by or user["name"], "created": user}), 201
 
-    @app.route("/api/settings", methods=["GET", "PUT"])
-    def settings_route():
-        if request.method == "GET":
-            return jsonify({"settings": settings.describe()})
+    def reason_of(data):
+        reason = data.get("reason", "")
+        if not isinstance(reason, str) or len(reason) > 200:
+            raise ApiError(400, "the reason must be text of at most 200 characters")
+        return reason.strip()
+
+    def config_page(chip_id=None):
+        """What the settings page of a scope shows: every setting with its value, where it comes from, and the version"""
+        return {"scope": chip_id or SITE, "version": settings.version(chip_id or SITE), "stamp": settings.stamp(chip_id),
+                "settings": settings.describe(chip_id)}
+
+    def change_config(chip_id=None):
+        """PUT of a scope: {pin, values: {key: value | null}, reason?}. All or nothing; a new version is kept"""
         data = body()
         user = actor(data, admin=True)
         values = data.get("values")
         if not isinstance(values, dict) or not values:
-            raise ApiError(400, "send values: {setting: value, or null for the default}")
+            raise ApiError(400, "send values: {setting: value, or null to inherit}")
+        reason = reason_of(data)
         try:
-            changed = settings.update(values)
+            changed = settings.update(values, scope=chip_id, user=user["name"], reason=reason)
         except ValueError as error:
             raise ApiError(400, str(error))
         if changed:
-            store.log(clock(), "settings changed", None, user["name"], {key: list(pair) for key, pair in changed.items()})
-        return jsonify({"ok": True, "user": user["name"], "settings": settings.describe()})
+            store.log(clock(), "config changed", chip_id, user["name"],
+                      {"scope": chip_id or SITE, "version": settings.version(chip_id or SITE), "reason": reason,
+                       "changes": {key: list(pair) for key, pair in changed.items()}})
+        return jsonify(dict(config_page(chip_id), ok=True, user=user["name"]))
+
+    @app.route("/api/settings", methods=["GET", "PUT"])
+    def settings_route():
+        """The site layer: what applies to every mat that does not override it"""
+        if request.method == "GET":
+            return jsonify(config_page())
+        return change_config()
+
+    @app.route("/api/mats/<chip_id>/config", methods=["GET", "PUT"])
+    def mat_config(chip_id):
+        """One mat's own layer on top of the site layer"""
+        known(chip_id)
+        if request.method == "GET":
+            return jsonify(config_page(chip_id))
+        return change_config(chip_id)
+
+    @app.route("/api/config/history")
+    def config_history():
+        scope = request.args.get("scope", SITE)
+        if scope != SITE:
+            known(scope)
+        try:
+            limit = min(max(int(request.args.get("limit", 50)), 1), 500)
+        except ValueError:
+            raise ApiError(400, "limit must be a number")
+        return jsonify({"scope": scope, "version": settings.version(scope), "history": settings.history(scope, limit)})
+
+    @app.route("/api/config/rollback", methods=["POST"])
+    def config_rollback():
+        """Put a scope back as it was at an earlier version (that is a new version, the history stays)"""
+        data = body()
+        user = actor(data, admin=True)
+        scope, version = data.get("scope", SITE), data.get("version")
+        if scope != SITE:
+            known(scope)
+        if isinstance(version, bool) or not isinstance(version, int) or version < 0:
+            raise ApiError(400, "version must be a whole number")
+        reason = reason_of(data)
+        try:
+            changed = settings.rollback(scope, version, user=user["name"], reason=reason)
+        except KeyError:
+            raise ApiError(404, "no such version")
+        except ValueError as error:
+            raise ApiError(400, str(error))
+        if changed:
+            store.log(clock(), "config changed", None if scope == SITE else scope, user["name"],
+                      {"scope": scope, "version": settings.version(scope), "reason": reason or f"rolled back to version {version}",
+                       "changes": {key: list(pair) for key, pair in changed.items()}})
+        return jsonify(dict(config_page(None if scope == SITE else scope), ok=True, user=user["name"], changed=len(changed)))
 
     # ---- writing (PIN in the body)
 
@@ -262,15 +326,52 @@ def create_app(store, alerts, engines, clock=time.time, settings=None, control=N
         new = data.get("profile")
         if not isinstance(new, dict) or new.get("format") != calibration.PROFILE_FORMAT:
             raise ApiError(400, f"profile must be a {calibration.PROFILE_FORMAT} object")
-        new = dict(new, mat_id=chip_id, version=engine.profile_version + 1)
         try:
-            engine.set_profile(new)
+            new = apply_profile(engine, chip_id, new)
         except ValueError as error:
             raise ApiError(400, f"profile does not fit this mat: {error}")
-        calibration.PROFILES_DIR.mkdir(parents=True, exist_ok=True)
-        calibration.profile_path(chip_id).write_text(json.dumps(new, indent=2), encoding="utf-8")
         store.log(clock(), "calibration pushed", chip_id, user["name"], {"version": new["version"]})
         return jsonify({"ok": True, "user": user["name"], "id": chip_id, "version": new["version"]})
+
+    # ---- the passport kept on the mat (calibration travels with the mat): look, adopt a slot, write the custom slot
+
+    def passport_service():
+        if passports is None:
+            raise ApiError(501, "this server has no passport support")
+        return passports
+
+    @app.route("/api/mats/<chip_id>/passport")
+    def passport_status(chip_id):
+        known(chip_id)
+        try:
+            return jsonify(dict(passport_service().status(chip_id), id=chip_id))
+        except PassportError as error:
+            raise ApiError(502, str(error))
+
+    @app.route("/api/mats/<chip_id>/passport/adopt", methods=["POST"])
+    def passport_adopt(chip_id):
+        data = body()
+        user = actor(data, admin=True)
+        known(chip_id)
+        slot = data.get("slot")
+        if slot not in ("factory", "custom"):
+            raise ApiError(400, "slot must be factory or custom")
+        try:
+            document = passport_service().adopt(chip_id, slot, user["name"], reason_of(data))
+        except PassportError as error:
+            raise ApiError(502, str(error))
+        return jsonify({"ok": True, "user": user["name"], "id": chip_id, "info": passport.describe(document)})
+
+    @app.route("/api/mats/<chip_id>/passport/write", methods=["POST"])
+    def passport_write(chip_id):
+        data = body()
+        user = actor(data, admin=True)
+        known(chip_id)
+        try:
+            result = passport_service().write(chip_id, user["name"], str(data.get("note") or "")[:120])
+        except PassportError as error:
+            raise ApiError(502, str(error))
+        return jsonify(dict(result, ok=True, user=user["name"], id=chip_id))
 
     # ---- phones for push notifications. Registering needs a valid PIN (anyone could otherwise subscribe to the alerts);
     # the push token is a secret of the phone, so changing or removing a registration needs no PIN.

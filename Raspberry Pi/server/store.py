@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS alerts (id TEXT PRIMARY KEY, chip_id TEXT NOT NULL, k
     since REAL, t_cleared REAL, state TEXT NOT NULL, by TEXT, t_handled REAL);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS hidden_mats (chip_id TEXT PRIMARY KEY, t REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS config_layers (scope TEXT NOT NULL, version INTEGER NOT NULL, t REAL NOT NULL, user TEXT,
+    reason TEXT, overrides TEXT NOT NULL, changes TEXT NOT NULL, PRIMARY KEY (scope, version));
 CREATE INDEX IF NOT EXISTS timeline_mat ON timeline (chip_id, t_end);
 CREATE INDEX IF NOT EXISTS events_mat ON events (chip_id, id);
 """
@@ -60,6 +62,10 @@ class Store:
         except sqlite3.DatabaseError:  # a file system that cannot do it keeps the default journal
             pass
         self._db.executescript(SCHEMA)
+        columns = {row["name"] for row in self._db.execute("PRAGMA table_info(alerts)")}
+        if "config" not in columns:  # a database from before the alerts carried the settings version that raised them
+            self._db.execute("ALTER TABLE alerts ADD COLUMN config TEXT")
+            self._db.commit()
         self._lock = threading.Lock()  # one connection shared by the web requests and the tick
         self.lockout_attempts, self.lockout_s = lockout_attempts, lockout_s
         self._failures = {}   # client key -> (wrong PINs in a row, locked until)
@@ -200,7 +206,34 @@ class Store:
         with self._lock, self._db:
             return self._db.execute("DELETE FROM hidden_mats WHERE chip_id = ?", (chip_id,)).rowcount > 0
 
-    # ---- settings overrides (server/settings.py): key -> JSON value
+    # ---- configuration layers (server/settings.py): append-only versions per scope ("site" or a mat's chip id)
+
+    def config_current(self):
+        """{scope: (version, overrides)} of the newest version of every scope"""
+        rows = self._rows("SELECT scope, version, overrides FROM config_layers WHERE version = "
+                          "(SELECT MAX(version) FROM config_layers AS other WHERE other.scope = config_layers.scope)")
+        return {row["scope"]: (row["version"], json.loads(row["overrides"])) for row in rows}
+
+    def config_add(self, scope, version, t, user, reason, overrides, changes):
+        """A new version: the full set of overrides of that scope after the change, and what changed (for reading)"""
+        with self._lock, self._db:
+            self._db.execute("INSERT INTO config_layers (scope, version, t, user, reason, overrides, changes) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                             (scope, version, t, user, reason, json.dumps(overrides), json.dumps(changes)))
+
+    def config_history(self, scope, limit=50):
+        """Newest first: [{scope, version, t, user, reason, changes}]"""
+        rows = self._rows("SELECT scope, version, t, user, reason, changes FROM config_layers WHERE scope = ? "
+                          "ORDER BY version DESC LIMIT ?", (scope, int(limit)))
+        return [dict(row, changes=json.loads(row["changes"])) for row in rows]
+
+    def config_version(self, scope, version):
+        """The overrides a scope had at `version` (0 = nothing set); None if there is no such version"""
+        if version == 0:
+            return {}
+        rows = self._rows("SELECT overrides FROM config_layers WHERE scope = ? AND version = ?", (scope, int(version)))
+        return json.loads(rows[0]["overrides"]) if rows else None
+
+    # ---- the old single-layer settings table (migrated into config_layers on first start)
 
     def saved_settings(self):
         return {row["key"]: json.loads(row["value"]) for row in self._rows("SELECT key, value FROM settings")}
@@ -216,7 +249,7 @@ class Store:
 
     # ---- alerts (saved so a restart neither forgets them nor raises and pushes them again)
 
-    ALERT_FIELDS = ("id", "chip_id", "kind", "t_raised", "since", "t_cleared", "state", "by", "t_handled")
+    ALERT_FIELDS = ("id", "chip_id", "kind", "t_raised", "since", "t_cleared", "state", "by", "t_handled", "config")
 
     def save_alert(self, alert):
         with self._lock, self._db:

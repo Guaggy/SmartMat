@@ -21,6 +21,7 @@
 #include "frame_accumulator.h"
 #include "frame_mailbox.h"
 #include "maxrays_decoder.h"
+#include "passport_service.h"
 #include "secrets.h" // Wifi and passcodes
 
 // CONFIG
@@ -48,12 +49,13 @@ const uint32_t frame_interval_ms = 100; // publish window: 10 fps, mean of all f
 const char* mqtt_topic_prefix = "smartmat"; // topics: smartmat/<chip_id>/frame, .../meta and .../status
 const uint32_t reconnect_retry_interval_ms = 5000;
 const uint16_t mqtt_socket_timeout_s = 2; // keeps the network task responsive while the broker is down
-const uint16_t mqtt_packet_buffer_size = 2048; // 400 values are <= 1.6 KB --> this leaves headroom
+// Big enough for a whole passport slot (+ the service key line and the topic): passport.md. Frames are <= 1.6 KB.
+const uint16_t mqtt_packet_buffer_size = passport::kMaxBytes + 512;
 
 // Network task: core 0 (the Arduino loop runs on core 1), below the Wi-Fi (23) and lwIP (18) priorities
 const BaseType_t network_core = 0;
 const UBaseType_t network_priority = 1;
-const uint32_t network_stack_bytes = 8192; // free stack is printed in the 1 Hz stats
+const uint32_t network_stack_bytes = 12288; // free stack is printed in the 1 Hz stats
 const uint32_t network_poll_ms = 10;
 
 // Variables (main loop only)
@@ -78,6 +80,7 @@ TaskHandle_t network_task_handle = nullptr;
 // Network task only: never touch these from loop()
 WiFiClient wifi_client;
 PubSubClient mqtt_client(wifi_client);
+PassportService passport_service; // the mat's calibration kept in flash, answered over MQTT (PASSPORT.md)
 uint32_t last_wifi_attempt_ms = 0;
 uint32_t last_mqtt_attempt_ms = 0;
 uint8_t net_frame[cell_count];
@@ -105,6 +108,7 @@ void build_identity() {
     }
   }
 }
+
 
 // Check if wifi is connected
 bool wifi_is_connected() {
@@ -143,6 +147,7 @@ void maintain_mqtt() {
   if (mqtt_client.connect(chip_id, mqtt_username, mqtt_password, status_topic, 0, true, "offline")) {
     mqtt_client.publish(status_topic, "online", true);
     mqtt_client.publish(meta_topic, meta_text, true); // retained: a Pi that subscribes later still gets it
+    passport_service.on_connect();
     if (serial_debug) Serial.printf("MQTT connected as %s\n", chip_id);
   } else if (serial_debug) {
     Serial.println("MQTT not connected, will try again ...");
@@ -171,6 +176,9 @@ void network_task(void*) {
   mqtt_client.setServer(mqtt_broker_ip, mqtt_port);
   mqtt_client.setBufferSize(mqtt_packet_buffer_size);
   mqtt_client.setSocketTimeout(mqtt_socket_timeout_s);
+  mqtt_client.setCallback([](char* topic, uint8_t* payload, unsigned int length) {
+    passport_service.on_message(topic, payload, length);
+  });
   for (;;) {
     maintain_wifi();
     maintain_mqtt();
@@ -273,6 +281,11 @@ void setup() {
   Serial.println("Smartmat China mat V1");
   build_identity();
   Serial.printf("Chip id: %s\n", chip_id);
+  passport_service.begin(&mqtt_client, mqtt_topic_prefix, chip_id, passport_service_key);
+  Serial.printf("Passport: serial '%s', factory %s, custom %s%s\n", passport_service.serial(),
+                passport_service.has(passport::Slot::Factory) ? "yes" : "no",
+                passport_service.has(passport::Slot::Custom) ? "yes" : "no",
+                passport_service.storage_ok() ? "" : " (flash storage failed)");
 
 #ifdef SIMULATE_MAT
   Serial.println("SIMULATE_MAT: USB host off, publishing a moving blob");
