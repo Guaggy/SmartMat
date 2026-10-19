@@ -26,11 +26,18 @@ def apply_profile(engine, chip_id, profile, version=None):
     return new
 
 
+def _content(value):
+    """A profile without its bookkeeping: mat id, version and every "..._at" timestamp, at any depth"""
+    if isinstance(value, dict):
+        return {k: _content(v) for k, v in value.items() if k not in ("mat_id", "version", "note") and not k.endswith("_at")}
+    if isinstance(value, list):
+        return [_content(v) for v in value]
+    return value
+
+
 def same_calibration(profile_a, profile_b):
     """Two profiles are the same calibration if they differ at most in bookkeeping (mat id, version, timestamps)"""
-    def core(profile):
-        return {k: v for k, v in (profile or {}).items() if k not in ("mat_id", "version", "created", "saved_at", "note")}
-    return core(profile_a) == core(profile_b)
+    return _content(profile_a or {}) == _content(profile_b or {})
 
 
 class PassportService:
