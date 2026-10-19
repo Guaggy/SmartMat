@@ -1,5 +1,7 @@
 # Server patch for the phone app (push notifications)
 
+**Applied on `main` (2026-10-19).** This folder is kept as the record of what it changed; do not apply it again.
+
 `0001-push-devices-and-notifications.patch` adds, to `Raspberry Pi/server/`:
 
 - a `devices` table in `store.py` (Expo push token, platform, language, time zone, quiet window, who registered it),

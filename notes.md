@@ -18,4 +18,4 @@ Still open (everything else from this list is shipped - see "Shipped" in `Raspbe
   available as signals yet (the other layers are in the Data dropdown).
 - Weighing: the load readout is indicative only (the vendor says the mat is for trends, not weighing). A
   known-weight scale-factor calibration is the next step, once real captures show how linear the mat is.
-- Make app for andorid and IOS, simple prototype for now. Same functionality and looks as the web UI but with notification capabiltiy 
+- Phone app (`Phone App/`, Expo): prototype is merged and the server side (device registration + Expo push) is on main, but a real push to a real phone is untested. Needs the one-time Expo/EAS setup in `Phone App/README.md`; open: Apple Developer account (iOS push/TestFlight), HTTPS or Tailscale for use outside the LAN, iOS time-sensitive notifications. 

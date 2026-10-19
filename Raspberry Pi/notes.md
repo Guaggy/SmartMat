@@ -52,6 +52,7 @@ None known. (Hardware validation of the Maxrays mat, the S3 bridge and the resis
 
 ## Shipped (see docs/superpowers/ for the design/plan trail)
 
+- Phone app support in the server: `devices` table, `POST/PUT/DELETE /api/devices`, one Expo push per raised alert with per-phone quiet hours (`server/push.py`, `PUSH_ENABLED` / `PUSH_ACCESS_TOKEN`; needs internet access to exp.host). Tested against fake endpoints only, no real phone yet. Open alerts are in memory, so a server restart raises and pushes them again.
 - Expression window (Tools > Expression...): free-form formulas over the signals (`processing/expressions.py`, whitelisted `ast`, no eval; windowed names like `exposure_15`), result on its own heatmap or as a number; last formula remembered in settings.json.
 - Plot options > Interpolation > Smooth: at least 4x upsample plus bicubic image resampling (plot only; statistics stay on the real grid).
 - One-file exe (`build_exe_onefile.bat`), per-user data folder `%LOCALAPPDATA%\SmartMat` (portable.txt / legacy modes), in-app MQTT broker settings (Engineering > Connection, `localhost:1883` default, `app_settings.py`).

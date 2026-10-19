@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import sqlite3
 import threading
 
@@ -15,6 +16,8 @@ LOCKOUT_ATTEMPTS = getattr(config, "PIN_LOCKOUT_ATTEMPTS", 0)
 LOCKOUT_S = getattr(config, "PIN_LOCKOUT_S", 60)
 ROLES = ("admin", "user")
 META_FIELDS = ("name", "room", "seat", "unit")
+DEVICE_FIELDS = ("name", "lang", "tz", "quiet_from", "quiet_to")  # a phone may change these without a PIN
+PUSH_TOKEN = re.compile(r"^Expo(nent)?PushToken\[[A-Za-z0-9_-]{1,200}\]$")
 SEGMENT_GAP_S = 5.0  # a timeline segment is not stretched over a longer gap (server down)
 # ponytail: light scrypt so a PIN-only check can try every user quickly; a 4-6 digit PIN cannot resist an
 # offline guess anyway, the hash only keeps PINs from being read off the file
@@ -28,6 +31,8 @@ CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, t REAL 
     kind TEXT NOT NULL, user TEXT, detail TEXT);
 CREATE TABLE IF NOT EXISTS timeline (id INTEGER PRIMARY KEY, chip_id TEXT NOT NULL, t_start REAL NOT NULL,
     t_end REAL NOT NULL, posture TEXT, risk TEXT);
+CREATE TABLE IF NOT EXISTS devices (token TEXT PRIMARY KEY, platform TEXT, name TEXT, lang TEXT NOT NULL DEFAULT 'nb',
+    tz TEXT, quiet_from TEXT, quiet_to TEXT, user TEXT, t_registered REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS timeline_mat ON timeline (chip_id, t_end);
 CREATE INDEX IF NOT EXISTS events_mat ON events (chip_id, id);
 """
@@ -143,6 +148,36 @@ class Store:
             self._db.execute("INSERT OR REPLACE INTO mats (chip_id, name, room, seat, unit) VALUES (?, ?, ?, ?, ?)",
                              (chip_id, *values))
         return self.mats()[chip_id]
+
+    # ---- phones that get push notifications (Expo push tokens)
+
+    def devices(self):
+        return self._rows("SELECT * FROM devices ORDER BY t_registered")
+
+    def add_device(self, token, platform, user, t, **fields):
+        """Register (or re-register) a phone. ValueError for something that is not an Expo push token"""
+        if not isinstance(token, str) or not PUSH_TOKEN.match(token):
+            raise ValueError("That is not an Expo push token")
+        values = {key: fields.get(key) for key in DEVICE_FIELDS}
+        with self._lock, self._db:
+            self._db.execute("INSERT OR REPLACE INTO devices (token, platform, name, lang, tz, quiet_from, quiet_to, user,"
+                             " t_registered) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                             (token, platform, values["name"], values["lang"] or "nb", values["tz"], values["quiet_from"],
+                              values["quiet_to"], user, t))
+
+    def update_device(self, token, **fields):
+        """Change name/lang/tz/quiet window of a registered phone; KeyError if the token is unknown"""
+        if token not in {row["token"] for row in self.devices()}:
+            raise KeyError(token)
+        fields = {key: fields[key] for key in DEVICE_FIELDS if key in fields}
+        if fields:
+            with self._lock, self._db:
+                self._db.execute(f"UPDATE devices SET {', '.join(f'{key} = ?' for key in fields)} WHERE token = ?",
+                                 (*fields.values(), token))
+
+    def remove_device(self, token):
+        with self._lock, self._db:
+            return self._db.execute("DELETE FROM devices WHERE token = ?", (token,)).rowcount > 0
 
     # ---- event log (append-only) and timeline
 

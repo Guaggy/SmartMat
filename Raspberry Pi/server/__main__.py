@@ -26,6 +26,7 @@ from processing.calibration import IndividualCalibration, UniformCalibration, lo
 from server.alerts import AlertManager
 from server.app import DEMO_PREFIX, create_app
 from server.engine import MatEngine, grid_shape
+from server.push import PushSender
 from server.store import Store
 
 PUMP_S = 0.25   # ponytail: each mat is analysed at most 4 frames/s; the per-cell calibration loop costs ~13 ms a frame
@@ -157,8 +158,9 @@ class MqttMat:
 
 
 class Server:
-    def __init__(self, store, alerts, demo=0, serial_ports=(), use_mqtt=True):
+    def __init__(self, store, alerts, demo=0, serial_ports=(), use_mqtt=True, pusher=None):
         self.store, self.alerts = store, alerts
+        self.pusher = pusher if pusher is not None else PushSender(store)
         self.engines = {}   # chip_id -> MatEngine (read by the web app)
         self.feeds = {}     # chip_id -> DemoMat / MqttMat / SerialBridge
         self._opening = {}  # chip_id -> time an MQTT mat was last tried
@@ -241,7 +243,7 @@ class Server:
                 self.engines[chip_id].feed(*item)
 
     def tick(self, now):
-        """Once a second: timeline, alerts (logged), MQTT discovery"""
+        """Once a second: timeline, alerts (logged, a raised one is pushed to the registered phones), MQTT discovery"""
         self._discover(now)
         states = []
         for chip_id, engine in list(self.engines.items()):
@@ -250,6 +252,8 @@ class Server:
                 states.append((chip_id, snap["posture"], snap["risk"]))
             for kind, alert in self.alerts.update(chip_id, snap["risk"], snap["online"], now):
                 self.store.log(now, f"alert {kind}", chip_id, None, {"alert": alert["id"], "kind": alert["kind"]})
+                if kind == "raised":
+                    self.pusher.notify(alert)
         self.store.record_states(now, states)
 
     def run_loops(self):

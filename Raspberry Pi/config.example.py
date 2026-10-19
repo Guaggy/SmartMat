@@ -152,6 +152,8 @@ POSTURE_FORWARD_CELLS = 2.5   # ... this many cells towards the last row -> "for
 POSTURE_HOLD_S = 3.0          # a new posture must last this long before it counts
 ALERT_HIGH_HOLD_S = 30.0      # risk "high" this long opens an alert
 ALERT_OFFLINE_S = 30.0        # a mat offline this long opens an alert
+PUSH_ENABLED = True           # push a raised alert to phones registered by the phone app (needs internet access to exp.host)
+PUSH_ACCESS_TOKEN = ""        # optional Expo access token (expo.dev > Access tokens) so only this server can push to the phones
 RETENTION_DAYS = 30           # events and timeline older than this are deleted
 PIN_LOCKOUT_ATTEMPTS = 0      # wrong PINs in a row before a user is locked out (0 = no lockout)
 PIN_LOCKOUT_S = 60            # how long a lockout lasts

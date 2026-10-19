@@ -13,7 +13,8 @@ import branding
 import config
 from processing import calibration
 from processing.posture import risk_sort_key
-from server.store import META_FIELDS
+from server import push
+from server.store import DEVICE_FIELDS, META_FIELDS
 
 DEMO_PREFIX = getattr(config, "DEMO_PREFIX", "demo-")
 SATURATION_WARN_CELLS = getattr(config, "SATURATION_WARN_CELLS", 1)
@@ -222,6 +223,48 @@ def create_app(store, alerts, engines, clock=time.time):
         calibration.profile_path(chip_id).write_text(json.dumps(new, indent=2), encoding="utf-8")
         store.log(clock(), "calibration pushed", chip_id, user["name"], {"version": new["version"]})
         return jsonify({"ok": True, "user": user["name"], "id": chip_id, "version": new["version"]})
+
+    # ---- phones for push notifications. Registering needs a valid PIN (anyone could otherwise subscribe to the alerts);
+    # the push token is a secret of the phone, so changing or removing a registration needs no PIN.
+
+    def device_fields(data):
+        fields = {key: data[key] for key in DEVICE_FIELDS if key in data}
+        if fields.get("lang") not in (None, *push.TEXTS):
+            raise ApiError(400, f"lang must be one of {', '.join(push.TEXTS)}")
+        if fields.get("tz") and not push.valid_zone(fields["tz"]):
+            raise ApiError(400, "Unknown time zone")
+        for key in ("quiet_from", "quiet_to"):
+            if fields.get(key) and push.parse_hhmm(fields[key]) is None:
+                raise ApiError(400, f"{key} must be HH:MM")
+        if "name" in fields and fields["name"] is not None:
+            fields["name"] = str(fields["name"]).strip()[:60]
+        return fields
+
+    @app.route("/api/devices", methods=["POST"])
+    def add_device():
+        data = body()
+        user = actor(data)
+        if data.get("platform") not in ("android", "ios"):
+            raise ApiError(400, "platform must be android or ios")
+        try:
+            store.add_device(data.get("expo_push_token"), data["platform"], user["name"], clock(), **device_fields(data))
+        except ValueError as error:
+            raise ApiError(400, str(error))
+        store.log(clock(), "device registered", None, user["name"], {"platform": data["platform"], "name": data.get("name")})
+        return jsonify({"ok": True, "user": user["name"]}), 201
+
+    @app.route("/api/devices/<token>", methods=["PUT", "DELETE"])
+    def one_device(token):
+        if request.method == "DELETE":
+            if not store.remove_device(token):
+                raise ApiError(404, "Unknown device")
+            store.log(clock(), "device removed")
+            return jsonify({"ok": True})
+        try:
+            store.update_device(token, **device_fields(body()))
+        except KeyError:
+            raise ApiError(404, "Unknown device")
+        return jsonify({"ok": True})
 
     @app.route("/api/users/<int:user_id>", methods=["PUT"])
     def update_user(user_id):

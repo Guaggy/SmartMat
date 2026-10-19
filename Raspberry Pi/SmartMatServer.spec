@@ -7,7 +7,7 @@ a = Analysis(
     datas=[("config.example.py", "."), ("assets", "assets"), ("samples/seat_take1.json", "samples"),
            ("server/static", "server/static")],
     hiddenimports=["serial.tools.list_ports_windows", "server.app", "server.engine", "server.store",
-                   "server.alerts"],
+                   "server.alerts", "server.push", "tzdata"],
     excludes=["config", "tkinter", "matplotlib", "gui"],
 )
 pyz = PYZ(a.pure)

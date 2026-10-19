@@ -143,3 +143,11 @@ dashboard shows "Acknowledged by <user>". Error texts start with a capital and a
 
 `localStorage` keys (all optional, every access in try/catch): `sm.lang` (`nb`|`en`), `sm.theme` (`light`|`dark`),
 `sm.sort`, `sm.unit`. Nothing about patients; no PIN is ever stored.
+
+## Phone app (push devices)
+
+Used by `Phone App/`, not by the dashboard. `POST /api/devices` body `{expo_push_token, platform, name, pin, lang,
+tz, quiet_from, quiet_to}` registers a phone (needs a valid staff PIN, wrong PINs count towards the lock-out);
+`PUT /api/devices/<token>` updates language and quiet hours and `DELETE /api/devices/<token>` removes it (no PIN: the push
+token is the secret of the phone). One push is sent per raised alert (`server/push.py`, Expo push service, mat name and room
+only), none when it clears. Settings: `PUSH_ENABLED`, `PUSH_ACCESS_TOKEN` in `config.py`. See `Phone App/README.md`.
