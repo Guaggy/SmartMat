@@ -18,11 +18,11 @@ from collections import namedtuple
 
 import config
 from processing.indices import validate_indices
+from processing.settings import ENGINEERING_GROUPS, unflatten_preset
 
 Spec = namedtuple("Spec", "key group type config_name fallback low high unit advanced site_only choices")
 
 SITE = "site"
-ENGINEERING_GROUPS = ("temporal", "hotspots", "movement")   # the nested groups of processing.settings
 MISSING = object()
 
 
@@ -114,12 +114,7 @@ def _check(spec, value):
     return value
 
 
-def unflatten(flat):
-    """The engineering part of a flat dict as the nested preset of processing.settings"""
-    preset = {"contact_threshold_kpa": flat["contact_threshold_kpa"]}
-    for group in ENGINEERING_GROUPS:
-        preset[group] = {key.split(".", 1)[1]: value for key, value in flat.items() if key.startswith(group + ".")}
-    return preset
+unflatten = unflatten_preset   # the engineering part of a flat dict as the nested preset of processing.settings
 
 
 def _validate_resolved(flat):

@@ -11,7 +11,7 @@ from processing.calibration import (Calibration, IndividualCalibration, Pressure
                                     apply_profile, cell_size_mm, configured_mat_size, profile_size_mm)
 from processing.frames import orient_grid, process_frame
 from processing.hotspots import HotspotTracker
-from processing.indices import IndexMonitor, default_indices
+from processing.indices import IndexMonitor, tuned_indices   # tuned_indices is also what the tests import from here
 from processing.modes import LiveMode
 from processing.motion import MotionAnalyzer
 from processing.occupancy import OccupancyDetector
@@ -35,17 +35,6 @@ def _engineering_key(key):
     """contact_threshold_kpa and temporal.* / hotspots.* / movement.*: the desktop's engineering preset, flattened"""
     return key == "contact_threshold_kpa" or key.split(".", 1)[0] in ENGINEERING_GROUPS and "." in key
 
-
-def tuned_indices(relief_minutes, near_percent):
-    """The default risk indices with the dashboard's two knobs: the time without relief that counts as full
-    risk (the since_relief reference) and where "medium" starts (the near margin)"""
-    definitions = default_indices()
-    for definition in definitions:
-        definition["near_fraction"] = near_percent / 100.0
-        for term in definition["terms"]:
-            if term.get("signal") == "since_relief":
-                term["reference"] = relief_minutes * 60.0
-    return definitions
 
 # processing/* reads the grid size from config.TOTAL_ROWS/COLS, so each mat runs with its own size set.
 # ponytail: one global lock, mats are processed one at a time; fine for a ward of mats at ~10 fps.

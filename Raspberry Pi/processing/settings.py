@@ -15,6 +15,26 @@ PRESET_FORMAT = "smartmat_engineering_preset_v1"
 NEWER_KEYS = {"activate_fraction", "deactivate_fraction", "relief_grace_s"}
 
 
+ENGINEERING_GROUPS = ("temporal", "hotspots", "movement")   # the nested groups of a preset
+
+
+def flatten_preset(settings):
+    """A preset as one flat dict: `contact_threshold_kpa` and `temporal.<key>`, `hotspots.<key>`, `movement.<key>`
+    (the key space of the server's layered settings; indices are not part of it)"""
+    flat = {"contact_threshold_kpa": settings["contact_threshold_kpa"]}
+    for group in ENGINEERING_GROUPS:
+        flat.update({f"{group}.{key}": value for key, value in settings[group].items()})
+    return flat
+
+
+def unflatten_preset(flat):
+    """The engineering part of a flat dict as a nested preset (validate it with validate_settings)"""
+    preset = {"contact_threshold_kpa": flat["contact_threshold_kpa"]}
+    for group in ENGINEERING_GROUPS:
+        preset[group] = {key.split(".", 1)[1]: value for key, value in flat.items() if key.startswith(group + ".")}
+    return preset
+
+
 def capture_settings(contact_threshold, temporal, hotspots, motion):
     return {"contact_threshold_kpa": float(contact_threshold),
             "temporal": temporal.settings(), "hotspots": hotspots.settings(),
