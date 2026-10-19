@@ -2,7 +2,10 @@
 
 import numpy as np
 
-from config import HEALTH_SATURATION_MARGIN, SATURATION_WARN_CELLS, VALUE_MAX_DEFAULT
+import config
+from config import HEALTH_SATURATION_MARGIN, VALUE_MAX_DEFAULT
+
+SATURATION_WARN_CELLS = getattr(config, "SATURATION_WARN_CELLS", 1)   # an older config.py may not have it
 
 
 def contact_mask(pressure_kpa, threshold_kpa):

@@ -2267,7 +2267,7 @@ class DesktopApp:
 
     def _show_saturation(self, count):
         """Amber warning under the load line while cells are at the sensor limit"""
-        if count >= app_config.SATURATION_WARN_CELLS:
+        if count >= getattr(app_config, "SATURATION_WARN_CELLS", 1):
             self.saturation_var.set(f"{count} cells at sensor limit: load and peak read low")
             if not self.saturation_label.winfo_manager():
                 self.saturation_label.pack(anchor="w", after=self._load_row)
