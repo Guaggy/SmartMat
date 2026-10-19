@@ -19,7 +19,10 @@ Still open (everything else from this list is shipped - see "Shipped" in `Raspbe
 - Weighing: the load readout is indicative only (the vendor says the mat is for trends, not weighing). A
   known-weight scale-factor calibration is the next step, once real captures show how linear the mat is.
 - Phone app (`Phone App/`, Expo): prototype is merged and the server side (device registration + Expo push) is on main, but a real push to a real phone is untested. Needs the one-time Expo/EAS setup in `Phone App/README.md`; open: Apple Developer account (iOS push/TestFlight), HTTPS or Tailscale for use outside the LAN, iOS time-sensitive notifications. 
-- Improove WEB UI as shown in the presentation. As shown in SmartMat-Produktpresentasjon.pdf slide 3.
+- Web UI follows slide 3 of SmartMat-Produktpresentasjon.pdf now (rounded pills and cards, icon header with "Filter (n av m
+  matter)", chevron rows, posture-coloured timeline with a risk strip and the red "Handle nå" link, soft map with Front on
+  top, details folded away). Open: check it on a real tablet and phone with real mats; the "+" icon of the slide has no
+  counterpart yet (adding mats happens on its own when they connect).
 - Do a thorough check of the program
 - Headless server: built and tested in simulation (alerts survive restarts, one failing mat does not stop the others,
   WAL database, systemd unit). Open: run it on the real Pi (`SETUP_AND_TEST.md` test H).

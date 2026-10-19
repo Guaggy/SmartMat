@@ -20,25 +20,33 @@
     <img class="lockup" id="logo" src="img/logo_lockup_light.png" alt="Verdian Medical">
     <img class="mark" id="logoMark" src="img/logo_mark_light.png" alt="Verdian Medical">
   </a>
-  <select id="unit" data-i-label="unitFilter"><option value="" data-i="allUnits"></option></select>
-  <label><span data-i="sortBy"></span>
-    <select id="sort">
+  <div class="ctl"><span class="ctl-l" id="unitL"></span>
+    <select id="unit" data-i-label="unitFilter"><option value="" data-i="allUnits"></option></select>
+  </div>
+  <div class="ctl"><span class="ctl-l" data-i="sortBy"></span>
+    <select id="sort" data-i-label="sortBy">
       <option value="risk" data-i="sortRisk"></option>
       <option value="room" data-i="sortRoom"></option>
       <option value="device" data-i="sortDevice"></option>
       <option value="time" data-i="sortTime"></option>
     </select>
-  </label>
+  </div>
   <input id="search" type="search" data-i-ph="searchPh" data-i-label="searchPh" autocomplete="off">
   <span class="grow"></span>
-  <button class="btn bell" id="bell" type="button" aria-expanded="false" aria-controls="bellpanel">
+  <button class="icon-btn bell" id="bell" type="button" aria-expanded="false" aria-controls="bellpanel" data-i-title="alerts">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 17V11a6 6 0 0 1 12 0v6l2 2H4zM10 21h4"/></svg>
-    <span data-i="alerts"></span><span class="badge" id="badge" hidden></span>
+    <span class="badge" id="badge" hidden></span>
   </button>
-  <button class="btn" id="settingsBtn" type="button" data-i="settings"></button>
-  <button class="btn" id="helpBtn" type="button" data-i="help"></button>
-  <button class="btn" id="langBtn" type="button"></button>
-  <button class="btn" id="themeBtn" type="button"></button>
+  <button class="icon-btn" id="settingsBtn" type="button" data-i-title="settings" data-i-label="settings">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+  </button>
+  <button class="icon-btn" id="helpBtn" type="button" data-i-title="help" data-i-label="help">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1.1 1-1.1 1.8M12 17h.01"/></svg>
+  </button>
+  <button class="txt-btn" id="langBtn" type="button"></button>
+  <button class="icon-btn" id="themeBtn" type="button" data-i-title="theme" data-i-label="theme">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4v16" /><path d="M12 4a8 8 0 0 1 0 16z" class="fill"/></svg>
+  </button>
 </header>
 
 <div id="banner" class="banner" role="alert" hidden></div>
@@ -51,7 +59,7 @@
 <main id="dash" class="layout">
   <section class="panel" id="list" aria-label="Mats">
     <div class="cols" aria-hidden="true">
-      <span data-i="colDevice"></span><span data-i="colRoom"></span><span data-i="colSeat"></span>
+      <span></span><span data-i="colDevice"></span><span data-i="colRoom"></span><span data-i="colSeat"></span>
       <span data-i="colOk"></span><span data-i="colStatus"></span>
     </div>
     <div id="rows"></div>
@@ -69,24 +77,26 @@
     <p class="pm-sub" id="pmSub"></p>
     <div id="pmBody" hidden>
       <p class="note bad" id="pmStale" hidden></p>
-      <div class="chair">
-        <div class="back"></div>
-        <div class="seat"><canvas id="map" width="160" height="160"></canvas></div>
+      <div class="mapbox">
         <div class="front" data-i="front"></div>
+        <div class="seat" id="seat"><canvas id="map" width="160" height="160"></canvas></div>
       </div>
-      <div class="ramp" id="ramp"></div>
-      <div class="ramp-l"><span data-i="low"></span><span id="rampUnit"></span><span data-i="high"></span></div>
+      <div class="ramp-row"><span data-i="low"></span><div class="ramp" id="ramp"></div><span data-i="high"></span></div>
+      <p class="ramp-unit muted" id="rampUnit"></p>
       <p class="note warn" id="pmSat" hidden></p>
       <p class="note" id="pmUncal" hidden></p>
       <div class="tiles">
-        <div class="tile"><div class="k" id="peakK"></div><div class="v" id="peakV"></div></div>
-        <div class="tile"><div class="k" data-i="sinceRelief"></div><div class="v" id="reliefV"></div></div>
+        <div class="tile"><div class="v" id="peakV"></div><div class="k" id="peakK"></div></div>
+        <div class="tile"><div class="v" id="reliefV"></div><div class="k" data-i="sinceRelief"></div></div>
       </div>
-      <dl class="kv" id="pmKv"></dl>
-      <h3 data-i="hotspots"></h3>
-      <dl class="kv" id="pmSpots"></dl>
-      <h3 data-i="indices"></h3>
-      <dl class="kv" id="pmIdx"></dl>
+      <details class="more">
+        <summary data-i="details"></summary>
+        <dl class="kv" id="pmKv"></dl>
+        <h3 data-i="hotspots"></h3>
+        <dl class="kv" id="pmSpots"></dl>
+        <h3 data-i="indices"></h3>
+        <dl class="kv" id="pmIdx"></dl>
+      </details>
     </div>
   </aside>
 </main>

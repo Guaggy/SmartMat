@@ -29,7 +29,10 @@ Dark: bg #0A101D, panel #111A2D, panel2 #0D1525, line #243049, ink #E6EBF2, mute
 accent_fill #5E9C83, brandbar #141824 (the navy behind logo_lockup_dark.png), hm_bg #0A101D, ok #6FC49C, warn #E6B45A, bad #F08A80, idle #9AA6BA.
 Heatmap ramp stops: 0 (207,230,222), .25 (126,189,168), .5 (233,196,106), .75 (224,123,57), .9 (179,38,30),
 1 (107,15,26); cells below ~2 % of full scale fade into hm_bg. The web UI reads these via `/api/theme`.
-Style rules (desktop and web): flat, square, hairline rules, no shadows, no card-in-card, no dot-pills, state = text
+Web dashboard (decided 2026-10-19, follows slide 3 of the presentation): rounded cards, solid rounded status pills
+(red / orange / green / light grey for "no user"), posture colours in the timeline (`--pc-*` in `style.css`), soft pressure
+map with the front on top. The rules below still hold for the desktop app.
+Style rules (desktop): flat, square, hairline rules, no shadows, no card-in-card, no dot-pills, state = text
 with a small coloured square or a solid status cell, readouts as aligned label/value tables with tabular numerals,
 accent only on primary button / active tab / links, system font (Segoe UI), light theme default.
 Logos: `assets/logo_*.png|jpg` light and dark variants (lockup + mark); the dark brand bar uses the logo navy.

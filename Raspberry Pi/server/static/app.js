@@ -9,7 +9,9 @@ const i18n = {
     sortRisk: "Risiko", sortRoom: "Rom", sortDevice: "Enhet", sortTime: "Tid i stilling",
     searchPh: "Søk rom, enhet, sete", alerts: "Varsler", help: "Hjelp", back: "Tilbake",
     colDevice: "Enhet", colRoom: "Rom", colSeat: "Sete", colOk: "Data OK", colStatus: "Status",
-    dark: "Mørk", light: "Lys", langBtn: "English",
+    theme: "Bytt mellom lys og mørk", langBtn: "EN", filterCount: "Filter ({n} av {m} matter)",
+    details: "Detaljer", live: "sanntid", handleNow: "Handle nå", noOpenAlert: "Ingen åpne varsler for denne matten.",
+    lgPosture: "Stilling", lgRisk: "Risiko",
     p_left: "Venstre side", p_right: "Høyre side", p_forward: "Lent fremover", p_centred: "Sentrert", p_none: "Ingen bruker",
     statusNone: "Ingen bruker i {t}", offline: "Frakoblet, ingen data", alertFlag: "Varsel",
     dataOk: "Data OK", dataLost: "Ingen data",
@@ -113,7 +115,9 @@ const i18n = {
     sortRisk: "Risk", sortRoom: "Room", sortDevice: "Device", sortTime: "Time in position",
     searchPh: "Search room, device, seat", alerts: "Alerts", help: "Help", back: "Back",
     colDevice: "Device", colRoom: "Room", colSeat: "Seat", colOk: "Data OK", colStatus: "Status",
-    dark: "Dark", light: "Light", langBtn: "Norsk",
+    theme: "Switch between light and dark", langBtn: "NO", filterCount: "Filter ({n} of {m} mats)",
+    details: "Details", live: "live", handleNow: "Act now", noOpenAlert: "No open alerts for this mat.",
+    lgPosture: "Posture", lgRisk: "Risk",
     p_left: "Left side", p_right: "Right side", p_forward: "Leaning forward", p_centred: "Centred", p_none: "No user",
     statusNone: "No user for {t}", offline: "Offline, no data", alertFlag: "Alert",
     dataOk: "Data OK", dataLost: "No data",
@@ -251,6 +255,7 @@ const clock = (ts) => new Date(ts * 1000).toLocaleTimeString(locale(), { hour: "
 // ---------- state ----------
 const RISK_ORDER = { offline: 0, high: 1, medium: 2, low: 3, none: 4 };
 const RISKS = ["high", "medium", "low", "none"];
+const POSTURES = ["centred", "left", "right", "forward", "none"];
 const S = {
   mats: [], openAlerts: 0, alerts: [], timeline: null, mat: null, offset: 0, lost: false,
   selected: null, open: false, bellOpen: false, needsAdmin: false, setupShown: false,
@@ -310,10 +315,15 @@ function makeRow(id) {
   const row = el("div", "row");
   const head = el("button", "head");
   head.type = "button";
-  const dev = el("span", "c-dev"), name = el("b"), demo = el("span", "demo", "DEMO"), flag = el("span", "flag");
+  const chev = el("span", "c-chev"), dev = el("span", "c-dev"), name = el("b"), demo = el("span", "demo", "DEMO"), flag = el("span", "flag");
+  chev.setAttribute("aria-hidden", "true");
+  const chevIcon = svgEl("svg", { viewBox: "0 0 24 24" });
+  chevIcon.append(svgEl("path", { d: "M6 9l6 6 6-6" }));
+  chev.append(chevIcon);
   dev.append(name, demo, flag);
-  const room = el("span", "c-room"), seat = el("span", "c-seat"), ok = el("span", "c-ok"), st = el("span", "status");
-  head.append(dev, room, seat, ok, st);
+  const room = el("span", "c-room"), seat = el("span", "c-seat"), ok = el("span", "c-ok"), cell = el("span", "c-st"), st = el("span", "status");
+  cell.append(st);
+  head.append(chev, dev, room, seat, ok, cell);
   const detail = el("div", "detail");
   detail.hidden = true;
   const cap = el("div", "cap"), capText = el("span"), toMap = el("button", "link only-narrow");
@@ -325,7 +335,7 @@ function makeRow(id) {
   row.append(head, detail);
   head.addEventListener("click", () => select(id));
   toMap.addEventListener("click", () => $("pm").scrollIntoView());
-  const r = { row, head, name, demo, flag, room, seat, ok, st, detail, capText, toMap, tlHost, legend, legendLang: null };
+  const r = { row, head, name, demo, flag, room, seat, ok, st, detail, capText, toMap, tlHost, legend, legendKey: null };
   rows.set(id, r);
   return r;
 }
@@ -344,8 +354,8 @@ function updateRow(r, m) {
   setText(r.seat, m.seat || "");
   r.seat.dataset.l = t("colSeat");
   const good = m.online && !S.lost;
-  setText(r.ok, good ? "✓" : "✕");
-  r.ok.className = "c-ok " + (good ? "yes" : "no");
+  r.ok.className = "c-ok " + (good ? "yes" : "no"); // the tick or cross is drawn by the stylesheet
+  r.ok.setAttribute("role", "img");
   r.ok.setAttribute("aria-label", good ? t("dataOk") : t("dataLost"));
   setText(r.st, st.text);
   r.st.className = "status " + st.cls;
@@ -354,22 +364,39 @@ function updateRow(r, m) {
   if (open) {
     setText(r.capText, t("tlTitle", { n: 5 }));
     setText(r.toMap, t("showMap"));
-    if (r.legendLang !== lang) { buildLegend(r.legend); r.legendLang = lang; }
+    const key = lang + (m.open_alerts > 0); // the legend is rebuilt only when its text or the "act now" link changes
+    if (r.legendKey !== key) { buildLegend(r.legend, m); r.legendKey = key; }
     drawTimeline(r.tlHost);
   }
 }
 
-function buildLegend(host) {
+function legendItem(swatch, label) {
+  const item = el("span");
+  item.append(swatch, document.createTextNode(label));
+  return item;
+}
+
+function buildLegend(host, m) {
   host.textContent = "";
-  for (const k of RISKS) {
-    const item = el("span");
-    item.append(el("span", "sq " + k), document.createTextNode(t("risk_" + k)));
-    host.append(item);
+  const postures = el("div", "lg-row"), risks = el("div", "lg-row");
+  for (const p of POSTURES) postures.append(legendItem(el("span", "sw p-" + p), t("p_" + p)));
+  for (const k of ["low", "medium", "high"]) risks.append(legendItem(el("span", "sq " + k), t("risk_" + k)));
+  risks.append(legendItem(el("span", "sq hollow"), t("lgNoData")), legendItem(el("span", "sq mk"), t("lgHandled")));
+  if (m.open_alerts > 0) { // the slide's red "Handle nå": opens the acknowledge dialog of this mat's open alert
+    const now = el("button", "act-now");
+    now.type = "button";
+    now.append(el("span", "sq high"), document.createTextNode(t("handleNow")));
+    now.addEventListener("click", () => handleNow(m));
+    postures.append(el("span", "grow"), now);
   }
-  const nodata = el("span"), handled = el("span");
-  nodata.append(el("span", "sq hollow"), document.createTextNode(t("lgNoData")));
-  handled.append(el("span", "sq mk"), document.createTextNode(t("lgHandled")));
-  host.append(nodata, handled);
+  host.append(postures, risks);
+}
+
+async function handleNow(m) {
+  let open = [];
+  try { open = (await api("/api/alerts")).alerts.filter((a) => a.chip_id === m.id && a.state === "open"); }
+  catch (e) { toast(t("netErr")); return; }
+  if (open.length) handleAlert("ack", open[0]); else toast(t("noOpenAlert"));
 }
 
 function renderList() {
@@ -389,6 +416,7 @@ function renderList() {
   for (const [id, r] of rows) if (!seen.has(id)) { r.row.remove(); rows.delete(id); }
   $("empty").hidden = shown.length > 0;
   setText($("empty"), t("noMats"));
+  setText($("unitL"), t("filterCount", { n: shown.length, m: S.mats.length }));
   // first load: show some mat in the pressure panel without opening its timeline
   if (!S.mats.some((m) => m.id === S.selected) && shown.length) { S.selected = shown[0].id; S.open = false; S.mat = null; renderList(); fetchMat(); }
 }
@@ -424,38 +452,40 @@ function drawTimeline(host) {
   host.textContent = "";
   const tl = S.timeline;
   if (!tl || tl.id !== S.selected) return;
-  const W = Math.max(280, host.clientWidth), BAR = 40, H = BAR + 18;
+  // like the slide: a time axis on top, a posture bar in the posture colours, a thin risk strip under it
+  const W = Math.max(280, host.clientWidth), AX = 18, BAR = 24, GAP = 4, STRIP = 8, H = AX + BAR + GAP + STRIP + 8;
   const now = serverNow(), t0 = now - tl.hours * 3600;
   const x = (ts) => ((Math.max(t0, Math.min(now, ts)) - t0) / (now - t0)) * W;
   const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: "img" }, "tl");
   svg.setAttribute("aria-label", t("tlTitle", { n: tl.hours }));
-  svg.append(svgEl("rect", { x: 0.5, y: 0.5, width: W - 1, height: BAR }, "tl-track"));
-  for (let h = Math.ceil(t0 / 3600) * 3600; h < now; h += 3600) {
-    svg.append(svgEl("line", { x1: x(h), x2: x(h), y1: 0, y2: BAR + 4 }, "tick"));
-    const label = svgEl("text", { x: x(h), y: H - 3, "text-anchor": x(h) > W - 20 ? "end" : x(h) < 20 ? "start" : "middle" });
+  const clip = svgEl("clipPath", { id: "tlclip" });
+  clip.append(svgEl("rect", { x: 0, y: AX, width: W, height: BAR + GAP + STRIP, rx: 6 }));
+  svg.append(clip, svgEl("rect", { x: 0, y: AX, width: W, height: BAR, rx: 6 }, "tl-track"));
+  const step = W / tl.hours >= 90 ? 1800 : 3600; // a label every half hour when there is room, else every hour
+  for (let h = Math.ceil(t0 / step) * step; h < now; h += step) {
+    const label = svgEl("text", { x: x(h), y: AX - 5, "text-anchor": x(h) > W - 20 ? "end" : x(h) < 20 ? "start" : "middle" });
     label.textContent = clock(h);
     svg.append(label);
   }
+  const bars = svgEl("g", { "clip-path": "url(#tlclip)" });
   for (const s of tl.segments) {
     if (s.t_end <= t0) continue;
     const x1 = x(s.t_start), w = Math.max(1, x(s.t_end) - x1);
-    const risk = RISKS.includes(s.risk) ? s.risk : "none";
-    const g = svgEl("g", {}, "seg " + risk);
-    g.append(svgEl("rect", { x: x1, y: 1, width: w, height: BAR - 1 }));
+    const risk = RISKS.includes(s.risk) ? s.risk : "none", posture = POSTURES.includes(s.posture) ? s.posture : "none";
+    const g = svgEl("g", {}, "seg");
+    g.append(svgEl("rect", { x: x1, y: AX, width: w, height: BAR }, "pb p-" + posture),
+             svgEl("rect", { x: x1, y: AX + BAR + GAP, width: w, height: STRIP }, "rs r-" + risk));
     const title = svgEl("title");
-    title.textContent = `${t("p_" + s.posture)}, ${t("risk_" + risk)}, ${clock(s.t_start)} - ${clock(s.t_end)}`;
+    title.textContent = `${t("p_" + posture)}, ${t("risk_" + risk)}, ${clock(s.t_start)} - ${clock(s.t_end)}`;
     g.append(title);
-    if (w > 80) {
-      const label = svgEl("text", { x: x1 + 6, y: BAR / 2 + 4 });
-      label.textContent = t("p_" + s.posture);
-      g.append(label);
-    }
-    svg.append(g);
+    bars.append(g);
   }
+  svg.append(bars);
   for (const mk of tl.markers) {
     if (mk.t < t0) continue;
     const g = svgEl("g", {}, "mark");
-    g.append(svgEl("line", { x1: x(mk.t), x2: x(mk.t), y1: 0, y2: BAR + 6 }), svgEl("rect", { x: x(mk.t) - 3, y: BAR + 4, width: 7, height: 7 }));
+    g.append(svgEl("line", { x1: x(mk.t), x2: x(mk.t), y1: AX - 2, y2: AX + BAR + GAP + STRIP + 2 }),
+             svgEl("rect", { x: x(mk.t) - 3, y: AX + BAR + GAP + STRIP, width: 7, height: 7, rx: 2 }));
     const title = svgEl("title");
     title.textContent = t("handledBy", { u: mk.user }) + ", " + clock(mk.t);
     g.append(title);
@@ -478,53 +508,58 @@ async function fetchTimeline() {
 
 // ---------- pressure panel ----------
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
-function hexRgb(h) { const n = parseInt(h.replace("#", ""), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
 
-function ramp(v, bg) { // v 0..1 -> [r,g,b]; below ~2 % of full scale it fades into the background
+function ramp(v) { // v 0..1 -> [r,g,b] along the shared colour ramp
   v = Math.max(0, Math.min(1, v));
   const s = S.ramp;
   let i = 1;
   while (i < s.length - 1 && v > s[i][0]) i++;
   const f = Math.max(0, Math.min(1, (v - s[i - 1][0]) / (s[i][0] - s[i - 1][0] || 1)));
-  const mix = Math.min(1, v / 0.04);
-  return [0, 1, 2].map((k) => (s[i - 1][1][k] + (s[i][1][k] - s[i - 1][1][k]) * f) * mix + bg[k] * (1 - mix));
+  return [0, 1, 2].map((k) => s[i - 1][1][k] + (s[i][1][k] - s[i - 1][1][k]) * f);
 }
 
+// Front is drawn on top, like the slide. Row 0 of the grid is the back of the seat, so the grid is turned half a turn
+// (not mirrored): seen from above the sitter's own left and right stay on the viewer's left and right.
 function drawMap(snap) {
-  const canvas = $("map"), K = 8, rowsN = snap.grid.length, colsN = snap.grid[0].length;
+  const canvas = $("map"), K = 8;
+  const grid = snap.grid.map((row) => [...row].reverse()).reverse();
+  const rowsN = grid.length, colsN = grid[0].length;
+  $("seat").style.setProperty("--cols", colsN);
+  $("seat").style.setProperty("--rows", rowsN);
   canvas.width = colsN * K;
   canvas.height = rowsN * K;
-  const ctx = canvas.getContext("2d"), img = ctx.createImageData(canvas.width, canvas.height), bg = hexRgb(cssVar("--hm-bg"));
-  const at = (r, c) => snap.grid[Math.max(0, Math.min(rowsN - 1, r))][Math.max(0, Math.min(colsN - 1, c))] ?? 0;
+  const ctx = canvas.getContext("2d"), img = ctx.createImageData(canvas.width, canvas.height);
+  const at = (r, c) => grid[Math.max(0, Math.min(rowsN - 1, r))][Math.max(0, Math.min(colsN - 1, c))] ?? 0;
   for (let y = 0; y < canvas.height; y++) {
     const fy = (y + 0.5) / K - 0.5, r0 = Math.floor(fy), ty = fy - r0;
     for (let xp = 0; xp < canvas.width; xp++) {
       const fx = (xp + 0.5) / K - 0.5, c0 = Math.floor(fx), tx = fx - c0;
       const top = at(r0, c0) * (1 - tx) + at(r0, c0 + 1) * tx, bot = at(r0 + 1, c0) * (1 - tx) + at(r0 + 1, c0 + 1) * tx;
-      const rgb = ramp((top * (1 - ty) + bot * ty) / snap.scale_max, bg), p = (y * canvas.width + xp) * 4;
-      img.data.set([rgb[0], rgb[1], rgb[2], 255], p);
+      const v = (top * (1 - ty) + bot * ty) / snap.scale_max, rgb = ramp(v), p = (y * canvas.width + xp) * 4;
+      const a = Math.max(0, Math.min(1, (v - 0.02) / 0.16)); // low pressure fades out: the seat and its dot grid show through
+      img.data.set([rgb[0], rgb[1], rgb[2], Math.round(255 * a * a * (3 - 2 * a))], p);
     }
   }
   ctx.putImageData(img, 0, 0);
-  // hotspots: dashed ink outline round each area on a solid halo, so it reads on any colour
+  // hotspots: a dashed red ring round each area, on a thin light halo so it reads on any colour
   for (const spot of snap.hotspots) {
-    const key = (r, c) => r + "," + c, inside = new Set(spot.cells.map(([r, c]) => key(r, c)));
-    const path = new Path2D();
-    for (const [r, c] of spot.cells) {
-      const x0 = c * K + 1, y0 = r * K + 1, x1 = x0 + K - 2, y1 = y0 + K - 2; // edges with no neighbour in the same area
-      if (!inside.has(key(r - 1, c))) { path.moveTo(x0, y0); path.lineTo(x1, y0); }
-      if (!inside.has(key(r + 1, c))) { path.moveTo(x0, y1); path.lineTo(x1, y1); }
-      if (!inside.has(key(r, c - 1))) { path.moveTo(x0, y0); path.lineTo(x0, y1); }
-      if (!inside.has(key(r, c + 1))) { path.moveTo(x1, y0); path.lineTo(x1, y1); }
-    }
+    const cells = spot.cells.map(([r, c]) => [rowsN - 1 - r, colsN - 1 - c]);
+    const rs = cells.map((c) => c[0]), cs = cells.map((c) => c[1]);
+    const y0 = Math.min(...rs), y1 = Math.max(...rs) + 1, x0 = Math.min(...cs), x1 = Math.max(...cs) + 1;
+    const rx = Math.min(canvas.width / 2 - 2, Math.max(2 * K, ((x1 - x0) / 2) * K * 1.08 + 0.8 * K));
+    const ry = Math.min(canvas.height / 2 - 2, Math.max(2 * K, ((y1 - y0) / 2) * K * 1.08 + 0.8 * K));
+    const cx = Math.min(canvas.width - rx - 1, Math.max(rx + 1, ((x0 + x1) / 2) * K));   // the ring stays on the map
+    const cy = Math.min(canvas.height - ry - 1, Math.max(ry + 1, ((y0 + y1) / 2) * K));
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
     ctx.setLineDash([]);
-    ctx.lineWidth = spot.persistent ? 4 : 3;
+    ctx.lineWidth = spot.persistent ? 3.6 : 3;
     ctx.strokeStyle = cssVar("--panel");
-    ctx.stroke(path);
-    ctx.setLineDash([3, 2]);
-    ctx.lineWidth = spot.persistent ? 2 : 1.4;
-    ctx.strokeStyle = cssVar("--ink");
-    ctx.stroke(path);
+    ctx.stroke();
+    ctx.setLineDash([5, 3.5]);
+    ctx.lineWidth = spot.persistent ? 2 : 1.5;
+    ctx.strokeStyle = cssVar("--bad");
+    ctx.stroke();
   }
 }
 
@@ -548,7 +583,7 @@ function renderPanel() {
   const d = S.mat && S.mat.id === row.id ? S.mat : row, snap = S.mat && S.mat.id === row.id ? S.mat.snapshot : null;
   const stale = S.lost || !row.online || (S.mat && S.mat.id === row.id && S.mat.stale);
   const sub = $("pmSub");
-  sub.textContent = [row.name, row.room, row.seat].filter(Boolean).join(" · ") + " ";
+  sub.textContent = ([row.room, row.seat].filter(Boolean).join(", ") || row.name) + (stale ? "" : ", " + t("live")) + " ";
   if (row.demo) sub.append(el("span", "demo", "DEMO"));
   $("pm").classList.toggle("stale", !!stale);
   const age = S.mat && S.mat.id === row.id ? S.mat.age_s : null;
@@ -1031,7 +1066,9 @@ function applyLang() {
   for (const n of document.querySelectorAll("[data-i]")) n.textContent = t(n.dataset.i);
   for (const n of document.querySelectorAll("[data-i-ph]")) n.placeholder = t(n.dataset.iPh);
   for (const n of document.querySelectorAll("[data-i-label]")) n.setAttribute("aria-label", t(n.dataset.iLabel));
+  for (const n of document.querySelectorAll("[data-i-title]")) n.title = t(n.dataset.iTitle);
   setText($("langBtn"), t("langBtn"));
+  $("langBtn").title = lang === "en" ? "Norsk" : "English";
   setText($("foot"), t("foot"));
   $("bellpanel").setAttribute("aria-label", t("alerts"));
   for (const r of rows.values()) r.row.remove();
@@ -1050,7 +1087,6 @@ function applyTheme(mode, save = true) {
   if (save) store.set("theme", dark ? "dark" : "light");
   for (const [id, kind] of [["logo", "lockup"], ["logoMark", "mark"]]) $(id).src = `img/logo_${kind}_${dark ? "dark" : "light"}.png`;
   document.querySelector('meta[name="theme-color"]').content = cssVar("--brandbar") || "#FFFFFF";
-  setText($("themeBtn"), t(dark ? "light" : "dark"));
   const snap = S.mat && S.mat.snapshot;
   if (snap && save) renderPanel();
 }

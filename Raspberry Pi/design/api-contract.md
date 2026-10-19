@@ -54,7 +54,8 @@ The overview row, plus:
 ```
 
 - `grid`: rows x cols, values in `unit`, `null` for a dead/unknown cell (drawn as 0). Orientation is the oriented
-  grid: **row 0 is the back of the seat, the last row the front** (the panel labels the bottom edge "Front").
+  grid: **row 0 is the back of the seat, the last row the front**. The page draws it turned half a turn (not mirrored)
+  with "Front" on top, as on slide 3: seen from above, the sitter's own left and right stay on the viewer's left and right.
   Colour is `value / scale_max` through the ramp from `/api/theme`; the browser upsamples bilinearly (8x), so any
   rectangular size works.
 - `unit: "relative"` (not calibrated): the UI says "relative signal, not pressure" and hides the kPa readout; send
