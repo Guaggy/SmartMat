@@ -27,6 +27,15 @@ class AppSettingsTests(unittest.TestCase):
         self.assertEqual(app_settings.effective_mqtt(),
                          {"host": "localhost", "port": 1883, "username": "", "password": ""})
 
+    def test_environment_variables_beat_everything_saved(self):
+        self.set_config(broker_host="10.0.0.5", mqtt_username="u")
+        app_settings.save_mqtt("pi.local", 1884, "saved", "pw")
+        env = {"SMARTMAT_MQTT_HOST": "127.0.0.1", "SMARTMAT_MQTT_PORT": "1883", "SMARTMAT_MQTT_USER": "", "SMARTMAT_MQTT_PASSWORD": ""}
+        with mock.patch.dict("os.environ", env):
+            self.assertEqual(app_settings.effective_mqtt(), {"host": "127.0.0.1", "port": 1883, "username": "", "password": ""})
+        with mock.patch.dict("os.environ", {"SMARTMAT_MQTT_PORT": "nonsense"}):
+            self.assertEqual(app_settings.effective_mqtt()["port"], 1884)      # a bad value is ignored
+
     def test_config_py_beats_defaults(self):
         self.set_config(broker_host="10.0.0.5", broker_port=1999, mqtt_username="u", mqtt_password="p")
         self.assertEqual(app_settings.effective_mqtt(),

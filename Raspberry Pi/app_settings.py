@@ -99,7 +99,8 @@ def _usable(key, value, from_config):
 
 
 def effective_mqtt():
-    """{"host", "port", "username", "password"}: settings.json, then config.py, then the defaults"""
+    """{"host", "port", "username", "password"}: the SMARTMAT_MQTT_HOST / _PORT / _USER / _PASSWORD environment variables
+    (tests and tools that must not touch the saved broker), then settings.json, then config.py, then the defaults"""
     saved = load().get("mqtt")
     saved = saved if isinstance(saved, dict) else {}
     result = {}
@@ -110,6 +111,10 @@ def effective_mqtt():
             if value is not None:
                 result[key] = value
                 break
+    for key, name in (("host", "HOST"), ("port", "PORT"), ("username", "USER"), ("password", "PASSWORD")):
+        value = os.environ.get(f"SMARTMAT_MQTT_{name}")
+        if value is not None and (value := _usable(key, value, False)) is not None:
+            result[key] = value
     return result
 
 

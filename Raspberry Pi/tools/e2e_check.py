@@ -100,7 +100,9 @@ def alerts():
 
 
 def spawn(*args, log=None):
-    env = dict(os.environ, PYTHONPATH=str(APP), PYTHONUNBUFFERED="1")
+    # the check's own broker, whatever broker this PC's saved settings or config.py name
+    env = dict(os.environ, PYTHONPATH=str(APP), PYTHONUNBUFFERED="1", SMARTMAT_MQTT_HOST="127.0.0.1",
+               SMARTMAT_MQTT_PORT=str(BROKER), SMARTMAT_MQTT_USER="", SMARTMAT_MQTT_PASSWORD="")
     return subprocess.Popen([sys.executable, *args], cwd=APP, env=env, stdout=log or subprocess.DEVNULL, stderr=subprocess.STDOUT if log else subprocess.DEVNULL)
 
 
