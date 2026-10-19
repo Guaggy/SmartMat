@@ -8,6 +8,7 @@ Raspberry Pi/mats.json
 Raspberry Pi/settings.json
 Raspberry Pi/recordings/
 Raspberry Pi/profiles/
+Raspberry Pi/smartmat.db*
 **/__pycache__/
 *.pyc
 node_modules/

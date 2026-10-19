@@ -98,8 +98,41 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 cp config.example.py config.py && nano config.py
 sudo usermod -aG dialout $USER               # serial access for /dev/ttyUSB0; log out and in again
-.venv/bin/python main.py                     # needs a desktop session (VNC / Raspberry Pi Connect screen share)
+.venv/bin/python main.py                     # the desktop app: needs a desktop session (VNC / Raspberry Pi Connect screen share)
 ```
+
+For a Pi nobody sits at, run the headless server instead of the desktop app (section 4b).
+
+## 4b. Headless server on the Pi (always on) [unverified on your Pi]
+
+The server (`python -m server`, no screen or tkinter) reads every mat on the broker, raises alerts, pushes them to
+registered phones and serves the dashboard and REST API on port 8000. Do section 3 (clone, venv, `config.py`) and
+section 4 (Mosquitto) first; put the broker login in `config.py` (`mqtt_username`, `mqtt_password`; `broker_host`
+stays `localhost` when the broker runs on the same Pi).
+
+```bash
+cd "SmartMat/Raspberry Pi"
+.venv/bin/python -m server --demo 2          # try it first: two demo mats, open http://<pi>:8000, Ctrl+C
+# then as a service that starts at boot and restarts itself:
+nano deploy/smartmat-server.service          # User, and the project path in WorkingDirectory/ExecStart if not /home/pi/...
+sudo cp deploy/smartmat-server.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now smartmat-server
+systemctl status smartmat-server             # active (running)
+journalctl -u smartmat-server -f             # its output; "SmartMat server on http://0.0.0.0:8000"
+curl http://localhost:8000/api/health        # {"ok": true, ...}
+```
+
+- Data (database, per-mat profiles, mat names) is kept in `/var/lib/smartmat`, not in the git checkout: `git pull`
+  never touches it. Back that folder up; it holds the users' PIN hashes and the alert log.
+- First visit: the dashboard asks for the first administrator (name + PIN). Viewing needs no login; every change asks for a PIN.
+- Several mats show up on their own as the broker announces them (a mat that is switched off stays listed as offline).
+- Power cuts: the database runs in WAL mode, so a cut at worst loses the last second or two. Set the Pi's
+  time zone (`sudo raspi-config`) and keep NTP on; right after a boot without network the clock may jump once,
+  which the server tolerates (it does not raise alerts from the jump).
+- Update: `git pull && sudo systemctl restart smartmat-server`. Open alerts survive the restart and are not pushed twice.
+- Network: the dashboard is plain HTTP and the PIN travels with each change, so keep it on the clinic LAN. For access
+  from outside use Tailscale (section 11), never a router port-forward.
+- A USB mat plugged into the Pi: add it to `SERVER_SERIAL_PORTS` in `config.py`, `sudo usermod -aG dialout pi`, restart.
 
 ## 4. Mosquitto broker on the Pi [unverified on your Pi]
 
@@ -244,8 +277,24 @@ crashes, and each mat's tare/calibration/orientation comes back from `profiles\<
    `net dropped` does.
 
 ### Test G - web dashboard
-App: enable **Web UI**; open the two links in the About panel (hostname.local:8000 and the IP) from a phone
-or another PC on the same network. Only the mat currently open in the desktop app is live.
+Desktop app: enable **Web UI**; open the two links in the About panel (hostname.local:8000 and the IP) from a phone
+or another PC on the same network. Only the mat currently open in the desktop app is live there. The headless
+server (test H) shows every mat.
+
+### Test H - headless server on the Pi (hardware needed)
+Needs section 4b done, the Pi on the LAN and at least one real mat (or `tools/publish_demo_mat.py` from a PC).
+1. `systemctl status smartmat-server` is active; `curl http://<pi>:8000/api/health` from the PC answers.
+2. Reboot the Pi (`sudo reboot`) with nobody logged in: after about a minute the dashboard is back by itself.
+3. `http://<hostname>.local:8000` opens from a phone and a PC (Avahi/mDNS; if not, use the IP and note it).
+4. Power on two mats (or the demo mat plus a real one): both appear within seconds, each with a live pressure map.
+5. Unplug one mat: its row turns offline within `STALE_AFTER_S`, and an offline alert opens after `ALERT_OFFLINE_S`.
+   Plug it back: the alert clears.
+6. Stop Mosquitto for a minute (`sudo systemctl stop mosquitto`) and start it again: the mats come back without
+   restarting the server.
+7. With an alert open (e.g. the offline one), `sudo systemctl restart smartmat-server`: the alert is still open after
+   the restart, and a registered phone does not get a second push.
+8. Pull the Pi's power cable while it runs, plug it back: the server starts again, the users and mat names are still there.
+9. Phone on mobile data, Tailscale on: the dashboard opens at `http://<pi-tailnet-name>:8000`.
 
 ### Test the MQTT path without hardware
 `Raspberry Pi/tools/publish_demo_mat.py` replays the bundled seat recording to the broker as a fake S3 mat with
@@ -314,4 +363,4 @@ Then open the app, Source **MQTT**, and pick **demo-take1 (demo)**. Stop the too
   `curl -fsSL https://tailscale.com/install.sh | sh` then `sudo tailscale up --ssh`;
   reach the dashboard at `http://<pi-tailnet-name>:8000` and Mosquitto on the Pi's `100.x` tailnet address.
   Check that the broker and the dashboard listen on the Tailscale interface before relying on it.
-- A headless Pi (no screen) needs the app run as a service; today the desktop app needs a display.
+- A headless Pi (no screen) runs the server as a service (section 4b); the desktop app still needs a display.

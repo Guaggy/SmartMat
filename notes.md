@@ -21,4 +21,6 @@ Still open (everything else from this list is shipped - see "Shipped" in `Raspbe
 - Phone app (`Phone App/`, Expo): prototype is merged and the server side (device registration + Expo push) is on main, but a real push to a real phone is untested. Needs the one-time Expo/EAS setup in `Phone App/README.md`; open: Apple Developer account (iOS push/TestFlight), HTTPS or Tailscale for use outside the LAN, iOS time-sensitive notifications. 
 - Improove WEB UI as shown in the presentation. As shown in SmartMat-Produktpresentasjon.pdf slide 3.
 - Do a thorough check of the program
-- Implement the headless server and the dashboard configuration + web UI etc
+- Headless server: built and tested in simulation (alerts survive restarts, one failing mat does not stop the others,
+  WAL database, systemd unit). Open: run it on the real Pi (`SETUP_AND_TEST.md` test H). Then the dashboard
+  configuration page (admin settings in the web UI) and the web UI polish above.
