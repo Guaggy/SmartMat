@@ -18,6 +18,3 @@ Archived/
 # Python build/venv output
 .venv/
 build/
-
-# Local scratch: vendor PDFs, presentation (personal contact details), raw captures
-Data/
