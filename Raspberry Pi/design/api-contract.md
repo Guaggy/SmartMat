@@ -118,6 +118,23 @@ server adds `time` and `mats` (count).
 
 Viewing needs no login; never any PIN hash. Role `user` is shown as "Nurse" in the dashboard.
 
+### GET /api/settings
+
+```json
+{"settings": [{"key": "alert_high_hold_s", "group": "alerts", "type": "int|float|bool", "value": 30, "default": 30,
+               "min": 5, "max": 3600, "unit": "s", "advanced": false, "changed": false}]}
+```
+
+Everyone can read. `value` is what is in force, `default` what `config.py` says, `changed` is true while an override
+is saved. `min`/`max` are null for a bool. Groups: `alerts`, `risk`, `mats`, `data`, `posture`; `advanced` ones are
+shown under "Advanced". The labels and explanations are in the page (`s_<key>`, `s_<key>_h`), not in the API.
+Keys: `alert_high_hold_s`, `alert_offline_s`, `push_enabled`, `relief_minutes`, `near_percent`, `stale_after_s`,
+`saturation_warn_cells`, `posture_hold_s`, `posture_side_cells`, `posture_forward_cells`, `retention_days`.
+
+### GET /api/hidden-mats
+
+`{"mats": [{"id", "name", "room", "seat", "unit", "demo"}]}`: mats an admin removed (kept for a restore).
+
 ## Writes (all need `pin` in the JSON body)
 
 Wrong PIN: 403 with `{"error": "Wrong PIN"}`. Success returns the handling user's name in `user`; the
@@ -127,7 +144,10 @@ dashboard shows "Acknowledged by <user>". Error texts start with a capital and a
 |---|---|---|
 | `POST /api/alerts/<id>/ack` | `{"pin"}` | `{"ok": true, "user": "name"}` |
 | `POST /api/alerts/<id>/ignore` | `{"pin"}` | `{"ok": true, "user": "name"}` |
-| `PUT /api/mats/<id>/meta` | `{"pin", "name", "room", "seat", "unit"}` | `{"ok": true, "user": "name"}` (the real server adds the mat's id/name/room/seat/unit/demo) |
+| `PUT /api/mats/<id>/meta` | `{"pin", "name", "room", "seat", "unit"}` (admin only) | `{"ok": true, "user": "name"}` (the real server adds the mat's id/name/room/seat/unit/demo) |
+| `PUT /api/settings` | `{"pin", "values": {"<key>": value, "<key>": null}}` (admin only; `null` = back to the default) | `{"ok": true, "user": "name", "settings": [...]}` |
+| `POST /api/mats/<id>/hide` | `{"pin"}` (admin only) | `{"ok": true, "user": "name"}`; 409 "Only a mat that is offline can be removed" |
+| `POST /api/mats/<id>/show` | `{"pin"}` (admin only) | `{"ok": true, "user": "name"}`; 404 if the mat is not removed |
 | `POST /api/users` | `{"pin", "name", "role": "admin\|user", "new_pin"}` | 201 `{"ok": true, "user": "acting admin", "created": {id, name, role, active}}` |
 | `PUT /api/users/<id>` | `{"pin", "active"?, "new_pin"?}` | `{"ok": true, "user": "acting admin", "updated": {id, name, role, active}}` |
 
@@ -135,8 +155,15 @@ dashboard shows "Acknowledged by <user>". Error texts start with a capital and a
 - Users: PINs are per person, 4-8 digits, and unique (a taken PIN is a 400 "That PIN is already in use, choose another").
   `POST /api/users` needs no `pin` while there are no users, and then only with `role: "admin"` (the first admin);
   afterwards both user calls need an admin's PIN (403 "Only an admin can do this"). The last active admin cannot be
-  disabled (400). The dashboard's "Users" button lists users and offers add, disable/enable and reset PIN.
+  disabled (400). The settings page's "Open users" button lists users and offers add, disable/enable and reset PIN.
 - `meta`: all four fields are sent every time (the edit dialog sends the full set). Reject an empty name with 400.
+  Only admins change mat details (a nurse gets 403 "Only an admin can do this").
+- `settings`: all or nothing. An unknown key, a wrong type, a non-whole number for an `int` or a value outside
+  `min`/`max` is a 400 and nothing changes. Changes apply at once (no restart) and are logged as `settings changed`
+  with the old and new value and the admin's name. The dashboard's settings page (gear button, "Innstillinger") sends
+  only what differs from the server, validates in the browser first and lists the changes in the PIN dialog.
+- `hide`: stops reading the mat, closes its open alerts and drops it from the overview, alerts and mat calls; it stays
+  removed after a restart. `show` lets discovery open it again (it reappears when it next sends data).
 - After a write the dashboard re-reads overview, alerts, the mat and the timeline at once.
 
 ## What the dashboard stores in the browser

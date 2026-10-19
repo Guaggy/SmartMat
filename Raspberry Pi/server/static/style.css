@@ -186,6 +186,24 @@ dialog label input, dialog label select { display: block; width: 100%; margin-to
 .help .legend-row { margin: 6px 0; }
 .foot { padding: 0 16px 24px; color: var(--muted); font-size: 12px; }
 
+/* settings page (reuses .help for the page width) */
+.settings h1 { font-size: 20px; margin-bottom: 4px; }
+.settings h3 { margin: 14px 0 2px; font-size: 13px; color: var(--muted); }
+.settings .ulist { max-height: none; }
+.small { font-size: 12px; }
+.setrow { display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 8px 24px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.setrow label { font-weight: 600; }
+.setline { display: flex; align-items: center; gap: 8px; }
+.setline input[type=number] { width: 110px; }
+.setline input[type=checkbox] { width: 20px; height: 20px; }
+.setrow .err { min-height: 0; font-size: 12px; }
+.adv { margin-top: 8px; }
+.adv summary { padding: 8px 0; color: var(--muted); cursor: pointer; }
+.savebar { position: sticky; bottom: 0; display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 20px; padding: 10px 0; background: var(--panel); border-top: 1px solid var(--ink); }
+@media (max-width: 700px) {
+  .setrow { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* phone: cards instead of the table */
 @media (max-width: 700px) {
   .top { padding: 8px 12px; gap: 8px; }

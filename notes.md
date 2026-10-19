@@ -22,5 +22,8 @@ Still open (everything else from this list is shipped - see "Shipped" in `Raspbe
 - Improove WEB UI as shown in the presentation. As shown in SmartMat-Produktpresentasjon.pdf slide 3.
 - Do a thorough check of the program
 - Headless server: built and tested in simulation (alerts survive restarts, one failing mat does not stop the others,
-  WAL database, systemd unit). Open: run it on the real Pi (`SETUP_AND_TEST.md` test H). Then the dashboard
-  configuration page (admin settings in the web UI) and the web UI polish above.
+  WAL database, systemd unit). Open: run it on the real Pi (`SETUP_AND_TEST.md` test H).
+- Dashboard configuration page: done (gear button "Innstillinger": mats edit/remove/restore, alert holds, push on/off,
+  risk sensitivity, stale limit, retention, advanced posture values, users; admin PIN to save, changes logged). Open:
+  the risk-sensitivity defaults (relief time 120 min, medium from 80 %) are untuned placeholders, like the indices
+  they drive. Then the web UI polish above.

@@ -125,6 +125,10 @@ curl http://localhost:8000/api/health        # {"ok": true, ...}
 - Data (database, per-mat profiles, mat names) is kept in `/var/lib/smartmat`, not in the git checkout: `git pull`
   never touches it. Back that folder up; it holds the users' PIN hashes and the alert log.
 - First visit: the dashboard asks for the first administrator (name + PIN). Viewing needs no login; every change asks for a PIN.
+- Configuration is in the dashboard (**Innstillinger** / Settings button): name, room, seat and unit of each mat, removing a
+  retired mat, alert delays, push on/off, risk sensitivity, storage time, and users. Only an administrator's PIN saves
+  changes; they apply at once and are written to the log with the name. `config.py` holds the defaults; "Reset" on a
+  setting goes back to the `config.py` value.
 - Several mats show up on their own as the broker announces them (a mat that is switched off stays listed as offline).
 - Power cuts: the database runs in WAL mode, so a cut at worst loses the last second or two. Set the Pi's
   time zone (`sudo raspi-config`) and keep NTP on; right after a boot without network the clock may jump once,
