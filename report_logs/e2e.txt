@@ -1,0 +1,25 @@
+
+== 1. discovery and live data over MQTT
+PASS both mats appear and are online
+PASS mat detail has a 20x20 grid in kPa
+PASS demo mats are marked demo
+
+== 2. admin and runtime settings
+PASS first admin can be created
+PASS nurse created
+PASS settings applied live
+
+== 3. a mat goes silent (killed hard, the broker sends its last will)
+PASS demo-a turns offline
+PASS demo-b still online
+PASS an offline alert opens for demo-a
+PASS bell count is 1
+
+== 4. it comes back: the alert clears
+PASS demo-a online again
+PASS the alert has cleared
+
+== 5. an open alert survives a server restart
+PASS alert opens again
+PASS server stops (terminated: Windows has no SIGTERM, this is also a crash test)
+PASS server starts again on the same data
