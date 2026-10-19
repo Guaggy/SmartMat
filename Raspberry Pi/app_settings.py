@@ -50,6 +50,16 @@ def save_theme(mode):
     _save("theme", mode)
 
 
+def expression():
+    """The last formula typed in the Expression window ("" if none)"""
+    value = load().get("expression")
+    return value if isinstance(value, str) else ""
+
+
+def save_expression(text):
+    _save("expression", text)
+
+
 def _save(key, value):
     """Set one top-level key, keeping the others"""
     data = load()

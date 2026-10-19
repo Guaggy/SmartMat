@@ -75,6 +75,25 @@ class DesktopTabTests(unittest.TestCase):
         self.assertEqual(self.names(), ["Live", "Hotspots", "Help"])
         self.assertTrue(first.window.selected())
 
+    def test_expression_tab_shows_a_result_and_rejects_a_bad_formula(self):
+        import numpy as np
+        app = self.app
+        with mock.patch("app_settings.save_expression"), mock.patch("app_settings.expression", return_value=""):
+            app._open_expression()
+            window = app.expression_window
+            app.frame = {"pressure": np.full((16, 15), 5.0)}
+            app.frame_timestamp = 10.0
+            window.text_var.set("pressure * 2")
+            window.apply()
+            self.assertEqual(window.message_var.get(), "")
+            window.text_var.set("pressure +")
+            window.apply()
+            self.assertNotEqual(window.message_var.get(), "")
+            self.assertEqual(window.expression.text, "pressure * 2")  # the last good formula stays
+            window.refresh()
+            app.frame = None  # not connected: no data message, no crash
+            window.refresh()
+
     def test_pop_out_moves_the_tool_to_a_toplevel(self):
         app = self.app
         app._open_hotspots()

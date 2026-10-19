@@ -14,15 +14,8 @@
 
 Still open (everything else from this list is shipped - see "Shipped" in `Raspberry Pi/notes.md`):
 
-- Expression builder: let users write their own expressions over the per-cell signals (current pressure, time
-  under pressure, hotspot area, ...) and view the result on the heatmap in its own window; useful for teaching.
-  The weighted-term indices in `processing/indices.py` already cover most of the engine; what is missing is a
-  free-form formula field (parse with a whitelisted `ast`, no `eval`) and a place to show the result.
-- More heatmap layers for expressions: "time since movement" and a per-cell rolling average are not
+- More heatmap layers for the Expression window: "time since movement" and a per-cell rolling average are not
   available as signals yet (the other layers are in the Data dropdown).
 - Weighing: the load readout is indicative only (the vendor says the mat is for trends, not weighing). A
   known-weight scale-factor calibration is the next step, once real captures show how linear the mat is.
-- Dark/light mode toggle
-- Implement the new logos made recently into the program
 - Make app for andorid and IOS, simple prototype for now. Same functionality and looks as the web UI but with notification capabiltiy 
-- add completely smooth mode (interpolation infinite or something similar)

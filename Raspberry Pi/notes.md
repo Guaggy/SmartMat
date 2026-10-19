@@ -46,12 +46,14 @@ None known. (Hardware validation of the Maxrays mat, the S3 bridge and the resis
 - Web dashboard: a light background listener per known mat, so mats the desktop app doesn't have open also show a live raw heatmap. Needs a frame-reading path independent of the app's current grid size, plus one extra MQTT connection per mat. Hotspots/patient-state/indices stay limited to the connected mat until per-mat tare and calibration exist.
 - Multi-mat: connect to and record multiple mats at once (today you switch between them one at a time) - advanced per-cell stuff doesn't need to run for every mat automatically (save compute).
 - Load estimate: scale-factor calibration with a known weight (the kg figure is only as good as the pressure calibration), and an option to estimate load per marked ROI / body part. Conductance-based or piecewise calibration for the Maxrays mat (conductance is roughly linear with pressure).
-- Expression builder over the per-cell signals (free-form formulas, whitelisted `ast`) plus "time since movement" / rolling-average layers; see the root `notes.md`.
+- "Time since movement" and per-cell rolling-average signals for the Expression window (see the root `notes.md`).
 - Maxrays: retune health thresholds in counts and decide whether to validate the packet trailer, from the raw capture; ask the vendor for the protocol document.
 - Body-part recognition (deliberately deferred for now - mat position -> anatomical region, posture-dependent).
 
 ## Shipped (see docs/superpowers/ for the design/plan trail)
 
+- Expression window (Tools > Expression...): free-form formulas over the signals (`processing/expressions.py`, whitelisted `ast`, no eval; windowed names like `exposure_15`), result on its own heatmap or as a number; last formula remembered in settings.json.
+- Plot options > Interpolation > Smooth: at least 4x upsample plus bicubic image resampling (plot only; statistics stay on the real grid).
 - One-file exe (`build_exe_onefile.bat`), per-user data folder `%LOCALAPPDATA%\SmartMat` (portable.txt / legacy modes), in-app MQTT broker settings (Engineering > Connection, `localhost:1883` default, `app_settings.py`).
 - Maxrays MC266 over USB (`sources/maxrays.py`, serial profiles with a Protocol dropdown, 60 fps averaged to 10 fps), raw capture (button + `tools/capture_raw.py`), rotate/mirror, serial diagnostics, per-mat profiles, any-size recordings, ingest scaling from the mat's `value_max`, 3/4/7-field meta with a model + size preset, S3 online/offline in the device list, Windows exe build (`build_exe.bat`), version string (About, title, selftest), `SETUP_AND_TEST.md`.
 - Simple / Advanced view switch (top-right "View:"; `config.START_IN_SIMPLE_MODE`, default False = everything shown). Simple keeps connect/tare/record/export, the Data dropdown, the heatmap and a compact Peak / Estimated load / Hotspots block with the patient chip; "Mat size..." sits under the Estimated load line.

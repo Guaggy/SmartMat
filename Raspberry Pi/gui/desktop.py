@@ -62,6 +62,7 @@ from gui.diagnostics_window import DiagnosticsWindow
 from gui.temporal_window import TemporalWindow
 from gui.hotspot_window import HotspotWindow
 from gui.motion_window import MotionWindow
+from gui.expression_window import ExpressionWindow
 from gui.indices_window import IndicesWindow
 from gui.roi_window import RoiWindow
 from gui.page import Page, is_shown, tab_actions
@@ -146,6 +147,7 @@ class DesktopApp:
         self.index_history = {}      # summary index name -> recent (time, value) for its trend
         self.index_chips = {}        # index name -> status-bar label
         self.indices_window = None
+        self.expression_window = None
         self._live_indices = None    # live definitions kept aside while a recording plays
         self._last_index_update = 0.0
         self._last_web_publish = 0.0
@@ -602,6 +604,7 @@ class DesktopApp:
                               ("Analysis...", self._open_analysis), ("Diagnostics...", self._open_diagnostics),
                               ("Temporal...", self._open_temporal), ("Hotspots...", self._open_hotspots),
                               ("Movement...", self._open_motion), ("Indices...", self._open_indices),
+                              ("Expression...", self._open_expression),
                               ("Engineering...", self._open_engineering), ("Help", self._open_help)):
             ttk.Button(bar, text=text, command=command).pack(side=tk.LEFT, padx=(0, 2))
 
@@ -1437,7 +1440,7 @@ class DesktopApp:
         ttk.Label(panel, text="Interpolation:").grid(row=0, column=0, sticky="w")
         self.interpolation_var = tk.StringVar(value=self.interpolation_method)
         method_menu = ttk.Combobox(panel, textvariable=self.interpolation_var, state="readonly",
-                                   values=["None", "Linear"], width=12)
+                                   values=["None", "Linear", "Smooth"], width=12)
         method_menu.grid(row=0, column=1, sticky="w")
         method_menu.bind("<<ComboboxSelected>>", lambda _event: self._apply_plot_options())
         ttk.Label(panel, text="Display scale:").grid(row=1, column=0, sticky="w", pady=8)
@@ -1539,7 +1542,7 @@ class DesktopApp:
     def _tab_changed(self):
         """A selected tab is refreshed at once, so it never shows stale data"""
         for window in (self.analysis_window, self.diagnostics_window, self.temporal_window, self.hotspot_window,
-                       self.motion_window, self.indices_window, self.roi_window):
+                       self.motion_window, self.indices_window, self.expression_window, self.roi_window):
             if window is not None and isinstance(window.window, Page) and self._shown(window):
                 window.refresh()
 
@@ -1580,6 +1583,9 @@ class DesktopApp:
 
     def _open_indices(self):
         self.open_tool("indices_window", "Indices", lambda parent: IndicesWindow(parent, self))
+
+    def _open_expression(self):
+        self.open_tool("expression_window", "Expression", lambda parent: ExpressionWindow(parent, self))
 
     def _open_annotation(self, initial_type="Note"):
         AnnotationWindow(self.root, self, initial_type)
@@ -1908,6 +1914,8 @@ class DesktopApp:
                     self.motion_window.refresh()
                 if self._shown(self.indices_window):
                     self.indices_window.refresh()
+                if self._shown(self.expression_window):
+                    self.expression_window.refresh()
                 if self._shown(self.roi_window):
                     self.roi_window.refresh()
         self._retry_reconnect()
@@ -2154,6 +2162,8 @@ class DesktopApp:
             for collection in list(self.axes.collections):
                 collection.remove()
             self.image.set_data(plot_grid)
+            # Smooth: bicubic resampling at screen resolution on top of the upsampled grid
+            self.image.set_interpolation("bicubic" if self.interpolation_method == "Smooth" else "antialiased")
             self.image.set_extent((-0.5, app_config.TOTAL_COLS - 0.5, app_config.TOTAL_ROWS - 0.5, -0.5))
             self.image.set_clim(vmin, vmax)
             self.image.set_cmap("coolwarm" if difference else theme.heatmap_cmap())
