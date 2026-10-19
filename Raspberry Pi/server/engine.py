@@ -17,16 +17,23 @@ from processing.motion import MotionAnalyzer
 from processing.occupancy import OccupancyDetector
 from processing.posture import (FORWARD_CELLS as POSTURE_FORWARD_CELLS, SIDE_CELLS as POSTURE_SIDE_CELLS,
                                 PostureTracker, classify_posture, risk_from)
+from processing.settings import apply_settings
 from processing.signals import Context, read_signal
 from processing.statistics import contact_mask
 from processing.temporal import TemporalAnalysis
+from server.settings import ENGINEERING_GROUPS, unflatten
 
 STALE_AFTER_S = config.STALE_AFTER_S
 INDEX_UPDATE_INTERVAL_S = config.INDEX_UPDATE_INTERVAL_S
 SATURATION_LIMIT = config.VALUE_MAX_DEFAULT - config.HEALTH_SATURATION_MARGIN
 NO_ORIENTATION = {"rotation": 0, "mirror_h": False, "mirror_v": False}
-ENGINE_SETTINGS = ("stale_after_s", "relief_minutes", "near_percent", "posture_hold_s", "posture_side_cells",
-                   "posture_forward_cells")
+ENGINE_RULES = ("stale_after_s", "relief_minutes", "near_percent", "posture_hold_s", "posture_side_cells",
+                "posture_forward_cells")
+
+
+def _engineering_key(key):
+    """contact_threshold_kpa and temporal.* / hotspots.* / movement.*: the desktop's engineering preset, flattened"""
+    return key == "contact_threshold_kpa" or key.split(".", 1)[0] in ENGINEERING_GROUPS and "." in key
 
 
 def tuned_indices(relief_minutes, near_percent):
@@ -136,21 +143,28 @@ class MatEngine:
             self.last_t = None
             self._last_index_t = None
             self.saturated = 0
-            self._apply_params(indices=True)  # the new trackers start from the defaults
+            self._apply_params(indices=True, engineering=True)  # the new trackers start from the defaults
 
     def configure(self, values):
-        """Take the dashboard settings (any dict holding some of ENGINE_SETTINGS) and apply them to the running mat"""
+        """Take this mat's resolved settings (server.settings.Settings.resolved) and apply them to the running mat.
+        What did not change is left alone: a new engineering preset or risk definition restarts what it feeds."""
         with self._lock:
-            new = {key: values[key] for key in ENGINE_SETTINGS if key in values}
-            indices = any(new.get(key) != self.params.get(key) for key in ("relief_minutes", "near_percent"))
+            new = {key: value for key, value in values.items() if key in ENGINE_RULES or _engineering_key(key) or key == "indices"}
+            indices = any(new.get(key) != self.params.get(key) for key in ("relief_minutes", "near_percent", "indices"))
+            old_engineering = {key: value for key, value in self.params.items() if _engineering_key(key)}
+            engineering = {key: value for key, value in new.items() if _engineering_key(key)} != old_engineering
             self.params = new
-            self._apply_params(indices)
+            self._apply_params(indices, engineering)
 
-    def _apply_params(self, indices):
+    def _apply_params(self, indices, engineering):
         p = self.params
         self.posture.hold_s = p.get("posture_hold_s", self.posture.hold_s)
+        if engineering and "contact_threshold_kpa" in p:   # the desktop's engineering preset, for this mat only
+            with grid_shape(*self.oriented_shape):
+                self.contact_threshold_kpa = apply_settings(unflatten(p), self.temporal, self.hotspots, self.motion)
         if indices and "relief_minutes" in p and "near_percent" in p:
-            self.indices.set_definitions(tuned_indices(p["relief_minutes"], p["near_percent"]))  # restarts the warning states
+            definitions = p.get("indices") or tuned_indices(p["relief_minutes"], p["near_percent"])
+            self.indices.set_definitions(definitions)  # restarts the warning states
 
     # ---- per frame
 

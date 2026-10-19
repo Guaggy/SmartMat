@@ -27,7 +27,7 @@ from server.alerts import AlertManager
 from server.app import DEMO_PREFIX, create_app
 from server.engine import MatEngine, grid_shape
 from server.push import PushSender
-from server.settings import Settings
+from server.settings import SITE, Settings
 from server.store import Store
 
 PUMP_S = 0.25   # ponytail: each mat is analysed at most 4 frames/s; the per-cell calibration loop costs ~13 ms a frame
@@ -205,14 +205,24 @@ class Server:
         self.settings.listen(self._apply_settings, call=False)  # a change in the dashboard applies at once
 
     def _add(self, chip_id, engine, feed):
-        engine.configure(self.settings.values())
+        self._configure(chip_id, engine)
         self.engines[chip_id], self.feeds[chip_id] = engine, feed
 
-    def _apply_settings(self, values):
-        self.alerts.holds = {"high_risk": values["alert_high_hold_s"], "offline": values["alert_offline_s"]}
-        self.pusher.enabled = values["push_enabled"]
-        for engine in list(self.engines.values()):
-            engine.configure(values)
+    def _configure(self, chip_id, engine):
+        """This mat's settings: its own layer on top of the site layer on top of the factory values"""
+        values = self.settings.resolved(chip_id)
+        engine.configure(values)
+        self.alerts.set_holds(chip_id, values["alert_high_hold_s"], values["alert_offline_s"])
+
+    def _apply_settings(self, scope):
+        """A layer changed: "site" reaches every mat, a mat's id only that mat"""
+        site = self.settings.resolved()
+        if scope == SITE:
+            self.alerts.holds = {"high_risk": site["alert_high_hold_s"], "offline": site["alert_offline_s"]}
+            self.pusher.enabled = site["push_enabled"]
+        for chip_id, engine in list(self.engines.items()):
+            if scope in (SITE, chip_id):
+                self._configure(chip_id, engine)
 
     # ---- MQTT mats come and go
 
@@ -384,7 +394,7 @@ def main(argv=None):
     import_nicknames(store, args.data_dir / "mats.json")
     settings = Settings(store)
     alerts = AlertManager(high_hold_s=settings.get("alert_high_hold_s"), offline_hold_s=settings.get("alert_offline_s"),
-                          on_change=store.save_alert)
+                          on_change=store.save_alert, stamp=settings.stamp)
     alerts.restore(store.saved_alerts(), time.time())  # alerts open before a restart stay open and are not pushed again
     server = Server(store, alerts, demo=args.demo, serial_ports=getattr(config, "SERVER_SERIAL_PORTS", ()),
                     settings=settings)

@@ -129,6 +129,11 @@ curl http://localhost:8000/api/health        # {"ok": true, ...}
   retired mat, alert delays, push on/off, risk sensitivity, storage time, and users. Only an administrator's PIN saves
   changes; they apply at once and are written to the log with the name. `config.py` holds the defaults; "Reset" on a
   setting goes back to the `config.py` value.
+- Per mat: the settings page lists every mat with **Analyse**. A mat can have its own alert delays, risk sensitivity,
+  stale limit, posture values and the engineering values of the desktop app (contact, time analysis, hotspots, movement);
+  what it does not set follows the site's values ("Standard for hele stedet"), which follow the factory values. Every change
+  is a numbered version with name, time and an optional reason, any version can be restored, and every alert shows which
+  settings version raised it.
 - Several mats show up on their own as the broker announces them (a mat that is switched off stays listed as offline).
 - Power cuts: the database runs in WAL mode, so a cut at worst loses the last second or two. Set the Pi's
   time zone (`sudo raspi-config`) and keep NTP on; right after a boot without network the clock may jump once,

@@ -86,7 +86,7 @@ The overview row, plus:
 ```json
 {"alerts": [{"id": "a1", "chip_id": "sm-101", "name": "SmartMat 1", "room": "101",
              "kind": "high_risk|offline", "t_raised": 1792141100,
-             "state": "open|acknowledged|ignored", "by": null}]}
+             "state": "open|acknowledged|ignored", "by": null, "config": "s3.m2"}]}
 ```
 
 `by` is the user name once handled. The list is newest first or in any order (the UI sorts open first, then newest,
@@ -119,18 +119,41 @@ server adds `time` and `mats` (count).
 
 Viewing needs no login; never any PIN hash. Role `user` is shown as "Nurse" in the dashboard.
 
-### GET /api/settings
+### Settings in layers: GET /api/settings and GET /api/mats/<id>/config
 
 ```json
-{"settings": [{"key": "alert_high_hold_s", "group": "alerts", "type": "int|float|bool", "value": 30, "default": 30,
-               "min": 5, "max": 3600, "unit": "s", "advanced": false, "changed": false}]}
+{"scope": "site|<chip id>", "version": 3, "stamp": "s3.m2",
+ "settings": [{"key": "alert_high_hold_s", "group": "alerts", "type": "int|float|bool|choice|list", "value": 30,
+               "default": 30, "min": 5, "max": 3600, "unit": "s", "advanced": false, "changed": false,
+               "source": "factory|site|mat", "choices": ["only for a choice"]}]}
 ```
 
-Everyone can read. `value` is what is in force, `default` what `config.py` says, `changed` is true while an override
-is saved. `min`/`max` are null for a bool. Groups: `alerts`, `risk`, `mats`, `data`, `posture`; `advanced` ones are
-shown under "Advanced". The labels and explanations are in the page (`s_<key>`, `s_<key>_h`), not in the API.
-Keys: `alert_high_hold_s`, `alert_offline_s`, `push_enabled`, `relief_minutes`, `near_percent`, `stale_after_s`,
-`saturation_warn_cells`, `posture_hold_s`, `posture_side_cells`, `posture_forward_cells`, `retention_days`.
+Everyone can read. Settings are in three layers: the factory values (`config.py` and the built-in preset), the **site**
+layer (`/api/settings`, every mat) and a **mat's own** layer (`/api/mats/<id>/config`). A layer holds only what it
+overrides; everything else falls back to the layer above. In a response `value` is what is in force (for that mat, or
+for the site), `source` the layer it comes from, `default` the value it would fall back to (the factory value for the
+site layer, the site's value for a mat), and `changed` is true while *this* scope overrides it. `version` is the scope's
+newest version, `stamp` the pair in force for that mat (`s3.m2` = site version 3, mat version 2). `min`/`max` are
+null for a bool, a choice and a list; `max` is also null for a number with no upper limit.
+
+Keys: the server rules `alert_high_hold_s`, `alert_offline_s`, `relief_minutes`, `near_percent`, `stale_after_s`,
+`posture_hold_s`, `posture_side_cells`, `posture_forward_cells`; the **engineering preset** of the desktop app as
+`contact_threshold_kpa` and `temporal.*`, `hotspots.*`, `movement.*` (groups `contact`, `temporal`, `hotspots`,
+`movement`, all `advanced`); `indices` (type `list`: the whole list of risk-index definitions, `null` = the built-in
+ones tuned by `relief_minutes` and `near_percent`). Three keys belong to the whole installation and are **not**
+listed for a mat and refused in a mat's layer: `push_enabled`, `retention_days`, `saturation_warn_cells`.
+Groups: `alerts`, `risk`, `mats`, `data`, `posture`, plus the engineering ones; the labels and explanations are in the
+page (`s_<key>`, `s_<key>_h`), not in the API.
+
+### GET /api/config/history?scope=site|<chip id>&limit=50
+
+```json
+{"scope": "m1", "version": 2, "history": [{"scope": "m1", "version": 2, "t": 1792410928.2, "user": "Admin",
+   "reason": "soft cushion", "changes": {"near_percent": [80, 60]}}]}
+```
+
+Newest first. Every change to a layer is a numbered version that is kept for good (append-only): who, when, why, and
+`changes` as `[value before, value after]` of what is in force for that scope. Version 0 means "nothing set".
 
 ### GET /api/hidden-mats
 
@@ -146,7 +169,9 @@ dashboard shows "Acknowledged by <user>". Error texts start with a capital and a
 | `POST /api/alerts/<id>/ack` | `{"pin"}` | `{"ok": true, "user": "name"}` |
 | `POST /api/alerts/<id>/ignore` | `{"pin"}` | `{"ok": true, "user": "name"}` |
 | `PUT /api/mats/<id>/meta` | `{"pin", "name", "room", "seat", "unit"}` (admin only) | `{"ok": true, "user": "name"}` (the real server adds the mat's id/name/room/seat/unit/demo) |
-| `PUT /api/settings` | `{"pin", "values": {"<key>": value, "<key>": null}}` (admin only; `null` = back to the default) | `{"ok": true, "user": "name", "settings": [...]}` |
+| `PUT /api/settings` | `{"pin", "values": {"<key>": value, "<key>": null}, "reason"?}` (admin only; `null` = inherit again) | `{"ok": true, "user": "name", "scope", "version", "stamp", "settings": [...]}` |
+| `PUT /api/mats/<id>/config` | same, for one mat's own layer (admin only) | same |
+| `POST /api/config/rollback` | `{"pin", "scope": "site\|<chip id>", "version", "reason"?}` (admin only) | same plus `changed` (how many settings changed); 404 for a version that does not exist |
 | `POST /api/mats/<id>/hide` | `{"pin"}` (admin only) | `{"ok": true, "user": "name"}`; 409 "Only a mat that is offline can be removed" |
 | `POST /api/mats/<id>/show` | `{"pin"}` (admin only) | `{"ok": true, "user": "name"}`; 404 if the mat is not removed |
 | `POST /api/users` | `{"pin", "name", "role": "admin\|user", "new_pin"}` | 201 `{"ok": true, "user": "acting admin", "created": {id, name, role, active}}` |
@@ -159,10 +184,16 @@ dashboard shows "Acknowledged by <user>". Error texts start with a capital and a
   disabled (400). The settings page's "Open users" button lists users and offers add, disable/enable and reset PIN.
 - `meta`: all four fields are sent every time (the edit dialog sends the full set). Reject an empty name with 400.
   Only admins change mat details (a nurse gets 403 "Only an admin can do this").
-- `settings`: all or nothing. An unknown key, a wrong type, a non-whole number for an `int` or a value outside
-  `min`/`max` is a 400 and nothing changes. Changes apply at once (no restart) and are logged as `settings changed`
-  with the old and new value and the admin's name. The dashboard's settings page (gear button, "Innstillinger") sends
-  only what differs from the server, validates in the browser first and lists the changes in the PIN dialog.
+- `settings` / `config`: all or nothing. An unknown key, a wrong type, a non-whole number for an `int`, a value outside
+  `min`/`max`, a site-wide key in a mat's layer, or a combination the desktop's presets would refuse (for example a
+  hotspot `deactivate_kpa` not below `activate_kpa`, checked on every mat the change can reach) is a 400 and nothing
+  changes. `reason` is optional text of at most 200 characters. A change that changes nothing makes no new version.
+  Changes apply at once (no restart) and are logged as `config changed` with the scope, the new version, the reason, the
+  old and new values and the admin's name. A rollback puts a layer back as it was at an earlier version and is itself a
+  new version (the history stays). The dashboard's settings page (gear button, "Innstillinger"; per mat: "Analyse")
+  sends only what differs from the server, validates in the browser first and lists the changes in the PIN dialog.
+- Every alert carries `config`, the stamp (`s3.m2`) in force for its mat when it was raised, saved with the alert and
+  shown in the alert list, so it is always possible to see which settings produced it.
 - `hide`: stops reading the mat, closes its open alerts and drops it from the overview, alerts and mat calls; it stays
   removed after a restart. `show` lets discovery open it again (it reappears when it next sends data).
 - After a write the dashboard re-reads overview, alerts, the mat and the timeline at once.

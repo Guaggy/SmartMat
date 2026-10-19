@@ -10,7 +10,7 @@ from server.__main__ import Server
 from server.alerts import AlertManager
 from server.app import create_app
 from server.engine import MatEngine, tuned_indices
-from server.settings import KEYS, SPEC, Settings
+from server.settings import RULES, Settings, all_specs, keys
 from server.store import Store
 
 from test_server_app import ADMIN, NURSE, ApiTests
@@ -29,11 +29,11 @@ class SettingsApiTests(ApiTests):
 
     def test_everyone_can_read_the_settings_with_their_limits_and_defaults(self):
         listed = self.client.get("/api/settings").get_json()["settings"]
-        self.assertEqual([s["key"] for s in listed], list(KEYS))
+        self.assertEqual([s["key"] for s in listed], keys())
         hold = next(s for s in listed if s["key"] == "alert_high_hold_s")
-        self.assertEqual((hold["value"], hold["default"], hold["min"], hold["max"], hold["unit"], hold["changed"]),
-                         (30, 30, 5, 3600, "s", False))
-        self.assertEqual({s["group"] for s in listed}, {"alerts", "risk", "mats", "posture", "data"})
+        self.assertEqual((hold["value"], hold["default"], hold["min"], hold["max"], hold["unit"], hold["changed"], hold["source"]),
+                         (30, 30, 5, 3600, "s", False, "factory"))
+        self.assertEqual({s["group"] for s in listed}, {"alerts", "risk", "mats", "posture", "data", "contact", "temporal", "hotspots", "movement"})
 
     def test_only_an_admin_with_a_pin_can_change_them(self):
         values = {"alert_high_hold_s": 60}
@@ -48,10 +48,11 @@ class SettingsApiTests(ApiTests):
     def test_a_change_is_logged_with_old_and_new_value_and_the_user(self):
         self.put("/api/settings", pin=ADMIN, values={"retention_days": 90, "push_enabled": False})
         self.put("/api/settings", pin=ADMIN, values={"retention_days": 90})   # nothing changes: nothing logged
-        entries = [e for e in self.store.events() if e["kind"] == "settings changed"]
+        entries = [e for e in self.store.events() if e["kind"] == "config changed"]
         self.assertEqual(len(entries), 1)
-        self.assertEqual((entries[0]["user"], entries[0]["detail"]),
-                         ("Admin", {"retention_days": [30, 90], "push_enabled": [True, False]}))
+        self.assertEqual(entries[0]["user"], "Admin")
+        self.assertEqual(entries[0]["detail"]["changes"], {"retention_days": [30, 90], "push_enabled": [True, False]})
+        self.assertEqual((entries[0]["detail"]["scope"], entries[0]["detail"]["version"]), ("site", 1))
 
     def test_bad_values_are_refused_and_nothing_changes(self):
         for values in ({"alert_high_hold_s": 1}, {"alert_high_hold_s": 4000}, {"alert_high_hold_s": 30.5},
@@ -78,7 +79,7 @@ class SettingsApiTests(ApiTests):
         self.put("/api/settings", pin=ADMIN, values={"near_percent": 60})
         listed = {s["key"]: s for s in self.put("/api/settings", pin=ADMIN, values={"near_percent": None}).get_json()["settings"]}
         self.assertEqual((listed["near_percent"]["value"], listed["near_percent"]["changed"]), (80, False))
-        self.assertEqual(self.store.saved_settings(), {})
+        self.assertEqual(self.store.config_current()["site"][1], {})   # nothing overridden any more (the history keeps the versions)
 
     def test_a_default_comes_from_config(self):
         with mock.patch("server.settings.config.ALERT_OFFLINE_S", 90):
@@ -100,18 +101,32 @@ class PersistenceTests(unittest.TestCase):
         self.assertEqual((again.get("relief_minutes"), again.get("push_enabled")), (90, False))
         self.assertEqual(again.get("near_percent"), 80)
 
-    def test_an_invalid_or_unknown_saved_value_is_ignored(self):
-        self.store.save_settings({"retention_days": 99999, "old_key": 1, "near_percent": 70})
+    def test_the_first_version_settings_table_is_migrated_once_and_bad_values_dropped(self):
+        self.store.save_settings({"retention_days": 99999, "old_key": 1, "near_percent": 70})   # as the first version wrote it
         settings = Settings(self.store)
         self.assertEqual((settings.get("retention_days"), settings.get("near_percent")), (30, 70))
+        self.assertEqual((settings.version(), settings.history()[0]["user"]), (1, "migrated"))
+        self.store.save_settings({"near_percent": 55})   # a later change to the old table is not picked up again
+        self.assertEqual(Settings(self.store).get("near_percent"), 70)
+
+    def test_a_saved_value_that_is_no_longer_valid_falls_back_instead_of_stopping_the_server(self):
+        self.store.config_add("site", 1, 1.0, "x", "", {"near_percent": 12345, "gone_key": 1, "retention_days": 90}, {})
+        self.store.config_add("mat-1", 1, 1.0, "x", "", {"push_enabled": False, "alert_high_hold_s": 99}, {})
+        settings = Settings(self.store)
+        self.assertEqual((settings.get("near_percent"), settings.get("retention_days")), (80, 90))
+        self.assertEqual((settings.get("push_enabled", "mat-1"), settings.get("alert_high_hold_s", "mat-1")), (True, 99))   # a site-only key cannot be set per mat
 
     def test_every_setting_has_a_usable_default(self):
         settings = Settings()
-        for key, _, kind, _, _, low, high, _, _ in SPEC:
-            value = settings.default(key)
-            self.assertIsInstance(value, kind)
-            if kind is not bool:
-                self.assertTrue(low <= value <= high, key)
+        for spec in all_specs():
+            value = settings.default(spec.key)
+            if spec.type == "list":
+                self.assertIsNone(value)
+                continue
+            self.assertIsInstance(value, {"int": int, "float": float, "bool": bool, "choice": str}[spec.type], spec.key)
+            if spec.type in ("int", "float"):
+                self.assertTrue(spec.low <= value and (spec.high is None or value <= spec.high), spec.key)
+        self.assertEqual(len(RULES), 11)
 
 
 class LiveEffectTests(unittest.TestCase):

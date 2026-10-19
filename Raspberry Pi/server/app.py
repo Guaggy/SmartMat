@@ -14,7 +14,7 @@ import config
 from processing import calibration
 from processing.posture import risk_sort_key
 from server import push
-from server.settings import Settings
+from server.settings import SITE, Settings
 from server.store import DEVICE_FIELDS, META_FIELDS
 
 DEMO_PREFIX = getattr(config, "DEMO_PREFIX", "demo-")
@@ -173,22 +173,83 @@ def create_app(store, alerts, engines, clock=time.time, settings=None, control=N
         store.log(clock(), "user added", None, by or user["name"], {"name": user["name"], "role": user["role"]})
         return jsonify({"ok": True, "user": by or user["name"], "created": user}), 201
 
-    @app.route("/api/settings", methods=["GET", "PUT"])
-    def settings_route():
-        if request.method == "GET":
-            return jsonify({"settings": settings.describe()})
+    def reason_of(data):
+        reason = data.get("reason", "")
+        if not isinstance(reason, str) or len(reason) > 200:
+            raise ApiError(400, "the reason must be text of at most 200 characters")
+        return reason.strip()
+
+    def config_page(chip_id=None):
+        """What the settings page of a scope shows: every setting with its value, where it comes from, and the version"""
+        return {"scope": chip_id or SITE, "version": settings.version(chip_id or SITE), "stamp": settings.stamp(chip_id),
+                "settings": settings.describe(chip_id)}
+
+    def change_config(chip_id=None):
+        """PUT of a scope: {pin, values: {key: value | null}, reason?}. All or nothing; a new version is kept"""
         data = body()
         user = actor(data, admin=True)
         values = data.get("values")
         if not isinstance(values, dict) or not values:
-            raise ApiError(400, "send values: {setting: value, or null for the default}")
+            raise ApiError(400, "send values: {setting: value, or null to inherit}")
+        reason = reason_of(data)
         try:
-            changed = settings.update(values)
+            changed = settings.update(values, scope=chip_id, user=user["name"], reason=reason)
         except ValueError as error:
             raise ApiError(400, str(error))
         if changed:
-            store.log(clock(), "settings changed", None, user["name"], {key: list(pair) for key, pair in changed.items()})
-        return jsonify({"ok": True, "user": user["name"], "settings": settings.describe()})
+            store.log(clock(), "config changed", chip_id, user["name"],
+                      {"scope": chip_id or SITE, "version": settings.version(chip_id or SITE), "reason": reason,
+                       "changes": {key: list(pair) for key, pair in changed.items()}})
+        return jsonify(dict(config_page(chip_id), ok=True, user=user["name"]))
+
+    @app.route("/api/settings", methods=["GET", "PUT"])
+    def settings_route():
+        """The site layer: what applies to every mat that does not override it"""
+        if request.method == "GET":
+            return jsonify(config_page())
+        return change_config()
+
+    @app.route("/api/mats/<chip_id>/config", methods=["GET", "PUT"])
+    def mat_config(chip_id):
+        """One mat's own layer on top of the site layer"""
+        known(chip_id)
+        if request.method == "GET":
+            return jsonify(config_page(chip_id))
+        return change_config(chip_id)
+
+    @app.route("/api/config/history")
+    def config_history():
+        scope = request.args.get("scope", SITE)
+        if scope != SITE:
+            known(scope)
+        try:
+            limit = min(max(int(request.args.get("limit", 50)), 1), 500)
+        except ValueError:
+            raise ApiError(400, "limit must be a number")
+        return jsonify({"scope": scope, "version": settings.version(scope), "history": settings.history(scope, limit)})
+
+    @app.route("/api/config/rollback", methods=["POST"])
+    def config_rollback():
+        """Put a scope back as it was at an earlier version (that is a new version, the history stays)"""
+        data = body()
+        user = actor(data, admin=True)
+        scope, version = data.get("scope", SITE), data.get("version")
+        if scope != SITE:
+            known(scope)
+        if isinstance(version, bool) or not isinstance(version, int) or version < 0:
+            raise ApiError(400, "version must be a whole number")
+        reason = reason_of(data)
+        try:
+            changed = settings.rollback(scope, version, user=user["name"], reason=reason)
+        except KeyError:
+            raise ApiError(404, "no such version")
+        except ValueError as error:
+            raise ApiError(400, str(error))
+        if changed:
+            store.log(clock(), "config changed", None if scope == SITE else scope, user["name"],
+                      {"scope": scope, "version": settings.version(scope), "reason": reason or f"rolled back to version {version}",
+                       "changes": {key: list(pair) for key, pair in changed.items()}})
+        return jsonify(dict(config_page(None if scope == SITE else scope), ok=True, user=user["name"], changed=len(changed)))
 
     # ---- writing (PIN in the body)
 

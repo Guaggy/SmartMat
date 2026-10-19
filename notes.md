@@ -30,3 +30,16 @@ Still open (everything else from this list is shipped - see "Shipped" in `Raspbe
   risk sensitivity, stale limit, retention, advanced posture values, users; admin PIN to save, changes logged). Open:
   the risk-sensitivity defaults (relief time 120 min, medium from 80 %) are untuned placeholders, like the indices
   they drive. Then the web UI polish above.
+- Two setups (decided 2026-10-19): **institution** = headless server + web UI + phone app (hospitals, the Pi can host a
+  private SSID for the mats and use Ethernet to the hospital LAN; only the Pi's own Wi-Fi for schools/pilots) and
+  **individual / education** = desktop app (serial, ESP32 bridge, playback, deep analysis over MQTT). The hospital setup is
+  heading for regulated use, so traceability comes first. Plan, in order:
+  1. DONE: analysis settings per mat in layers (factory < site < mat), append-only versions with who/when/why, rollback,
+     the version stamped on every alert, "Analyse" page per mat in the dashboard (`server/settings.py`, `design/api-contract.md`).
+  2. Desktop: per mat compare with the server, preview on a recording (which alerts would fire), push / pull with the admin
+     PIN, file import/export in the same format; retire the old desktop "Web UI" toggle (same port as the server).
+  3. Mat "passport" on the ESP32 (NVS: serial, calibration profile, size, model, a factory copy and a custom copy, versions
+     and checksums; firmware does not listen to commands or store anything yet; zero-touch: the server adopts the passport
+     of a new mat when it has nothing; only device-bound data travels with the mat, names/rooms/thresholds/users stay at the site).
+  Open for the regulated path: MQTT login + TLS, HTTPS, a golden test that runs one recording through both the desktop
+  pipeline and the server engine, occupancy/index-hold settings are still global (not per mat yet), exporting the audit log.
