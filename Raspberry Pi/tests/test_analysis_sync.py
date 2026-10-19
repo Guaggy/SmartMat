@@ -11,6 +11,7 @@ from pathlib import Path
 from werkzeug.serving import make_server
 
 import analysis_sync
+import config
 from paths import resource_path
 from processing.indices import default_indices
 from processing.recording import load_session
@@ -121,7 +122,7 @@ class LiveServerTests(unittest.TestCase):
         self.assertEqual((answer["user"], answer["stamp"]), ("Admin", "s0.m1"))
         self.assertEqual([r for r in analysis_sync.compare(settings, self.page()) if r["differs"]], [])
         self.assertEqual(self.page("m2")["stamp"], "s0.m0")                  # another mat is untouched
-        self.assertEqual(self.settings.get("contact_threshold_kpa", "m2"), 1.0)
+        self.assertEqual(self.settings.get("contact_threshold_kpa", "m2"), config.CONTACT_THRESHOLD_KPA)   # this PC's config.py may differ from the example
         ok, history = self.client.get_history("m1")
         self.assertEqual((history[0]["user"], history[0]["reason"]), ("Admin", "from the desktop"))
         self.assertEqual(sorted(history[0]["changes"]), ["contact_threshold_kpa", "hotspots.activate_kpa", "indices"])

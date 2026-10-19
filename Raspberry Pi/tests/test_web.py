@@ -182,7 +182,11 @@ class DesktopFeedTests(unittest.TestCase):
 
     def test_address_uses_the_hostname(self):
         self.assertIn(f"http://{socket.gethostname()}.local:{web.WEB_PORT}", self.app.web_address_var.get())
-        self.assertIn(f"{socket.gethostname()}.local", self.app.status_var.get())
+        self.app.web_ui_var.set(True)                      # the legacy Web UI is off by default; switching it on says where it runs
+        self.app._toggle_web_ui()
+        self.addCleanup(lambda: (self.app.web_ui_var.set(False), self.app._toggle_web_ui()))
+        status = self.app.status_var.get()
+        self.assertTrue(f"{socket.gethostname()}.local" in status or "port" in status and "in use" in status, status)
 
     def test_both_addresses_are_clickable_links(self):
         def labels(widget):

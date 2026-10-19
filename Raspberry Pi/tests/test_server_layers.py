@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import config
 from server.__main__ import Server
 from server.alerts import AlertManager
 from server.app import create_app
@@ -194,7 +195,7 @@ class EffectTests(unittest.TestCase):
     def test_the_engineering_preset_is_per_mat(self):
         self.settings.update({"hotspots.activate_kpa": 33.0, "contact_threshold_kpa": 2.5}, scope="demo-1")
         self.assertEqual((self.one.hotspots.activate_kpa, self.one.contact_threshold_kpa), (33.0, 2.5))
-        self.assertEqual((self.two.hotspots.activate_kpa, self.two.contact_threshold_kpa), (20.0, 1.0))
+        self.assertEqual((self.two.hotspots.activate_kpa, self.two.contact_threshold_kpa), (20.0, config.CONTACT_THRESHOLD_KPA))
         self.settings.update({"movement.major_score": 0.8})        # the site layer: both mats, the first keeps its own values
         self.assertEqual((self.one.motion.major_score, self.two.motion.major_score), (0.8, 0.8))
         self.assertEqual(self.one.hotspots.activate_kpa, 33.0)
