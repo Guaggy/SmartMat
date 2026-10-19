@@ -1,0 +1,23 @@
+### passport/write
+{"bytes":353,"crc":"56ddd09b","id":"demo-take1","ok":true,"user":"Admin","version":2}
+
+HTTP 200
+### show
+serial SM-0001
+factory: empty
+custom: custom v2 by Admin, 2026-10-19 21:22 (test) [353 bytes, crc 56ddd09b]
+### factory WRONG key
+error: the mat refused it: this needs the service key (or this slot is protected)
+exit 1
+### factory RIGHT key
+factory written
+exit 0
+### show
+serial SM-0001
+factory: factory v1 by passport_tool, 2026-10-19 21:22 [341 bytes, crc a7a63fe3]
+custom: custom v2 by Admin, 2026-10-19 21:22 (test) [353 bytes, crc 56ddd09b]
+### mat log
+passport written Admin {'bytes': 353, 'slot': 'custom', 'version': 2}
+passport adopted system {'analysis': [], 'passport_version': 1, 'profile_version': 1, 'slot': 'custom'}
+mat connected None None
+mat connected None None

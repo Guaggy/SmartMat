@@ -1,0 +1,2 @@
+C:\Users\evenm\Projects\Hardware\SmartMat\Raspberry Pi\tools\e2e_check.py:49: DeprecationWarning: Loading plugins from EntryPoints is deprecated and will be removed in a future version. Use `plugins` section of config instead.
+  await Broker(config).start()

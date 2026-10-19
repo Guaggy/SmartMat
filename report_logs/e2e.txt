@@ -126,3 +126,15 @@ PASS adopting the factory passport works and is logged
 
 == 14. the risk pipeline reaches high and raises an alert (demo mats run faster than real time)
 PASS a server with five demo mats starts
+     risks before: {'demo-3': 'low', 'demo-5': 'low', 'demo-4': 'low', 'demo-2': 'low', 'demo-1': 'low'}
+PASS sensitive risk settings applied
+     risks now: {'demo-3': 'high', 'demo-5': 'medium', 'demo-4': 'medium', 'demo-2': 'medium', 'demo-1': 'low'}
+PASS at least one demo mat reaches HIGH risk
+PASS a high-risk alert is raised
+PASS acknowledging it works and names the user
+PASS a second acknowledge is refused (409)
+PASS the timeline records the high-risk segment
+PASS no traceback anywhere in the server log
+
+105 passed, 0 failed   (server log: C:\Users\evenm\AppData\Local\Temp\smartmat_e2e_re_dvdgb\server.log)
+exit 0
