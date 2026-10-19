@@ -82,6 +82,11 @@ const i18n = {
     analysis: "Analyse", siteDefaults: "Standard for hele stedet",
     siteDefaultsHint: "Gjelder alle matter som ikke har egne verdier. Hver mat kan overstyre dem under «Analyse».",
     matCfgTitle: "Analyseinnstillinger: {name}",
+    ppTitle: "Matteoppsett lagret på matten (pass)", ppHint: "Kalibreringen følger matten: lagre den før frakt, bruk den igjen ved behov.",
+    ppSerial: "Serienummer", ppEmpty: "tom", ppNone: "Matten svarer ikke på passet (offline eller eldre programvare).",
+    ppSame: "samme som i bruk", ppDiffers: "avviker fra det som er i bruk", ppUse: "Bruk", ppFactory: "Fabrikk", ppCustom: "Tilpasset",
+    ppSave: "Lagre dagens oppsett på matten", ppNote: "Notat (valgfritt)", dlgPpUse: "Bruke {slot}-passet?", dlgPpSave: "Lagre på matten?",
+    ppUsed: "Passet er tatt i bruk av {u}", ppSaved: "Lagret på matten (versjon {v}) av {u}", ppAnalysis: "med analyseinnstillinger",
     matCfgIntro: "Verdier som ikke er satt for denne matten følger stedets standard, som igjen følger fabrikkverdiene. Hver endring blir en ny versjon som lagres med navn og begrunnelse.",
     cfgVersion: "Innstillingsversjon {v}", cfgShort: "innstillinger {v}",
     src_factory: "Fabrikk", src_site: "Stedet", src_mat: "Denne matten", setDefaultSite: "Stedets verdi: {v}", useSite: "Bruk stedets verdi",
@@ -201,6 +206,11 @@ const i18n = {
     analysis: "Analysis", siteDefaults: "Defaults for the whole site",
     siteDefaultsHint: "Apply to every mat that has no values of its own. Each mat can override them under \"Analysis\".",
     matCfgTitle: "Analysis settings: {name}",
+    ppTitle: "Setup kept on the mat (passport)", ppHint: "The calibration travels with the mat: save it before shipping, use it again when needed.",
+    ppSerial: "Serial number", ppEmpty: "empty", ppNone: "The mat does not answer about its passport (offline or older firmware).",
+    ppSame: "same as in use", ppDiffers: "differs from what is in use", ppUse: "Use", ppFactory: "Factory", ppCustom: "Custom",
+    ppSave: "Save the current setup to the mat", ppNote: "Note (optional)", dlgPpUse: "Use the {slot} passport?", dlgPpSave: "Save to the mat?",
+    ppUsed: "Passport taken into use by {u}", ppSaved: "Saved to the mat (version {v}) by {u}", ppAnalysis: "with analysis settings",
     matCfgIntro: "Values not set for this mat follow the site defaults, which follow the factory values. Every change is a new version, saved with the name and a reason.",
     cfgVersion: "Settings version {v}", cfgShort: "settings {v}",
     src_factory: "Factory", src_site: "Site", src_mat: "This mat", setDefaultSite: "Site value: {v}", useSite: "Use the site value",
@@ -1161,7 +1171,50 @@ function renderMatConfig() {
   page.append(el("p", "muted small", t("cfgVersion", { v: st.stamp })));
   renderGroups(page, st);
   renderHistory(page, st);
+  renderPassport(page, st);
   savebar(page, st);
+}
+
+// The calibration kept on the mat itself: look at both slots, take one into use, save the current setup to the custom slot
+function renderPassport(page, st) {
+  const box = el("section", "card");
+  box.append(el("h2", "", t("ppTitle")), el("p", "muted small", t("ppHint")));
+  const p = st.passport;
+  if (!p) { box.append(el("p", "muted", st.passportFailed ? t("ppNone") : t("loading"))); page.append(box); return; }
+  box.append(el("p", "small", t("ppSerial") + ": " + (p.serial || "–")));
+  for (const slot of ["factory", "custom"]) {
+    const info = p.slots[slot], row = el("div", "row");
+    row.append(el("strong", "", t(slot === "factory" ? "ppFactory" : "ppCustom") + ": "));
+    if (!info) row.append(el("span", "muted", t("ppEmpty")));
+    else if (info.error) row.append(el("span", "muted", info.error));
+    else {
+      row.append(el("span", "", info.info + (info.has_analysis ? " – " + t("ppAnalysis") : "") + " – " + t(info.same_as_now ? "ppSame" : "ppDiffers")));
+      const use = el("button", "btn", t("ppUse"));
+      use.type = "button";
+      use.addEventListener("click", () => writeDialog({
+        title: t("dlgPpUse", { slot: t(slot === "factory" ? "ppFactory" : "ppCustom") }), hint: info.info,
+        send: (v) => send("POST", "/api/mats/" + encodeURIComponent(st.scope) + "/passport/adopt", { pin: v.pin, slot, reason: "passport " + slot }),
+        done: async (res) => { toast(t("ppUsed", { u: res.user })); await openMatConfig(st.mat); },
+      }));
+      row.append(use);
+    }
+    box.append(row);
+  }
+  const note = el("input"), save = el("button", "btn primary", t("ppSave"));
+  note.type = "text"; note.maxLength = 120; note.placeholder = t("ppNote");
+  save.type = "button";
+  save.addEventListener("click", () => writeDialog({
+    title: t("dlgPpSave"), hint: note.value,
+    send: (v) => send("POST", "/api/mats/" + encodeURIComponent(st.scope) + "/passport/write", { pin: v.pin, note: note.value }),
+    done: async (res) => { toast(t("ppSaved", { v: res.version, u: res.user })); await loadPassport(st); renderMatConfig(); },
+  }));
+  box.append(el("div", "row", ""), note, save);
+  page.append(box);
+}
+
+async function loadPassport(st) {
+  st.passport = null; st.passportFailed = false;
+  try { st.passport = await api("/api/mats/" + encodeURIComponent(st.scope) + "/passport"); } catch (e) { st.passportFailed = true; }
 }
 
 async function openSettings() {
@@ -1179,7 +1232,7 @@ async function openSettings() {
 }
 
 async function openMatConfig(m) {
-  Object.assign(MCFG, { scope: m.id, mat: m, items: null, history: [], draft: {}, failed: false });
+  Object.assign(MCFG, { scope: m.id, mat: m, items: null, history: [], draft: {}, failed: false, passport: null, passportFailed: false });
   MCFG.bad.clear();
   showView("matcfg");
   renderMatConfig();
@@ -1189,6 +1242,8 @@ async function openMatConfig(m) {
     await loadHistory(MCFG);
   } catch (e) { MCFG.failed = true; }
   renderMatConfig();
+  await loadPassport(MCFG);   // slower than the page (the mat answers over MQTT): it fills in when it arrives
+  if (MCFG.scope === m.id && !$("matcfg").hidden) renderMatConfig();
 }
 
 // ---------- help page ----------

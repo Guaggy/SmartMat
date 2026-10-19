@@ -349,7 +349,19 @@ From `Raspberry Pi\` in PowerShell. Steps 1-3 are automatic; 4-6 are a click-thr
    - **Get analysis settings**: change the value on the server's Analyse page, then press it here: it asks, then applies the
      server's values (check Engineering). **Compare** now shows no differences.
    - Save preset... / Load preset... (Engineering) are the file import/export of the same settings.
-6. Packaging (optional): `.\build_exe.bat`, then `dist\SmartMat\SmartMat.exe --selftest` and open the exe.
+6. The mat passport (calibration kept on the mat), no hardware: a fake mat that has a passport. With the broker, the server
+   (no `--demo`) and the desktop from step 5 running, in a fresh PowerShell window from `Raspberry Pi\`:
+   `.venv\Scripts\python tools\fake_passport_device.py --chip-id demo-take1 --serial SM-0001 --service-key sesame --custom 20x20`
+   (and `tools\publish_demo_mat.py --chip-id demo-take1` running). Then:
+   - Web: gear > the mat's **Analyse** > section "Matteoppsett lagret på matten (pass)": serial SM-0001 and a custom line. **Lagre dagens
+     oppsett på matten** with an admin PIN adds version 2 (note in the log); **Bruk** takes the slot into use (a new calibration version).
+   - Desktop: Engineering > Connection > **Passport on the mat**: **Show** lists serial and both slots; **Save current to mat**
+     (note "school") then **Show** again: custom v2 with the note; **Use custom** asks, then replaces the calibration.
+   - Command line: `.venv\Scripts\python tools\passport_tool.py show demo-take1`; `... fetch demo-take1 custom backup.smp`;
+     `... factory demo-take1 <profile.json> --service-key sesame`; with a wrong key it must say the service key is needed.
+   - Zero-touch: delete `profiles\demo-take1.json`, restart the server: the event log of the mat shows "passport adopted" by system.
+   Real board: flash `ESP32_China` (or `ESP32_Resistive`) with `passport_service_key` set in `secrets.h`, then run `show` against its chip id.
+7. Packaging (optional): `.\build_exe.bat`, then `dist\SmartMat\SmartMat.exe --selftest` and open the exe.
 Not covered without hardware: the real Maxrays/ESP32 mats, the Pi, mDNS (`.local`), push to a real phone. The phone app's own
 tests: `cd "..\Phone App"; npm ci; npm test; npm run typecheck`.
 

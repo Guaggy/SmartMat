@@ -49,6 +49,27 @@ def ask_pin(parent, what):
     return result[0] if result and result[0] else None
 
 
+def apply_profile_to_app(app, mat, profile, source):
+    """Put a profile from elsewhere (the server, a mat's passport) through the app's normal profile load (it is read from
+    the mat's profile file). The current state is saved first and put back if the profile does not fit this mat.
+    Returns the sentence for the status line."""
+    path = calibration.profile_path(mat)
+    try:
+        app._save_profile()
+        backup = path.read_text(encoding="utf-8") if path.exists() else None
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
+    except OSError as error:
+        return f"Could not write the profile: {error}"
+    label = app._load_profile()
+    if "restored" in label:
+        return f"Calibration replaced with {source}."
+    if backup is not None:
+        path.write_text(backup, encoding="utf-8")
+        app._load_profile()
+    return f"{source.capitalize()} profile does not fit this mat, kept the current one{label}"
+
+
 class ServerPanel:
     def __init__(self, parent, app):
         self.app = app
@@ -251,23 +272,7 @@ class ServerPanel:
         self._run(lambda: ServerClient(url).get_profile(mat), done)
 
     def _apply(self, mat, profile):
-        """Put the server's profile through the app's normal profile load (it is read from the mat's profile file).
-        The current state is saved first and put back if the server's profile does not fit this mat."""
-        path = calibration.profile_path(mat)
-        try:
-            self.app._save_profile()
-            backup = path.read_text(encoding="utf-8") if path.exists() else None
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
-        except OSError as error:
-            return f"Could not write the profile: {error}"
-        label = self.app._load_profile()
-        if "restored" in label:
-            return "Calibration replaced with the server's."
-        if backup is not None:
-            path.write_text(backup, encoding="utf-8")
-            self.app._load_profile()
-        return f"The server's profile does not fit this mat, kept the current one{label}"
+        return apply_profile_to_app(self.app, mat, profile, "the server's")
 
     def _show_log(self):
         url, mat = self._url(), self._mat()

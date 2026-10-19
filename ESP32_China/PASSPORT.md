@@ -54,6 +54,8 @@ A write is stored to a temporary file and renamed, so a power cut leaves the old
 * `Raspberry Pi/tools/passport_tool.py`: command line for show / save / fetch / restore / clear / factory / serial.
 * `Raspberry Pi/tools/fake_passport_device.py`: the board's behaviour in Python, for trying all this without hardware.
 
+Both boards carry it: `ESP32_China` and `ESP32_Resistive` have identical copies of `src/mat_passport.h` and `src/passport_service.h` (a Python test fails if they drift).
+
 ## Not tested on hardware yet
 
 The Arduino glue in `main.cpp` (LittleFS, PubSubClient callback, 16 KB buffer) is only syntax-checked against stub

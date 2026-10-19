@@ -49,7 +49,8 @@ Still open (everything else from this list is shipped - see "Shipped" in `Raspbe
      Rules are in `src/mat_passport.h` (28 host test cases) and mirrored in `passport_device.py`; client `passport_link.py`;
      server routes `GET /api/mats/<id>/passport`, `POST .../passport/adopt|write` and zero-touch adoption (`server/passports.py`,
      `tests/test_server_passport.py`, e2e part 13 over a real broker); `tools/passport_tool.py`, `tools/fake_passport_device.py`.
-     Still open: a passport panel in the desktop app, buttons in the web UI, flashing and trying a real board, the
-     ESP32_Resistive firmware.
+     Also done: buttons in the web UI (the mat's Analyse page), a "Passport on the mat" panel in the desktop (direct over MQTT,
+     `passport_sync.py`; Tk itself untested like the server panel), and the same code in `ESP32_Resistive`
+     (`passport_service.h` + `mat_passport.h`, identical copies, a test checks it). Still open: flashing and trying a real board.
   Open for the regulated path: MQTT login + TLS, HTTPS, a golden test that runs one recording through both the desktop
   pipeline and the server engine, occupancy/index-hold settings are still global (not per mat yet), exporting the audit log.

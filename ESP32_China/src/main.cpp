@@ -9,7 +9,6 @@
 
 #include <Arduino.h>
 #include <PubSubClient.h>
-#include <LittleFS.h>
 #include <WiFi.h>
 #include <cmath>
 #include <cstdio>
@@ -21,8 +20,8 @@
 
 #include "frame_accumulator.h"
 #include "frame_mailbox.h"
-#include "mat_passport.h"
 #include "maxrays_decoder.h"
+#include "passport_service.h"
 #include "secrets.h" // Wifi and passcodes
 
 // CONFIG
@@ -69,11 +68,6 @@ char chip_id[13];     // 12 hex digits, also used as MQTT client id (must be uni
 char frame_topic[40];
 char meta_topic[40];
 char status_topic[40]; // "online" retained after connect, "offline" retained as last will
-char passport_topic[48];        // retained summary: serial, size and CRC of both slots
-char passport_ack_topic[52];
-char passport_data_prefix[56];  // + slot name
-char passport_serial[passport::kSerialMax + 1]; // label of this mat (not the MQTT identity); set with the service key
-passport::SlotInfo passport_info[2]; // factory, custom; written and read by the network task only
 char meta_text[64];   // "<chip_id>,<rows>,<cols>,<value_max>,<model>,<width_mm>,<height_mm>"
 
 // Shared between the two cores
@@ -86,6 +80,7 @@ TaskHandle_t network_task_handle = nullptr;
 // Network task only: never touch these from loop()
 WiFiClient wifi_client;
 PubSubClient mqtt_client(wifi_client);
+PassportService passport_service; // the mat's calibration kept in flash, answered over MQTT (PASSPORT.md)
 uint32_t last_wifi_attempt_ms = 0;
 uint32_t last_mqtt_attempt_ms = 0;
 uint8_t net_frame[cell_count];
@@ -105,9 +100,6 @@ void build_identity() {
   snprintf(frame_topic, sizeof(frame_topic), "%s/%s/frame", mqtt_topic_prefix, chip_id);
   snprintf(meta_topic, sizeof(meta_topic), "%s/%s/meta", mqtt_topic_prefix, chip_id);
   snprintf(status_topic, sizeof(status_topic), "%s/%s/status", mqtt_topic_prefix, chip_id);
-  snprintf(passport_topic, sizeof(passport_topic), "%s/%s/passport", mqtt_topic_prefix, chip_id);
-  snprintf(passport_ack_topic, sizeof(passport_ack_topic), "%s/ack", passport_topic);
-  snprintf(passport_data_prefix, sizeof(passport_data_prefix), "%s/data/", passport_topic);
   if (!format_meta(meta_text, sizeof(meta_text), chip_id, grid_rows, grid_cols, value_max, MAT_MODEL,
                    MAT_WIDTH_MM, MAT_HEIGHT_MM)) {
     for (;;) { // config error in the constants above: fail loudly instead of sending a broken meta
@@ -117,190 +109,6 @@ void build_identity() {
   }
 }
 
-
-// ---- Mat passport (PASSPORT.md): two opaque slots in flash, rules in mat_passport.h -------------------------------
-// Network task only (the MQTT callback runs inside mqtt_client.loop()).
-
-static const char* const passport_files[2] = {"/pp_factory", "/pp_custom"};
-
-int slot_index(passport::Slot slot) {
-  return slot == passport::Slot::Factory ? 0 : 1;
-}
-
-passport::SlotInfo read_slot_info(const char* path) {
-  passport::SlotInfo info = {false, 0, 0};
-  File file = LittleFS.open(path, "r");
-  if (!file) return info;
-  uint8_t chunk[256];
-  uint32_t crc = 0;
-  while (file.available()) {
-    const size_t count = file.read(chunk, sizeof(chunk));
-    if (count == 0) break;
-    crc = passport::crc32(chunk, count, crc);
-    info.bytes += count;
-  }
-  file.close();
-  info.present = info.bytes > 0;
-  info.crc = crc;
-  return info;
-}
-
-void load_passport_state() {
-  passport_serial[0] = '\0';
-  File file = LittleFS.open("/pp_serial", "r");
-  if (file) {
-    char text[passport::kSerialMax + 1];
-    const size_t count = file.readBytes(text, passport::kSerialMax);
-    if (passport::valid_serial(reinterpret_cast<const uint8_t*>(text), count)) {
-      memcpy(passport_serial, text, count);
-      passport_serial[count] = '\0';
-    }
-    file.close();
-  }
-  for (int i = 0; i < 2; ++i) passport_info[i] = read_slot_info(passport_files[i]);
-}
-
-// Write to a temporary file and rename, so a power cut leaves the old slot whole
-bool store_file(const char* path, const uint8_t* data, size_t length) {
-  char temp[24];
-  snprintf(temp, sizeof(temp), "%s.tmp", path);
-  File file = LittleFS.open(temp, "w");
-  if (!file) return false;
-  const bool wrote = file.write(data, length) == length;
-  file.close();
-  if (!wrote) {
-    LittleFS.remove(temp);
-    return false;
-  }
-  LittleFS.remove(path);
-  return LittleFS.rename(temp, path);
-}
-
-void publish_passport_summary() {
-  char text[160];
-  if (passport::format_summary(text, sizeof(text), passport_serial, passport_info[0], passport_info[1]) > 0) {
-    mqtt_client.publish(passport_topic, text, true);
-  }
-}
-
-void publish_ack(const char* op, const char* slot_text, size_t slot_length, bool ok, const char* err,
-                 const passport::SlotInfo* info) {
-  char slot[17], text[128];
-  passport::safe_name(slot_text, slot_length, slot);
-  if (passport::format_ack(text, sizeof(text), op, slot, ok, err, info) > 0) {
-    mqtt_client.publish(passport_ack_topic, text, false);
-  }
-}
-
-void passport_put(const char* name, size_t name_length, const uint8_t* payload, size_t length) {
-  const passport::Slot slot = passport::parse_slot(name, name_length);
-  const uint8_t* blob = nullptr;
-  size_t blob_length = 0;
-  const passport::Put verdict = passport::check_put(slot, payload, length, passport_service_key, &blob, &blob_length);
-  if (verdict != passport::Put::Ok) {
-    publish_ack("put", name, name_length, false, passport::put_error(verdict), nullptr);
-    return;
-  }
-  const int index = slot_index(slot);
-  if (!store_file(passport_files[index], blob, blob_length)) {
-    publish_ack("put", name, name_length, false, "storage", nullptr);
-    return;
-  }
-  passport_info[index] = read_slot_info(passport_files[index]);
-  publish_ack("put", name, name_length, true, nullptr, &passport_info[index]);
-  publish_passport_summary();
-}
-
-void passport_get(const char* name, size_t name_length) {
-  const passport::Slot slot = passport::parse_slot(name, name_length);
-  if (slot == passport::Slot::Invalid) {
-    publish_ack("get", name, name_length, false, "slot", nullptr);
-    return;
-  }
-  File file = LittleFS.open(passport_files[slot_index(slot)], "r");
-  if (!file || file.size() == 0) {
-    publish_ack("get", name, name_length, false, "empty", nullptr);
-    return;
-  }
-  const size_t size = file.size();
-  char topic[sizeof(passport_data_prefix) + 8];
-  snprintf(topic, sizeof(topic), "%s%s", passport_data_prefix, passport::slot_name(slot));
-  // The bytes go out in pieces straight from flash (no second 16 KB buffer); not retained: a read is a one-off
-  if (!mqtt_client.beginPublish(topic, size, false)) {
-    publish_ack("get", passport::slot_name(slot), strlen(passport::slot_name(slot)), false, "storage", nullptr);
-    file.close();
-    return;
-  }
-  uint8_t chunk[256];
-  while (file.available()) {
-    const size_t count = file.read(chunk, sizeof(chunk));
-    if (count == 0) break;
-    mqtt_client.write(chunk, count);
-  }
-  mqtt_client.endPublish();
-  file.close();
-}
-
-void passport_clear(const uint8_t* payload, size_t length) {
-  const char* name = reinterpret_cast<const char*>(payload);
-  const passport::Slot slot = passport::parse_slot(name, length);
-  if (slot != passport::Slot::Custom) { // the factory slot is never cleared over MQTT
-    publish_ack("clear", name, length, false, slot == passport::Slot::Factory ? "locked" : "slot", nullptr);
-    return;
-  }
-  LittleFS.remove(passport_files[1]);
-  passport_info[1] = {false, 0, 0};
-  publish_ack("clear", name, length, true, nullptr, nullptr);
-  publish_passport_summary();
-}
-
-void passport_set_serial(const uint8_t* payload, size_t length) {
-  const uint8_t *key, *serial;
-  size_t key_length, serial_length;
-  if (!passport::split_key(payload, length, &key, &key_length, &serial, &serial_length) ||
-      !passport::key_matches(passport_service_key, key, key_length)) {
-    publish_ack("serial", "", 0, false, "locked", nullptr);
-    return;
-  }
-  if (!passport::valid_serial(serial, serial_length)) {
-    publish_ack("serial", "", 0, false, "serial", nullptr);
-    return;
-  }
-  if (!store_file("/pp_serial", serial, serial_length)) {
-    publish_ack("serial", "", 0, false, "storage", nullptr);
-    return;
-  }
-  memcpy(passport_serial, serial, serial_length);
-  passport_serial[serial_length] = '\0';
-  publish_ack("serial", "", 0, true, nullptr, nullptr);
-  publish_passport_summary();
-}
-
-// <prefix>/<chip_id>/passport/get | clear | serial | put/<slot>
-void on_mqtt_message(char* topic, uint8_t* payload, unsigned int length) {
-  const char* tail = strstr(topic, "/passport/");
-  if (tail == nullptr) return;
-  tail += strlen("/passport/");
-  if (strcmp(tail, "get") == 0) {
-    passport_get(reinterpret_cast<const char*>(payload), length);
-  } else if (strcmp(tail, "clear") == 0) {
-    passport_clear(payload, length);
-  } else if (strcmp(tail, "serial") == 0) {
-    passport_set_serial(payload, length);
-  } else if (strncmp(tail, "put/", 4) == 0) {
-    passport_put(tail + 4, strlen(tail + 4), payload, length);
-  }
-}
-
-void subscribe_passport() {
-  // Explicit topics, not passport/#: the device's own ack and data messages must not come back to it
-  char topic[64];
-  const char* const commands[] = {"get", "clear", "serial", "put/factory", "put/custom"};
-  for (const char* command : commands) {
-    snprintf(topic, sizeof(topic), "%s/%s", passport_topic, command);
-    mqtt_client.subscribe(topic);
-  }
-}
 
 // Check if wifi is connected
 bool wifi_is_connected() {
@@ -339,8 +147,7 @@ void maintain_mqtt() {
   if (mqtt_client.connect(chip_id, mqtt_username, mqtt_password, status_topic, 0, true, "offline")) {
     mqtt_client.publish(status_topic, "online", true);
     mqtt_client.publish(meta_topic, meta_text, true); // retained: a Pi that subscribes later still gets it
-    subscribe_passport();
-    publish_passport_summary();
+    passport_service.on_connect();
     if (serial_debug) Serial.printf("MQTT connected as %s\n", chip_id);
   } else if (serial_debug) {
     Serial.println("MQTT not connected, will try again ...");
@@ -369,7 +176,9 @@ void network_task(void*) {
   mqtt_client.setServer(mqtt_broker_ip, mqtt_port);
   mqtt_client.setBufferSize(mqtt_packet_buffer_size);
   mqtt_client.setSocketTimeout(mqtt_socket_timeout_s);
-  mqtt_client.setCallback(on_mqtt_message);
+  mqtt_client.setCallback([](char* topic, uint8_t* payload, unsigned int length) {
+    passport_service.on_message(topic, payload, length);
+  });
   for (;;) {
     maintain_wifi();
     maintain_mqtt();
@@ -472,12 +281,11 @@ void setup() {
   Serial.println("Smartmat China mat V1");
   build_identity();
   Serial.printf("Chip id: %s\n", chip_id);
-  if (!LittleFS.begin(true)) { // true: format on first use; the passport slots then simply start empty
-    Serial.println("LittleFS failed, passport storage off");
-  }
-  load_passport_state();
-  Serial.printf("Passport: serial '%s', factory %s, custom %s\n", passport_serial,
-                passport_info[0].present ? "yes" : "no", passport_info[1].present ? "yes" : "no");
+  passport_service.begin(&mqtt_client, mqtt_topic_prefix, chip_id, passport_service_key);
+  Serial.printf("Passport: serial '%s', factory %s, custom %s%s\n", passport_service.serial(),
+                passport_service.has(passport::Slot::Factory) ? "yes" : "no",
+                passport_service.has(passport::Slot::Custom) ? "yes" : "no",
+                passport_service.storage_ok() ? "" : " (flash storage failed)");
 
 #ifdef SIMULATE_MAT
   Serial.println("SIMULATE_MAT: USB host off, publishing a moving blob");

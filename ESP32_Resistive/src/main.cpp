@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "passport_service.h"
 #include "secrets.h" // Wifi and passcodes
 
 // CONFIG
@@ -46,12 +47,13 @@ const uint32_t serial_frame_interval_ms = 200;
 // Wifi and MQTT
 const char* mqtt_topic_prefix = "smartmat"; // topics: smartmat/<chip_id>/frame and .../meta
 const uint32_t reconnect_retry_interval_ms = 5000;
-const uint16_t mqtt_packet_buffer_size = 1500;  // 240-value frame is ~1.2 KB --> this leaves headroom
+const uint16_t frame_buffer_size = 1500;  // 240-value frame is ~1.2 KB --> this leaves headroom
+const uint16_t mqtt_packet_buffer_size = passport::kMaxBytes + 512;  // a whole passport slot (PASSPORT.md) fits in one message
 
 // Variables
 float filtered_grid[grid_rows][grid_cols] = {};
 bool filter_has_started = false; // Dont apply filter on first full scan
-char frame_text[mqtt_packet_buffer_size - 100];  // reserve space for text to send over MQTT/Serial
+char frame_text[frame_buffer_size - 100];  // reserve space for text to send over MQTT/Serial
 char chip_id[13];     // 12 hex digits, also used as MQTT client id (must be unique per board)
 char frame_topic[40];
 char meta_topic[40];
@@ -60,6 +62,7 @@ char meta_text[24];   // "<chip_id>,<rows>,<cols>"
 // Start Wifi and MQTT
 WiFiClient wifi_client;
 PubSubClient mqtt_client(wifi_client);
+PassportService passport_service; // the mat's calibration kept in flash, answered over MQTT (PASSPORT.md in ESP32_China)
 uint32_t last_wifi_attempt_ms = 0;
 uint32_t last_mqtt_attempt_ms = 0;
 
@@ -215,6 +218,7 @@ void maintain_mqtt() {
   last_mqtt_attempt_ms = now;
   if (mqtt_client.connect(chip_id, mqtt_username, mqtt_password)) {
     mqtt_client.publish(meta_topic, meta_text, true); // retained: a Pi that subscribes later still gets it
+    passport_service.on_connect();
     if (serial_debug) Serial.printf("MQTT connected as %s\n", chip_id);
   } else if (serial_debug) {
     Serial.println("MQTT not connected, will try again ...");
@@ -264,6 +268,11 @@ void setup() {
   Serial.println("Smartmat Resistive V1");
   build_identity();
   Serial.printf("Chip id: %s\n", chip_id);
+  passport_service.begin(&mqtt_client, mqtt_topic_prefix, chip_id, passport_service_key);
+  Serial.printf("Passport: serial '%s', factory %s, custom %s%s\n", passport_service.serial(),
+                passport_service.has(passport::Slot::Factory) ? "yes" : "no",
+                passport_service.has(passport::Slot::Custom) ? "yes" : "no",
+                passport_service.storage_ok() ? "" : " (flash storage failed)");
 
   // Start with muxes off
   configure_output_pin(mux_a_enable_pin, HIGH);
@@ -283,6 +292,9 @@ void setup() {
   WiFi.mode(WIFI_STA);
   mqtt_client.setServer(mqtt_broker_ip, mqtt_port);
   mqtt_client.setBufferSize(mqtt_packet_buffer_size);
+  mqtt_client.setCallback([](char* topic, uint8_t* payload, unsigned int length) {
+    passport_service.on_message(topic, payload, length);
+  });
 
   delay(200);
   Serial.println("Boot OK");

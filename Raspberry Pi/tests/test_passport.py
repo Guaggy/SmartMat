@@ -178,5 +178,14 @@ class DeviceTests(unittest.TestCase):
         self.assertEqual(ack("clear", "custom", True), '{"op":"clear","slot":"custom","ok":true}')
 
 
+class FirmwareCopiesTests(unittest.TestCase):
+    def test_both_boards_carry_the_same_passport_code(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[2]
+        for name in ("mat_passport.h", "passport_service.h"):
+            self.assertEqual((root / "ESP32_China" / "src" / name).read_bytes(), (root / "ESP32_Resistive" / "src" / name).read_bytes(),
+                             f"{name} differs between ESP32_China and ESP32_Resistive: copy one over the other")
+
+
 if __name__ == "__main__":
     unittest.main()

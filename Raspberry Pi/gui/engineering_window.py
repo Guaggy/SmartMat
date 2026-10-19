@@ -14,6 +14,7 @@ from processing.recording import RECORDINGS_DIR
 from processing.session_summary import session_summary
 from processing.reanalysis import compare_recording
 from gui.index_editor import IndexEditor
+from gui.passport_panel import PassportPanel
 from gui.server_panel import ServerPanel
 from processing.settings import builtin_preset, load_preset, save_preset, validate_settings
 from gui.page import is_shown, make_window
@@ -349,6 +350,8 @@ class EngineeringWindow:
             row=6, column=0, columnspan=3, sticky="w")
         self.server_panel = ServerPanel(parent, self.app)
         self.server_panel.frame.grid(row=7, column=0, columnspan=3, sticky="ew", pady=(16, 0))
+        self.passport_panel = PassportPanel(parent, self.app)
+        self.passport_panel.frame.grid(row=8, column=0, columnspan=3, sticky="ew", pady=(16, 0))
 
     def _connection_form(self):
         """(host, port, username, password) from the fields; ValueError with a readable text if invalid"""
