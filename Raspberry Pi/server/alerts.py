@@ -34,6 +34,22 @@ class AlertManager:
                 elif alert["state"] != "open":
                     self._done.append(dict(alert))
 
+    def forget(self, chip_id, t):
+        """The mat was removed: close its open alerts and its pending conditions. Returns the closed alerts."""
+        closed = []
+        with self._lock:
+            for key in [key for key in self._since if key[0] == chip_id]:
+                del self._since[key]
+            for alert in [a for a in self._open.values() if a["chip_id"] == chip_id]:
+                alert["t_cleared"] = t
+                del self._open[alert["id"]]
+                self._grace_until.pop(alert["id"], None)
+                if alert["state"] != "open":
+                    self._done.append(alert)
+                self._changed(alert)
+                closed.append(dict(alert))
+        return closed
+
     def reset_holds(self):
         """Start counting every condition that has not opened an alert yet from its next update (after a clock jump
         the saved start times mean nothing); open alerts stay"""

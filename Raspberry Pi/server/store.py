@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS devices (token TEXT PRIMARY KEY, platform TEXT, name 
 CREATE TABLE IF NOT EXISTS alerts (id TEXT PRIMARY KEY, chip_id TEXT NOT NULL, kind TEXT NOT NULL, t_raised REAL NOT NULL,
     since REAL, t_cleared REAL, state TEXT NOT NULL, by TEXT, t_handled REAL);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS hidden_mats (chip_id TEXT PRIMARY KEY, t REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS timeline_mat ON timeline (chip_id, t_end);
 CREATE INDEX IF NOT EXISTS events_mat ON events (chip_id, id);
 """
@@ -186,6 +187,18 @@ class Store:
     def remove_device(self, token):
         with self._lock, self._db:
             return self._db.execute("DELETE FROM devices WHERE token = ?", (token,)).rowcount > 0
+
+    def hidden_mats(self):
+        """Mats an admin removed from the dashboard (retired ones); their name and room are kept for a restore"""
+        return {row["chip_id"] for row in self._rows("SELECT chip_id FROM hidden_mats")}
+
+    def hide_mat(self, chip_id, t):
+        with self._lock, self._db:
+            self._db.execute("INSERT OR REPLACE INTO hidden_mats (chip_id, t) VALUES (?, ?)", (chip_id, t))
+
+    def show_mat(self, chip_id):
+        with self._lock, self._db:
+            return self._db.execute("DELETE FROM hidden_mats WHERE chip_id = ?", (chip_id,)).rowcount > 0
 
     # ---- settings overrides (server/settings.py): key -> JSON value
 

@@ -172,6 +172,7 @@ class Server:
         self._threads = []
         self._reported = {}   # (chip_id, place) -> when a fault was last printed
         self._last_tick = None
+        self.hidden = store.hidden_mats()   # retired mats an admin removed: not read, not listed
         self.discovery = None
         if demo:
             frames = load_frames()
@@ -219,6 +220,8 @@ class Server:
         if self.discovery is None:
             return
         for chip_id, shape in list(self.discovery.mats.items()):
+            if chip_id in self.hidden:
+                continue
             engine = self.engines.get(chip_id)
             if engine is not None:
                 engine.status = self.discovery.status.get(chip_id)
@@ -242,11 +245,34 @@ class Server:
         except Exception as error:
             print(f"Mat {chip_id} not opened: {error}")
             return
-        if self._stop.is_set():
+        if self._stop.is_set() or chip_id in self.hidden:  # shut down, or removed while it was opening
             source.stop()
             return
         self._add(chip_id, self._mqtt_engine(chip_id), MqttMat(source))
         self.store.log(time.time(), "mat connected", chip_id)
+
+    # ---- removing and restoring a retired mat (admin, from the dashboard)
+
+    def hide(self, chip_id, now):
+        """Stop reading a mat, close its open alerts and keep it out of the lists. ValueError for a mat that is online
+        (only retired ones are removed; a live mat would just come back with its next frame)."""
+        engine = self.engines.get(chip_id)
+        if engine is not None and engine.online(engine.clock()):
+            raise ValueError("Only a mat that is offline can be removed")
+        self.store.hide_mat(chip_id, now)
+        self.hidden.add(chip_id)
+        feed = self.feeds.pop(chip_id, None)
+        self.engines.pop(chip_id, None)
+        if feed is not None and hasattr(feed, "stop"):
+            feed.stop()
+        for alert in self.alerts.forget(chip_id, now):
+            self.store.log(now, "alert cleared", chip_id, None, {"alert": alert["id"], "kind": alert["kind"]})
+
+    def show(self, chip_id):
+        """Bring a removed mat back: the next discovery round opens it again if the broker still has it"""
+        self.hidden.discard(chip_id)
+        self._opening.pop(chip_id, None)
+        return self.store.show_mat(chip_id)
 
     # ---- the loops
 
@@ -261,8 +287,9 @@ class Server:
         for chip_id, feed in list(self.feeds.items()):
             try:  # one failing mat must not stop the others
                 item = feed.take()
-                if item is not None:
-                    self.engines[chip_id].feed(*item)
+                engine = self.engines.get(chip_id)   # None: removed while this round ran
+                if item is not None and engine is not None:
+                    engine.feed(*item)
             except Exception as error:
                 self._report(chip_id, "pump", error)
 
@@ -352,7 +379,7 @@ def main(argv=None):
     server = Server(store, alerts, demo=args.demo, serial_ports=getattr(config, "SERVER_SERIAL_PORTS", ()),
                     settings=settings)
     server.run_loops()
-    http = make_server("0.0.0.0", args.port, create_app(store, server.alerts, server.engines, settings=settings),
+    http = make_server("0.0.0.0", args.port, create_app(store, server.alerts, server.engines, settings=settings, control=server),
                        threaded=True)
     stopping = threading.Event()
 

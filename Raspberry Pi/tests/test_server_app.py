@@ -73,10 +73,10 @@ class UserTests(ApiTests):
         self.make_users()
         self.assertEqual(self.put("/api/users/1", pin=ADMIN, active=False).status_code, 400)  # last admin
         self.assertEqual(self.put("/api/users/2", pin=ADMIN, new_pin="9999").status_code, 200)
-        self.assertEqual(self.put("/api/mats/m1/meta", pin=NURSE, room="1").status_code, 403)
-        self.assertEqual(self.put("/api/mats/m1/meta", pin="9999", room="1").status_code, 200)
+        self.assertEqual(self.post("/api/alerts/nope/ack", pin=NURSE).status_code, 403)   # the old PIN is gone
+        self.assertEqual(self.post("/api/alerts/nope/ack", pin="9999").status_code, 409)   # the new one is a user (no such alert)
         self.assertEqual(self.put("/api/users/2", pin=ADMIN, active=False).status_code, 200)
-        self.assertEqual(self.put("/api/mats/m1/meta", pin="9999", room="1").status_code, 403)
+        self.assertEqual(self.post("/api/alerts/nope/ack", pin="9999").status_code, 403)   # a disabled user's PIN is refused
 
 
 class AlertApiTests(ApiTests):
@@ -115,9 +115,9 @@ class LockoutOnTests(ApiTests):
         self.make_users()
         for _ in range(2):
             self.assertEqual(self.put("/api/mats/m1/meta", pin="0000", room="1").status_code, 403)
-        self.assertEqual(self.put("/api/mats/m1/meta", pin=NURSE, room="1").status_code, 429)
+        self.assertEqual(self.put("/api/mats/m1/meta", pin=ADMIN, room="1").status_code, 429)
         self.now += 61
-        self.assertEqual(self.put("/api/mats/m1/meta", pin=NURSE, room="1").status_code, 200)
+        self.assertEqual(self.put("/api/mats/m1/meta", pin=ADMIN, room="1").status_code, 200)
 
 
 class LockoutOffTests(ApiTests):
@@ -125,7 +125,7 @@ class LockoutOffTests(ApiTests):
         self.make_users()
         for _ in range(6):
             self.assertEqual(self.put("/api/mats/m1/meta", pin="0000", room="1").status_code, 403)
-        self.assertEqual(self.put("/api/mats/m1/meta", pin=NURSE, room="1").status_code, 200)
+        self.assertEqual(self.put("/api/mats/m1/meta", pin=ADMIN, room="1").status_code, 200)
 
 
 class MatApiTests(ApiTests):
@@ -151,12 +151,14 @@ class MatApiTests(ApiTests):
 
     def test_meta_put_shows_in_the_overview_and_the_log(self):
         self.make_users()
-        response = self.put("/api/mats/m1/meta", pin=NURSE, name="Chair 3", room="204", seat="B")
+        refused = self.put("/api/mats/m1/meta", pin=NURSE, name="Mine", room="1")   # a nurse cannot rename mats
+        self.assertEqual((refused.status_code, refused.get_json()["error"]), (403, "Only an admin can do this"))
+        response = self.put("/api/mats/m1/meta", pin=ADMIN, name="Chair 3", room="204", seat="B")
         self.assertEqual((response.status_code, response.get_json()["name"]), (200, "Chair 3"))
-        self.put("/api/mats/m1/meta", pin=NURSE, unit="Ward 2")
+        self.put("/api/mats/m1/meta", pin=ADMIN, unit="Ward 2")
         row = next(r for r in self.client.get("/api/overview").get_json()["mats"] if r["id"] == "m1")
         self.assertEqual((row["name"], row["room"], row["seat"], row["unit"]), ("Chair 3", "204", "B", "Ward 2"))
-        self.assertEqual(self.put("/api/mats/zzz/meta", pin=NURSE, room="1").status_code, 404)
+        self.assertEqual(self.put("/api/mats/zzz/meta", pin=ADMIN, room="1").status_code, 404)
         log = self.client.get("/api/mats/m1/log").get_json()["events"]
         self.assertEqual([e["detail"] for e in log], [{"meta": {"unit": "Ward 2"}},  # newest first
                                                       {"meta": {"name": "Chair 3", "room": "204", "seat": "B"}}])
@@ -301,9 +303,9 @@ class ContractTests(ApiTests):
 
     def test_meta_edit_checks_the_name_and_answers_with_the_user(self):
         self.make_users()
-        self.assertEqual(self.put("/api/mats/m1/meta", pin=NURSE, name="  ", room="1").status_code, 400)
-        response = self.put("/api/mats/m1/meta", pin=NURSE, name="Chair", room="12", seat="A", unit="Ward")
-        self.assertEqual((response.get_json()["ok"], response.get_json()["user"]), (True, "Kari"))
+        self.assertEqual(self.put("/api/mats/m1/meta", pin=ADMIN, name="  ", room="1").status_code, 400)
+        response = self.put("/api/mats/m1/meta", pin=ADMIN, name="Chair", room="12", seat="A", unit="Ward")
+        self.assertEqual((response.get_json()["ok"], response.get_json()["user"]), (True, "Admin"))
 
     def test_users_list_and_changes(self):
         self.make_users()
