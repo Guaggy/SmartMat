@@ -1,0 +1,22 @@
+node_modules/
+.expo/
+dist/
+web-build/
+android/
+ios/
+*.apk
+*.aab
+*.ipa
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+# Firebase: google-services.json holds public ids and is committed (EAS cloud builds skip ignored files);
+# the service-account key is private and goes to EAS with `eas credentials`, never into git
+*firebase-adminsdk*.json
+service-account*.json
+.env
+.env.*
+!.env.example
+npm-debug.*
+.DS_Store
