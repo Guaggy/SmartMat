@@ -11,9 +11,11 @@ from werkzeug.exceptions import HTTPException
 
 import branding
 import config
-from processing import calibration
+from passport_link import PassportError
+from processing import calibration, passport
 from processing.posture import risk_sort_key
 from server import push
+from server.passports import apply_profile
 from server.settings import SITE, Settings
 from server.store import DEVICE_FIELDS, META_FIELDS
 
@@ -34,10 +36,11 @@ class ApiError(Exception):
         self.status = status
 
 
-def create_app(store, alerts, engines, clock=time.time, settings=None, control=None):
+def create_app(store, alerts, engines, clock=time.time, settings=None, control=None, passports=None):
     """store: server.store.Store, alerts: AlertManager, engines: {chip_id: MatEngine} (the runner adds to it),
     settings: server.settings.Settings (the admin-editable values; defaults from config.py when not given),
-    control: the runner, for removing and restoring mats (hide(chip_id, now), show(chip_id)); without it those are refused"""
+    control: the runner, for removing and restoring mats (hide(chip_id, now), show(chip_id)); without it those are refused,
+    passports: server.passports.PassportService (the mats' calibration kept on the mats); without it the passport routes answer 501"""
     settings = settings if settings is not None else Settings(store)
     app = Flask(__name__, static_folder=None)
 
@@ -323,15 +326,52 @@ def create_app(store, alerts, engines, clock=time.time, settings=None, control=N
         new = data.get("profile")
         if not isinstance(new, dict) or new.get("format") != calibration.PROFILE_FORMAT:
             raise ApiError(400, f"profile must be a {calibration.PROFILE_FORMAT} object")
-        new = dict(new, mat_id=chip_id, version=engine.profile_version + 1)
         try:
-            engine.set_profile(new)
+            new = apply_profile(engine, chip_id, new)
         except ValueError as error:
             raise ApiError(400, f"profile does not fit this mat: {error}")
-        calibration.PROFILES_DIR.mkdir(parents=True, exist_ok=True)
-        calibration.profile_path(chip_id).write_text(json.dumps(new, indent=2), encoding="utf-8")
         store.log(clock(), "calibration pushed", chip_id, user["name"], {"version": new["version"]})
         return jsonify({"ok": True, "user": user["name"], "id": chip_id, "version": new["version"]})
+
+    # ---- the passport kept on the mat (calibration travels with the mat): look, adopt a slot, write the custom slot
+
+    def passport_service():
+        if passports is None:
+            raise ApiError(501, "this server has no passport support")
+        return passports
+
+    @app.route("/api/mats/<chip_id>/passport")
+    def passport_status(chip_id):
+        known(chip_id)
+        try:
+            return jsonify(dict(passport_service().status(chip_id), id=chip_id))
+        except PassportError as error:
+            raise ApiError(502, str(error))
+
+    @app.route("/api/mats/<chip_id>/passport/adopt", methods=["POST"])
+    def passport_adopt(chip_id):
+        data = body()
+        user = actor(data, admin=True)
+        known(chip_id)
+        slot = data.get("slot")
+        if slot not in ("factory", "custom"):
+            raise ApiError(400, "slot must be factory or custom")
+        try:
+            document = passport_service().adopt(chip_id, slot, user["name"], reason_of(data))
+        except PassportError as error:
+            raise ApiError(502, str(error))
+        return jsonify({"ok": True, "user": user["name"], "id": chip_id, "info": passport.describe(document)})
+
+    @app.route("/api/mats/<chip_id>/passport/write", methods=["POST"])
+    def passport_write(chip_id):
+        data = body()
+        user = actor(data, admin=True)
+        known(chip_id)
+        try:
+            result = passport_service().write(chip_id, user["name"], str(data.get("note") or "")[:120])
+        except PassportError as error:
+            raise ApiError(502, str(error))
+        return jsonify(dict(result, ok=True, user=user["name"], id=chip_id))
 
     # ---- phones for push notifications. Registering needs a valid PIN (anyone could otherwise subscribe to the alerts);
     # the push token is a secret of the phone, so changing or removing a registration needs no PIN.

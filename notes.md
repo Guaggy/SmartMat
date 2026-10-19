@@ -43,8 +43,13 @@ Still open (everything else from this list is shipped - see "Shipped" in `Raspbe
      server's own engine and alert rules, in small steps on the main thread. Files = the existing Save/Load preset. The old
      desktop Web UI is off by default and says so when the port is taken (it crashed the desktop at start when the server
      ran on the same PC); removing `gui/web.py` and its selftest use is still open (needs the desktop tests run on Windows).
-  3. Mat "passport" on the ESP32 (NVS: serial, calibration profile, size, model, a factory copy and a custom copy, versions
-     and checksums; firmware does not listen to commands or store anything yet; zero-touch: the server adopts the passport
-     of a new mat when it has nothing; only device-bound data travels with the mat, names/rooms/thresholds/users stay at the site).
+  3. Mat "passport" on the ESP32: DONE in code, firmware glue UNTESTED on hardware (full PlatformIO build failed here on a
+     certificate problem; `main.cpp` is only syntax-checked against stub headers). Two flash slots (factory: service key;
+     custom: broker login), opaque blob `SMP1`+zlib(JSON) <= 16 KB with CRC-32, MQTT protocol in `ESP32_China/PASSPORT.md`.
+     Rules are in `src/mat_passport.h` (28 host test cases) and mirrored in `passport_device.py`; client `passport_link.py`;
+     server routes `GET /api/mats/<id>/passport`, `POST .../passport/adopt|write` and zero-touch adoption (`server/passports.py`,
+     `tests/test_server_passport.py`, e2e part 13 over a real broker); `tools/passport_tool.py`, `tools/fake_passport_device.py`.
+     Still open: a passport panel in the desktop app, buttons in the web UI, flashing and trying a real board, the
+     ESP32_Resistive firmware.
   Open for the regulated path: MQTT login + TLS, HTTPS, a golden test that runs one recording through both the desktop
   pipeline and the server engine, occupancy/index-hold settings are still global (not per mat yet), exporting the audit log.

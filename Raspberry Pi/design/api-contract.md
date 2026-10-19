@@ -210,3 +210,10 @@ tz, quiet_from, quiet_to}` registers a phone (needs a valid staff PIN, wrong PIN
 `PUT /api/devices/<token>` updates language and quiet hours and `DELETE /api/devices/<token>` removes it (no PIN: the push
 token is the secret of the phone). One push is sent per raised alert (`server/push.py`, Expo push service, mat name and room
 only), none when it clears. Settings: `PUSH_ENABLED`, `PUSH_ACCESS_TOKEN` in `config.py`. See `Phone App/README.md`.
+
+## Mat passport (calibration kept on the mat)
+
+* `GET /api/mats/<id>/passport` -> `{id, serial, max, slots: {factory|custom: null | {bytes, crc, info, version, by, at, note, has_analysis, same_as_now} | {bytes, crc, error}}}`. 501 without MQTT, 502 when the mat does not answer.
+* `POST /api/mats/<id>/passport/adopt` `{pin (admin), slot: "factory"|"custom", reason?}` -> sets the mat's calibration (a new profile version) and, if the passport has analysis settings, replaces the mat's own settings layer (a new version). Logged as `passport adopted`.
+* `POST /api/mats/<id>/passport/write` `{pin (admin), note?}` -> writes the mat's current calibration and own analysis settings to the custom slot (version +1). Logged as `passport written`. The factory slot is written only with `tools/passport_tool.py` and the service key.
+* A mat with no saved calibration takes its passport on first contact (custom, else factory): `passport adopted` by `system`.

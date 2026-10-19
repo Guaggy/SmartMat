@@ -21,11 +21,13 @@ from werkzeug.serving import make_server
 import app_settings
 import config
 import general
+from passport_link import PahoTransport, PassportLink
 from processing import calibration
 from processing.calibration import IndividualCalibration, UniformCalibration, load_profile
 from server.alerts import AlertManager
 from server.app import DEMO_PREFIX, create_app
 from server.engine import MatEngine, grid_shape
+from server.passports import PassportService
 from server.push import PushSender
 from server.settings import SITE, Settings
 from server.store import Store
@@ -166,6 +168,7 @@ class Server:
         self.settings = settings if settings is not None else Settings(store)
         self.pusher = pusher if pusher is not None else PushSender(store, enabled=self.settings.get("push_enabled"))
         self.engines = {}   # chip_id -> MatEngine (read by the web app)
+        self.passports = PassportService(self._passport_link, store, self.settings, self.engines, time.time) if use_mqtt else None
         self.feeds = {}     # chip_id -> DemoMat / MqttMat / SerialBridge
         self._opening = {}  # chip_id -> time an MQTT mat was last tried
         self._stop = threading.Event()
@@ -203,6 +206,13 @@ class Server:
                 print(f"MQTT not started: {type(error).__name__}: {error}")
                 self.discovery = None
         self.settings.listen(self._apply_settings, call=False)  # a change in the dashboard applies at once
+
+    @staticmethod
+    def _passport_link():
+        mqtt = app_settings.effective_mqtt()
+        transport = PahoTransport(mqtt["host"], mqtt["port"], mqtt["username"], mqtt["password"], "smartmat-server-passport")
+        transport.wait_connected(3)
+        return PassportLink(transport)
 
     def _add(self, chip_id, engine, feed):
         self._configure(chip_id, engine)
@@ -260,6 +270,8 @@ class Server:
             return
         self._add(chip_id, self._mqtt_engine(chip_id), MqttMat(source))
         self.store.log(time.time(), "mat connected", chip_id)
+        if self.passports is not None and self.passports.auto_adopt(chip_id):   # a new mat brings its own calibration
+            self._configure(chip_id, self.engines[chip_id])
 
     # ---- removing and restoring a retired mat (admin, from the dashboard)
 
@@ -399,7 +411,7 @@ def main(argv=None):
     server = Server(store, alerts, demo=args.demo, serial_ports=getattr(config, "SERVER_SERIAL_PORTS", ()),
                     settings=settings)
     server.run_loops()
-    http = make_server("0.0.0.0", args.port, create_app(store, server.alerts, server.engines, settings=settings, control=server),
+    http = make_server("0.0.0.0", args.port, create_app(store, server.alerts, server.engines, settings=settings, control=server, passports=server.passports),
                        threaded=True)
     stopping = threading.Event()
 

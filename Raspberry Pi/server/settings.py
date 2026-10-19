@@ -216,6 +216,11 @@ class Settings:
                             **({"choices": list(spec.choices)} if spec.choices else {})})
             return out
 
+    def layer(self, chip=None):
+        """The overrides one layer holds (a copy): {key: value}"""
+        with self._lock:
+            return dict(self._layers.get(SITE if chip is None else chip, {}))
+
     def version(self, scope=SITE):
         return self._versions.get(scope, 0)
 

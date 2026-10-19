@@ -331,8 +331,47 @@ def part_layers(data, log):
     http("/api/settings", "PUT", {"pin": ADMIN, "values": {"alert_offline_s": None}, "reason": "end of the test"})
 
 
+def part_passport(data, log):
+    print("\n== 13. the passport kept on a mat: a new mat brings its calibration, backup and restore over a real broker")
+    from passport_link import PahoTransport, PassportLink
+    from processing import passport
+    procs["pp-dev"] = spawn("tools/fake_passport_device.py", "--chip-id", "pass-a", "--serial", "SM-0042", "--service-key", "sesame", "--custom", "20x20", log=log)
+    time.sleep(2)
+    start_pub("pass-a")
+    check("the new mat appears", wait(lambda: mats().get("pass-a", {}).get("online"), 40), mats().get("pass-a"))
+    events = lambda: [e["kind"] for e in http("/api/mats/pass-a/log")[1].get("events", [])]
+    check("it was calibrated from its own passport, without anyone touching it", wait(lambda: "passport adopted" in events(), 20), events())
+    status, body = http("/api/mats/pass-a/passport")
+    custom = (body.get("slots") or {}).get("custom") or {}
+    check("the status shows serial, slot and that it is the calibration in use", status == 200 and body.get("serial") == "SM-0042" and custom.get("same_as_now") is True, body)
+    check("a nurse cannot write the passport", http("/api/mats/pass-a/passport/write", "POST", {"pin": NURSE})[0] == 403)
+    status, body = http("/api/mats/pass-a/passport/write", "POST", {"pin": ADMIN, "note": "e2e backup"})
+    check("an admin writes the custom slot (version 2)", status == 200 and body.get("version") == 2, body)
+    transport = PahoTransport("127.0.0.1", BROKER, client_id="e2e-passport-tool")
+    transport.wait_connected(10)
+    link = PassportLink(transport, 5)
+    try:
+        document, blob = link.read("pass-a", "custom")
+        check("read back over MQTT: the note, the writer and the version", (document["note"], document["written_by"], document["version"]) == ("e2e backup", "Admin", 2), document["note"])
+        check("the mat's CRC is the bytes' CRC", (link.summary("pass-a")["custom"] or {}).get("crc") == passport.crc_hex(blob))
+        try:
+            link.write("pass-a", "factory", passport.encode(passport.build("factory", "SM-0042", "MC266", document["profile"])), "wrong")
+            refused = False
+        except Exception as error:
+            refused = "service key" in str(error)
+        check("the factory slot refuses a wrong service key", refused)
+        link.write("pass-a", "factory", passport.encode(passport.build("factory", "SM-0042", "MC266", document["profile"])), "sesame")
+        check("and takes the right one", link.read("pass-a", "factory")[0]["slot"] == "factory")
+    finally:
+        link.close()
+    status, body = http("/api/mats/pass-a/passport/adopt", "POST", {"pin": ADMIN, "slot": "factory"})
+    check("adopting the factory passport works and is logged", status == 200 and events().count("passport adopted") == 2, body)
+    procs["pass-a"].kill()
+    procs["pp-dev"].kill()
+
+
 def part_risk(log):
-    print("\n== 13. the risk pipeline reaches high and raises an alert (demo mats run faster than real time)")
+    print("\n== 14. the risk pipeline reaches high and raises an alert (demo mats run faster than real time)")
     stop_server()
     procs["server"] = None
     EXTRA_SERVER_ARGS[:] = ["--demo", "5"]
@@ -389,6 +428,7 @@ def main():
             return
         part_mqtt(data, log, args.quick)
         part_layers(data, log)
+        part_passport(data, log)
         part_risk(log)
         log.flush()
         text = (data / "server.log").read_text(errors="replace")
