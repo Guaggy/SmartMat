@@ -76,12 +76,30 @@
     </div>
     <p class="pm-sub" id="pmSub"></p>
     <div id="pmBody" hidden>
-      <p class="note bad" id="pmStale" hidden></p>
-      <div class="mapctl">
-        <label><span data-i="layer"></span>
-          <select id="layer" data-i-label="layer"></select></label>
-        <label><span data-i="mode"></span>
-          <select id="view" data-i-label="mode"></select></label>
+      <div class="modebar">
+        <div class="seg" role="group" data-i-label="histMode">
+          <button type="button" id="modeLive" class="on" aria-pressed="true" data-i="view_live"></button>
+          <button type="button" id="modeHist" aria-pressed="false" data-i="histMode"></button>
+        </div>
+        <details class="menu" id="exportMenu">
+          <summary data-i="exportMenu"></summary>
+          <div class="menu-box" id="exportBox"></div>
+        </details>
+      </div>
+      <div id="liveTop">
+        <p class="note bad" id="pmStale" hidden></p>
+        <div class="mapctl">
+          <label><span data-i="layer"></span>
+            <select id="layer" data-i-label="layer"></select></label>
+          <label><span data-i="mode"></span>
+            <select id="view" data-i-label="mode"></select></label>
+        </div>
+      </div>
+      <div id="histTop" hidden>
+        <div class="mapctl">
+          <label><span data-i="histRange"></span>
+            <select id="hRangeSel" data-i-label="histRange"></select></label>
+        </div>
       </div>
       <div class="mapbox">
         <div class="front" data-i="front"></div>
@@ -92,6 +110,40 @@
       </div>
       <div class="ramp-row"><span data-i="low"></span><div class="ramp" id="ramp"></div><span data-i="high"></span></div>
       <p class="ramp-unit muted" id="rampUnit"></p>
+      <div id="histBox" hidden>
+        <p class="note hmsg" id="hMsg" hidden></p>
+        <div id="hCtl" hidden>
+          <div class="hbtns">
+            <button type="button" class="btn ib" id="hPrev" data-i-title="hPrev" data-i-label="hPrev">&#8249;</button>
+            <button type="button" class="btn ib primary" id="hPlay"></button>
+            <button type="button" class="btn ib" id="hNext" data-i-title="hNext" data-i-label="hNext">&#8250;</button>
+            <select id="hSpeed" data-i-label="hSpeed"></select>
+            <span class="grow"></span>
+            <div class="seg" role="group" data-i-label="histView">
+              <button type="button" id="hInstant" data-i="hInstant"></button>
+              <button type="button" id="hPeak"></button>
+            </div>
+          </div>
+          <div class="strip" id="hStrip" data-i-label="hStripLabel" role="img">
+            <canvas id="hCanvas"></canvas><i class="cursor" id="hCursor"></i>
+          </div>
+          <input type="range" id="hScrub" min="0" max="0" step="1" data-i-label="hScrub">
+          <div class="hbtns alertnav">
+            <button type="button" class="btn" id="hPrevAlert"><span aria-hidden="true">&#8249; </span><span data-i="hPrevAlert"></span></button>
+            <span class="grow"></span>
+            <button type="button" class="btn" id="hNextAlert"><span data-i="hNextAlert"></span><span aria-hidden="true"> &#8250;</span></button>
+          </div>
+          <p class="muted small hlegend"><span class="tri" aria-hidden="true"></span><span data-i="hLgRaised"></span>
+            <span class="ring" aria-hidden="true"></span><span data-i="hLgCleared"></span></p>
+        </div>
+        <div id="hNow" hidden>
+          <h3 id="hWhen" class="hwhen"></h3>
+          <p class="hevent" id="hEvent" hidden></p>
+          <dl class="kv" id="hKv"></dl>
+          <p class="muted small" id="hSpotNote"></p>
+        </div>
+      </div>
+      <div id="liveBot">
       <p class="note warn" id="pmSat" hidden></p>
       <p class="note" id="pmUncal" hidden></p>
       <div class="tiles">
@@ -100,6 +152,7 @@
         <div class="tile"><div class="v" id="areaV"></div><div class="k" data-i="contactArea"></div></div>
         <div class="tile"><div class="v" id="loadV"></div><div class="k" id="loadK"></div></div>
       </div>
+      <p class="muted small" id="pmMoves" hidden></p>
       <div class="bal" id="bal" hidden></div>
       <h3 data-i="hotspots"></h3>
       <div class="spots" id="pmSpots"></div>
@@ -109,6 +162,7 @@
         <h3 data-i="indices"></h3>
         <dl class="kv" id="pmIdx"></dl>
       </details>
+      </div>
     </div>
   </aside>
 </main>
@@ -148,6 +202,7 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="heatmap.js"></script>
+<script src="history.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

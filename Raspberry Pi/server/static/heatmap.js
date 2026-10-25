@@ -478,7 +478,7 @@ void main() {
     return {
       kind: heat.kind, setRamp, set, resize, refreshColors: () => { refreshColors(); redraw(); },
       select(id) { selected = id; redraw(); },
-      reset() { cur = null; spots = new Map(); cop = null; selected = null; rows = cols = 0; octx.clearRect(0, 0, overlay.width, overlay.height); },
+      reset() { if (raf) { cancelAnimationFrame(raf); raf = 0; } cur = null; spots = new Map(); cop = null; selected = null; rows = cols = 0; octx.clearRect(0, 0, overlay.width, overlay.height); },
       drawNow: draw,
       get lastDrawMs() { return drawMs; },
       get moving() { return !!raf; },

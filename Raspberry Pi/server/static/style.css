@@ -119,6 +119,7 @@ input { width: 100%; }
 .head[aria-expanded="true"] .c-chev svg { transform: rotate(180deg); }
 .c-dev b { font-weight: 600; }
 .flag { color: var(--bad); font-weight: 600; }
+.mv { color: var(--muted); font-size: 12px; white-space: nowrap; }
 /* data check: a small rounded box, ticked while data arrives */
 .c-ok { font-size: 0; }
 .c-ok::after { content: "✓"; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; font-size: 14px; font-weight: 700; color: var(--on-low); background: var(--st-low); }
@@ -231,6 +232,37 @@ input { width: 100%; }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; text-align: right; }
 .pm h3 { margin: 14px 0 2px; font-size: 13px; color: var(--muted); font-weight: 600; }
+
+/* history mode in the pressure panel */
+.modebar { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--panel); }
+.seg button { height: 32px; padding: 0 14px; background: none; border: 0; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; }
+.seg button.on { background: var(--accent); color: var(--on-accent); }
+.menu summary { list-style: none; padding: 5px 12px; border: 1px solid var(--line); border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--accent); cursor: pointer; background: var(--panel); }
+.menu summary::-webkit-details-marker { display: none; }
+.menu[open] summary { border-color: var(--accent); }
+.menu-box { position: absolute; z-index: 4; right: 0; top: 38px; display: grid; gap: 6px; min-width: 220px; padding: 12px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 6px 20px rgba(0, 0, 0, .18); }
+.menu-box a { color: var(--accent); font-weight: 600; }
+.hmsg { padding: 10px 0 2px; color: var(--muted); font-weight: 400; }
+.hbtns { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 12px 0 6px; }
+.hbtns .grow { flex: 1; }
+.hbtns .btn.ib { width: 40px; padding: 0; font-size: 20px; line-height: 1; display: grid; place-items: center; }
+.hbtns .btn.ib svg { width: 18px; height: 18px; fill: currentColor; }
+.hbtns select { width: auto; height: 34px; }
+.alertnav { margin: 4px 0 0; }
+.alertnav .btn:disabled { opacity: .4; }
+.strip { position: relative; height: 58px; margin-top: 10px; touch-action: none; cursor: pointer; user-select: none; }
+.strip canvas { display: block; width: 100%; }
+.strip .cursor { position: absolute; top: 8px; bottom: 6px; width: 0; margin-left: -1px; border-left: 3px solid var(--ink); border-radius: 2px; pointer-events: none; box-shadow: 0 0 0 1px var(--panel); }
+#hScrub { width: 100%; height: 28px; padding: 0; margin: 2px 0 0; accent-color: var(--accent); background: none; border: 0; }
+.hlegend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 4px; }
+.hlegend .tri { width: 0; height: 0; border: 5px solid transparent; border-bottom: 9px solid var(--st-high); border-top-width: 0; }
+.hlegend .ring { width: 9px; height: 9px; margin-left: 10px; border: 2px solid var(--ink); border-radius: 50%; }
+.hwhen { margin: 12px 0 2px; font-size: 16px; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+.hevent { margin: 2px 0 6px; font-weight: 600; color: var(--muted); }
+.hevent.raised { color: var(--bad); }
+#hNow .kv { margin-top: 6px; }
+#hNow .kv dd { max-width: 60%; }
 
 /* bell list */
 .bellpanel {

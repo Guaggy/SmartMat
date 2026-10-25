@@ -104,6 +104,20 @@ const i18n = {
     history: "Endringshistorikk", noHistory: "Ingen endringer ennå.", version: "Versjon", restoreVersion: "Gjenopprett v{v}",
     factoryVersion: "Fabrikkverdier (versjon 0)", dlgRollback: "Gjenopprett versjon {v}?", rolledBack: "Gjenopprettet av {u}",
     rollbackHint: "Innstillingene settes tilbake slik de var i denne versjonen. Det blir en ny versjon, og historikken beholdes.",
+    histMode: "Historikk", histRange: "Periode", histView: "Visning", range_6: "Siste 6 timer", range_24: "Siste 24 timer", range_72: "Siste 3 dager", range_168: "Siste 7 dager",
+    hLoading: "Henter historikk … {n} bilder", hOff: "Historikk er slått av på serveren.", hEmpty: "Ingen lagret historikk i denne perioden ennå. Bilder lagres ca. hvert 5. minutt mens matten er koblet til.",
+    hError: "Kunne ikke hente historikk.", hCapped: "Viser de første {n} bildene. Velg en kortere periode for å se de nyeste.",
+    hPlay: "Spill av", hPause: "Pause", hPrev: "Forrige bilde", hNext: "Neste bilde", hSpeed: "Avspillingsfart", spd_0: "Sakte", spd_1: "Normal", spd_2: "Rask",
+    hInstant: "Øyeblikk", hPeakBtn: "{n} min topp", hPeakShort: "topp", hScrub: "Velg tidspunkt", hStripLabel: "Historikk: farge viser risiko, trekant og ring viser varsel utløst og avsluttet. Trykk for å hoppe.",
+    hPrevAlert: "Forrige varsel", hNextAlert: "Neste varsel", hLgRaised: "varsel utløst", hLgCleared: "varsel avsluttet",
+    hRaised: "Varsel utløst: {k}", hCleared: "Varsel avsluttet: {k}", hNoPeak: "Ingen toppbilde for dette øyeblikket: viser øyeblikksbildet.", hNoPicture: "Ingen bilde fra dette tidspunktet (matten var frakoblet).",
+    hSpotsApprox: "Hotspot er tegnet som en ring rundt det lagrede sentrum. Formen er ikke lagret.", movesHour: "Bevegelser siste time",
+    exportMenu: "Eksport", exHistory: "Historikk (CSV)", exRepos: "Omplassering (CSV)", exAudit: "Hendelseslogg (CSV)", exHint: "Gjelder perioden valgt under Historikk: {r}.",
+    exportSet: "Eksport", exportSetHint: "Hendelseslogg med endringer av innstillinger, fjernede matter, håndterte varsler og brukere.",
+    reposShow: "Vis omplasseringsinfo", reposHint: "Tid siden bevegelse i listen og antall bevegelser siste time. Gjelder bare denne nettleseren.", sinceMoveRow: "Tid siden bevegelse",
+    forget: "Glem", forgetBtn: "Glem denne matten …", dlgForget: "Glem {name}?",
+    forgetHint: "Matten fjernes fra dashbordet, og det den har lagret hos meldingsserveren (broker) tømmes, slik at den ikke dukker opp igjen. Historikken beholdes til den utløper. Du kan hente matten tilbake under «Fjernede matter». Bare frakoblede matter kan glemmes.",
+    forgottenBy: "Glemt av {u}", forgetNoBroker: "Meldingsserveren (broker) kunne ikke nås. Matten kan dukke opp igjen hvis den fortsatt sender.",
     foot: "Ingeniørverktøy, ikke medisinsk utstyr. Stilling og risiko er heuristikker. Bruk sammen med vanlig klinisk vurdering.",
     help_: {
       title: "Hjelp",
@@ -129,6 +143,14 @@ const i18n = {
         "«Celler ved sensorgrensen» betyr at sensoren metter. Last og toppverdi er da høyere enn det som vises.",
         "Tid siden avlastning er tiden siden trykket sist ble tydelig flyttet eller tatt av.",
         "Tidslinjen under en rad viser stilling og risiko de siste timene. Tomme felt betyr at vi ikke har data.",
+      ]],
+      hist: ["Historikk", [
+        "Under «Historikk» i trykkartet spilles lagrede bilder av. Velg periode (6 timer til 7 dager), trykk på spill av, eller dra i tidslinjen for å hoppe.",
+        "Fargene i tidslinjen viser risiko. Rød trekant er et varsel som ble utløst, ring er et varsel som ble avsluttet. «Forrige/Neste varsel» hopper mellom dem.",
+        "«Øyeblikk» viser bildet slik det var, «topp» viser høyeste trykk per celle i de siste minuttene før bildet. Hotspot vises bare som ring rundt sentrum.",
+        "Tall for veiledende last, kontaktflate og stilling er grove anslag, ikke målinger eller diagnoser. Demo-matter merkes med DEMO.",
+        "«Eksport» laster ned historikk og omplassering som CSV. «Vis omplasseringsinfo» (Innstillinger, Denne skjermen) slår av tid siden bevegelse og bevegelser siste time.",
+        "En mat som er tatt ut av bruk kan glemmes under Innstillinger når den er frakoblet. Den kan hentes tilbake under «Fjernede matter».",
       ]],
       note: ["Viktig", [
         "SmartMat er et ingeniørverktøy, ikke et medisinsk utstyr.",
@@ -237,6 +259,20 @@ const i18n = {
     history: "Change history", noHistory: "No changes yet.", version: "Version", restoreVersion: "Restore v{v}",
     factoryVersion: "Factory values (version 0)", dlgRollback: "Restore version {v}?", rolledBack: "Restored by {u}",
     rollbackHint: "The settings are put back as they were in this version. That makes a new version, and the history stays.",
+    histMode: "History", histRange: "Range", histView: "View", range_6: "Last 6 hours", range_24: "Last 24 hours", range_72: "Last 3 days", range_168: "Last 7 days",
+    hLoading: "Loading history … {n} snapshots", hOff: "History is switched off on the server.", hEmpty: "No saved history in this range yet. A snapshot is saved about every 5 minutes while the mat is connected.",
+    hError: "Could not load history.", hCapped: "Showing the first {n} snapshots. Pick a shorter range to see the newest.",
+    hPlay: "Play", hPause: "Pause", hPrev: "Previous snapshot", hNext: "Next snapshot", hSpeed: "Playback speed", spd_0: "Slow", spd_1: "Normal", spd_2: "Fast",
+    hInstant: "Instant", hPeakBtn: "{n}-min peak", hPeakShort: "peak", hScrub: "Pick a time", hStripLabel: "History: colour shows risk, triangle and ring show alert raised and cleared. Tap to jump.",
+    hPrevAlert: "Previous alert", hNextAlert: "Next alert", hLgRaised: "alert raised", hLgCleared: "alert cleared",
+    hRaised: "Alert raised: {k}", hCleared: "Alert cleared: {k}", hNoPeak: "No peak picture for this moment: showing the instant picture.", hNoPicture: "No picture from this moment (the mat was offline).",
+    hSpotsApprox: "A hotspot is drawn as a ring around the saved centre. The shape is not saved.", movesHour: "Movements in the last hour",
+    exportMenu: "Export", exHistory: "History (CSV)", exRepos: "Repositioning (CSV)", exAudit: "Event log (CSV)", exHint: "Uses the range chosen under History: {r}.",
+    exportSet: "Export", exportSetHint: "Event log with settings changes, removed mats, handled alerts and users.",
+    reposShow: "Show repositioning info", reposHint: "Time since movement in the list and the number of movements in the last hour. Only for this browser.", sinceMoveRow: "Time since movement",
+    forget: "Forget", forgetBtn: "Forget this mat …", dlgForget: "Forget {name}?",
+    forgetHint: "The mat is removed from the dashboard, and what it keeps on the message broker is emptied so it does not come back. The history is kept until it expires. You can bring the mat back under \"Removed mats\". Only offline mats can be forgotten.",
+    forgottenBy: "Forgotten by {u}", forgetNoBroker: "The message broker could not be reached. The mat may reappear if it is still publishing.",
     foot: "Engineering aid, not a medical device. Posture and risk are heuristics. Use alongside normal clinical assessment.",
     help_: {
       title: "Help",
@@ -262,6 +298,14 @@ const i18n = {
         "\"Cells at sensor limit\" means the sensor saturates. Load and peak are then higher than shown.",
         "Time since relief is the time since the pressure was last clearly moved or taken off.",
         "The timeline under a row shows posture and risk for the last hours. Empty parts mean we have no data.",
+      ]],
+      hist: ["History", [
+        "Under \"History\" in the pressure panel saved snapshots are played back. Pick a range (6 hours to 7 days), press play, or drag on the strip to jump.",
+        "Colours in the strip show risk. A red triangle is an alert that was raised, a ring is an alert that was cleared. \"Previous/Next alert\" jump between them.",
+        "\"Instant\" shows the picture as it was, \"peak\" shows the highest pressure per cell over the minutes before the snapshot. A hotspot is only shown as a ring around its centre.",
+        "Indicative load, contact area and posture are rough estimates, not measurements or diagnoses. Demo mats are marked DEMO.",
+        "\"Export\" downloads history and repositioning as CSV. \"Show repositioning info\" (Settings, This screen) turns off time since movement and movements in the last hour.",
+        "A mat taken out of use can be forgotten under Settings once it is offline. It can be brought back under \"Removed mats\".",
       ]],
       note: ["Important", [
         "SmartMat is an engineering aid, not a medical device.",
@@ -303,6 +347,10 @@ function dur(s) {
   if (m < 60) return m + " " + t("min");
   return Math.floor(m / 60) + " " + t("h") + " " + (m % 60) + " " + t("min");
 }
+const clockSpan = (s) => { // 7:05 under an hour (m:ss), 2:30 over it (h:mm)
+  s = Math.max(0, Math.round(s));
+  return s < 3600 ? Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0") : Math.floor(s / 3600) + ":" + String(Math.floor((s % 3600) / 60)).padStart(2, "0");
+};
 const num = (v, d = 1) => v.toLocaleString(locale(), { minimumFractionDigits: d, maximumFractionDigits: d });
 const clock = (ts) => new Date(ts * 1000).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
 
@@ -372,12 +420,12 @@ function makeRow(id) {
   const row = el("div", "row");
   const head = el("button", "head");
   head.type = "button";
-  const chev = el("span", "c-chev"), dev = el("span", "c-dev"), name = el("b"), demo = el("span", "demo", "DEMO"), flag = el("span", "flag");
+  const chev = el("span", "c-chev"), dev = el("span", "c-dev"), name = el("b"), demo = el("span", "demo", "DEMO"), flag = el("span", "flag"), mv = el("span", "mv");
   chev.setAttribute("aria-hidden", "true");
   const chevIcon = svgEl("svg", { viewBox: "0 0 24 24" });
   chevIcon.append(svgEl("path", { d: "M6 9l6 6 6-6" }));
   chev.append(chevIcon);
-  dev.append(name, demo, flag);
+  dev.append(name, demo, flag, mv);
   const room = el("span", "c-room"), seat = el("span", "c-seat"), ok = el("span", "c-ok"), cell = el("span", "c-st"), st = el("span", "status");
   cell.append(st);
   head.append(chev, dev, room, seat, ok, cell);
@@ -392,7 +440,7 @@ function makeRow(id) {
   row.append(head, detail);
   head.addEventListener("click", () => select(id));
   toMap.addEventListener("click", () => $("pm").scrollIntoView());
-  const r = { row, head, name, demo, flag, room, seat, ok, st, detail, capText, toMap, tlHost, legend, legendKey: null };
+  const r = { row, head, name, demo, flag, mv, room, seat, ok, st, detail, capText, toMap, tlHost, legend, legendKey: null };
   rows.set(id, r);
   return r;
 }
@@ -406,6 +454,10 @@ function updateRow(r, m) {
   r.demo.hidden = !m.demo;
   r.flag.hidden = !(m.open_alerts > 0);
   setText(r.flag, t("alertFlag"));
+  const since = reposOn() && m.online && m.since_movement_s != null ? m.since_movement_s : null;   // time since movement, m:ss or h:mm
+  r.mv.hidden = since == null;
+  r.mv.title = t("sinceMoveRow");
+  if (since != null) setText(r.mv, "↻ " + clockSpan(since));
   setText(r.room, m.room || "");
   r.room.dataset.l = t("colRoom");
   setText(r.seat, m.seat || "");
@@ -489,7 +541,7 @@ function renderUnits() {
 
 function select(id) {
   if (S.selected === id) S.open = !S.open;
-  else { S.selected = id; S.open = true; S.mat = null; S.timeline = null; S.spot = null; if (S.hm) S.hm.reset(); }
+  else { histLeave(); S.selected = id; S.open = true; S.mat = null; S.timeline = null; S.spot = null; S.moves = null; if (S.hm) S.hm.reset(); fetchMoves(); }
   renderList();
   renderPanel();
   fetchMat();
@@ -689,6 +741,21 @@ function renderSpots(snap, cellCm2) {
   else if (none) setText(none, t("noSpots"));
 }
 
+// "Movements in the last hour" for the live panel: counted from the saved snapshots (one small request a minute)
+async function fetchMoves() {
+  const id = S.selected;
+  if (!id || !reposOn()) return;
+  try {
+    const now = serverNow(), d = await api("/api/mats/" + encodeURIComponent(id) + "/history?limit=60&from=" + (now - 3700) + "&to=" + now);
+    if (id === S.selected) { S.moves = { id, n: d.enabled ? movesLastHour(d.snapshots, now) : null }; renderMoves(S.mats.find((m) => m.id === id)); }
+  } catch (e) { /* the line just stays hidden */ }
+}
+function renderMoves(row) {
+  const n = row && reposOn() && S.moves && S.moves.id === row.id ? S.moves.n : null;
+  $("pmMoves").hidden = n == null;
+  if (n != null) setText($("pmMoves"), t("movesHour") + ": " + n);
+}
+
 function kv(host, pairs, empty) {
   host.textContent = "";
   if (!pairs.length) pairs = [[empty, ""]];
@@ -712,13 +779,16 @@ function renderPanel() {
   const row = S.mats.find((m) => m.id === S.selected);
   $("editBtn").hidden = !row;
   $("pmBody").hidden = !row;
-  if (!row) { setText($("pmSub"), t("selectMat")); return; }
+  if (!row) { histLeave(); setText($("pmSub"), t("selectMat")); return; }
   const d = S.mat && S.mat.id === row.id ? S.mat : row, snap = S.mat && S.mat.id === row.id ? S.mat.snapshot : null;
   const stale = S.lost || !row.online || (S.mat && S.mat.id === row.id && S.mat.stale);
   const sub = $("pmSub");
-  sub.textContent = ([row.room, row.seat].filter(Boolean).join(", ") || row.name) + (stale ? "" : ", " + t("live")) + " ";
+  sub.textContent = ([row.room, row.seat].filter(Boolean).join(", ") || row.name) + (H.on ? ", " + t("histMode").toLowerCase() : stale ? "" : ", " + t("live")) + " ";
   if (row.demo) sub.append(el("span", "demo", "DEMO"));
-  $("pm").classList.toggle("stale", !!stale);
+  $("pm").classList.toggle("stale", !!stale && !H.on);
+  histChrome();
+  renderExport();
+  if (H.on) return;   // history mode draws only when its cursor moves, never from the live poll
   const age = S.mat && S.mat.id === row.id ? S.mat.age_s : null;
   const staleNote = $("pmStale");
   staleNote.hidden = !stale;
@@ -744,6 +814,7 @@ function renderPanel() {
   setText($("reliefV"), row.since_relief_s == null || stale ? "–" : dur(row.since_relief_s));
 
   renderReadouts(snap, d, row, stale);
+  renderMoves(row);
   renderSpots(snap, snap ? snap.cell_area_cm2 : null);
   kv($("pmKv"), [
     [t("timeInPos"), stale ? "–" : dur(row.time_in_position_s)],
@@ -759,12 +830,12 @@ function renderPanel() {
 
 async function fetchMat() {
   const id = S.selected;
-  if (!id) return;
+  if (!id || H.on) return;
   try {
     const layer = S.layer, view = S.view;
     const query = (layer !== "pressure" ? "&layer=" + layer : "") + (view !== "live" ? "&view=" + view : "");
     const m = await api("/api/mats/" + encodeURIComponent(id) + (query ? "?" + query.slice(1) : ""));
-    if (id !== S.selected || layer !== S.layer || view !== S.view) return;   // the person changed mat or layer meanwhile
+    if (id !== S.selected || layer !== S.layer || view !== S.view || H.on) return;   // the person changed mat or layer meanwhile
     S.mat = m;
   } catch (e) {
     if (e.status === 404) { S.selected = null; S.mat = null; }
@@ -826,7 +897,7 @@ function handleAlert(kind, a) {
 // ---------- PIN dialog and toast ----------
 let dialogJob = null;
 // fields: {key, label, value, type: "password", options: [[value, text]]}; noPin hides the acting user's PIN box
-function writeDialog({ title, fields = [], send, done, pinLabel, noPin, hint }) {
+function writeDialog({ title, fields = [], send, done, pinLabel, noPin, hint, extra = [] }) {
   $("dlgTitle").textContent = title;
   const box = $("dlgFields");
   box.textContent = "";
@@ -841,6 +912,12 @@ function writeDialog({ title, fields = [], send, done, pinLabel, noPin, hint }) 
     input.autocomplete = "off";
     label.append(input);
     box.append(label);
+  }
+  for (const x of extra) { // a side action, e.g. "Forget this mat": closes this dialog and opens its own
+    const b = el("button", "link", x.label);
+    b.type = "button";
+    b.addEventListener("click", () => { $("dlg").close(); x.run(); });
+    box.append(b);
   }
   $("pinRow").hidden = !!noPin;
   $("pin").required = !noPin;
@@ -873,10 +950,10 @@ $("dlgForm").addEventListener("submit", async (ev) => {
 $("dlgCancel").addEventListener("click", () => $("dlg").close());
 
 let toastTimer = 0;
-function toast(msg) {
+function toast(msg, ms = 6000) {
   setText($("toast"), msg);
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => setText($("toast"), ""), 6000);
+  toastTimer = setTimeout(() => setText($("toast"), ""), ms);
 }
 
 $("editBtn").addEventListener("click", () => {
@@ -892,6 +969,24 @@ function editMat(m) {
     ],
     send: (v) => send("PUT", "/api/mats/" + encodeURIComponent(m.id) + "/meta", v),
     done: (res) => toast(t("savedBy", { u: res.user })),
+    extra: isOffline(m) ? [{ label: t("forgetBtn"), run: () => forgetDialog(m) }] : [],
+  });
+}
+const isOffline = (m) => !m.online || m.risk === "offline";
+
+// A retired mat: like Remove, and the broker's retained copy is emptied too (admin PIN, optional reason)
+function forgetDialog(m) {
+  writeDialog({
+    title: t("dlgForget", { name: m.name }), hint: t("forgetHint"),
+    fields: [{ key: "reason", label: t("reasonLabel") }],
+    send: (v) => send("POST", "/api/mats/" + encodeURIComponent(m.id) + "/forget", { pin: v.pin, reason: v.reason.trim() }),
+    done: async (res) => {
+      if (H.id === m.id) histLeave();
+      if (res.broker_cleared === false) SET.noBroker.add(m.id);
+      toast(t("forgottenBy", { u: res.user }) + (res.broker_cleared === false ? ". " + t("forgetNoBroker") : ""), res.broker_cleared === false ? 12000 : 6000);
+      await loadHidden();
+      renderSettingsMats();
+    },
   });
 }
 
@@ -966,7 +1061,7 @@ async function checkSetup() { // no users yet: ask for the first admin, once per
 // Two pages share the code: the site layer (every mat) and one mat's own layer on top of it. A page state `st` holds what the
 // server sent (items, version, history) and the draft: only what differs from the server, a value or null for "inherit again".
 const newPage = (prefix) => ({ prefix, scope: "site", items: null, version: 0, stamp: "", draft: {}, bad: new Set(), history: [], failed: false, saveBtn: null, saveInfo: null, reason: null });
-const SET = Object.assign(newPage("set_"), { hidden: [], matsBox: null });   // the site page
+const SET = Object.assign(newPage("set_"), { hidden: [], matsBox: null, noBroker: new Set() });   // the site page
 const MCFG = Object.assign(newPage("mset_"), { mat: null });                 // one mat's page; scope is the mat's id
 const GROUPS = ["alerts", "risk", "mats", "data", "posture", "contact", "temporal", "hotspots", "movement"];
 const maybeT = (key) => i18n[lang][key] ?? i18n.nb[key];   // like t(), but undefined for a key that does not exist
@@ -1186,7 +1281,7 @@ function renderSettingsMats() { // rebuilt only when something shown changed, so
   const box = SET.matsBox;
   if (!box || !SET.items) return;
   const sig = lang + JSON.stringify(S.mats.map((m) => [m.id, m.name, m.room, m.seat, m.unit, m.online, m.risk])) +
-    JSON.stringify(SET.hidden.map((h) => [h.id, h.name]));
+    JSON.stringify(SET.hidden.map((h) => [h.id, h.name, SET.noBroker.has(h.id)]));
   if (box.dataset.sig === sig) return;
   box.dataset.sig = sig;
   box.textContent = "";
@@ -1194,12 +1289,13 @@ function renderSettingsMats() { // rebuilt only when something shown changed, so
   const list = el("ul", "ulist");
   for (const m of [...S.mats].sort(byName)) {
     const li = el("li"), who = el("span", "who"), acts = el("span", "acts");
-    const offline = !m.online || m.risk === "offline";
+    const offline = isOffline(m);
     who.append(el("span", "sq " + (offline ? "offline" : "low")), el("b", "", m.name));
     if (m.demo) who.append(document.createTextNode(" "), el("span", "demo", "DEMO"));
     const details = [m.room, m.seat, m.unit, offline ? t("risk_offline") : ""].filter(Boolean).join(" · ");
     if (details) who.append(el("span", "muted", " · " + details));
     acts.append(action(t("edit"), () => editMat(m)), action(t("analysis"), () => openMatConfig(m)));
+    if (offline) acts.append(action(t("forget"), () => forgetDialog(m)));
     if (offline) acts.append(action(t("rm"), () => writeDialog({
       title: t("dlgRemove", { name: m.name }), hint: t("rmHint"),
       send: (v) => send("POST", "/api/mats/" + encodeURIComponent(m.id) + "/hide", { pin: v.pin }),
@@ -1213,7 +1309,9 @@ function renderSettingsMats() { // rebuilt only when something shown changed, so
   const gone = el("ul", "ulist");
   for (const h of SET.hidden) {
     const li = el("li"), acts = el("span", "acts");
-    li.append(el("span", "who", h.name + (h.room ? " · " + h.room : "")), acts);
+    const who = el("span", "who", h.name + (h.room ? " · " + h.room : ""));
+    if (SET.noBroker.has(h.id)) who.append(el("div", "muted small", t("forgetNoBroker")));
+    li.append(who, acts);
     acts.append(action(t("restore"), () => writeDialog({
       title: t("dlgRestore", { name: h.name }), hint: t("restoreHint"),
       send: (v) => send("POST", "/api/mats/" + encodeURIComponent(h.id) + "/show", { pin: v.pin }),
@@ -1256,7 +1354,23 @@ function renderSettings() {
   users.addEventListener("click", openUsers);
   page.append(users);
   renderHistory(page, SET);
+  const audit = el("a", "btn", t("exAudit"));
+  audit.href = "/api/export/audit.csv";
+  audit.download = "";
+  page.append(el("h2", "", t("exportSet")), el("p", "muted", t("exportSetHint")), audit);
   savebar(page, SET);
+}
+
+function setRepos(on) { // "Show repositioning info": hides time since movement, movements per hour and the repositioning export everywhere
+  store.set("repos", on ? "1" : "0");
+  S.moves = null;
+  if (on) fetchMoves();
+  for (const r of rows.values()) r.row.remove();
+  rows.clear();
+  renderList();
+  $("exportBox").dataset.sig = "";
+  renderPanel();
+  if (H.on) histShow();
 }
 
 function renderScreenSettings(page) { // this browser only (localStorage), no PIN
@@ -1270,6 +1384,12 @@ function renderScreenSettings(page) { // this browser only (localStorage), no PI
   const row = el("div", "setline");
   row.append(line, test);
   page.append(el("h2", "", t("screenSettings")), row, el("p", "muted small", t("alertSoundHint")));
+  const rep = el("label", "setline"), rbox = el("input");
+  rbox.type = "checkbox";
+  rbox.checked = reposOn();
+  rbox.addEventListener("change", () => setRepos(rbox.checked));
+  rep.append(rbox, document.createTextNode(t("reposShow")));
+  page.append(rep, el("p", "muted small", t("reposHint")));
 }
 
 function renderMatConfig() {
@@ -1385,6 +1505,7 @@ function renderHelp() {
   };
   list("alert", "ol");
   list("map", "ul");
+  list("hist", "ul");
   list("note", "ul");
 }
 function showView(name) { // "dash", "help", "settings" or "matcfg" (one mat's analysis settings)
@@ -1416,6 +1537,7 @@ function applyLang() {
   renderList();
   renderBell();
   renderPanel();
+  if (H.on) histRender();
 }
 
 function applyTheme(mode, save = true) {
@@ -1427,6 +1549,7 @@ function applyTheme(mode, save = true) {
   document.querySelector('meta[name="theme-color"]').content = cssVar("--brandbar") || "#FFFFFF";
   const snap = S.mat && S.mat.snapshot;
   if (snap && save) renderPanel();
+  if (H.on) histRender();
 }
 
 // ---------- kiosk alert cue: a short beep and a red flash on a new alert (off by default, per screen) ----------
@@ -1554,6 +1677,7 @@ if (KIOSK) {
 }
 
 mapInit();
+histInit();
 $("layer").addEventListener("change", () => onControl("layer", $("layer")));
 $("view").addEventListener("change", () => onControl("view", $("view")));
 applyLang();
@@ -1563,3 +1687,4 @@ every(2000, loadOverview);
 every(500, fetchMat);
 every(5000, fetchTimeline);
 every(10000, checkSetup);
+every(60000, fetchMoves);
