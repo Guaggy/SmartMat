@@ -72,6 +72,7 @@ export default function MatDetailScreen() {
             <Stat label={relative ? t("highestRelative") : t("highestPressure")} value={peak === null ? "–" : relative ? peak.toFixed(1) : `${peak.toFixed(0)} kPa`} />
             <Stat label={t("timeInPosLabel")} value={data.online ? dur(data.time_in_position_s) : "–"} />
             <Stat label={t("sinceRelief")} value={dur(data.since_relief_s)} />
+            {typeof data.since_movement_s === "number" ? <Stat label={t("sinceMovement")} value={data.online ? dur(data.since_movement_s) : "–"} /> : null}
             <Stat label={t("hotspots")} value={String(snap?.hotspots.length ?? 0)} />
           </View>
 

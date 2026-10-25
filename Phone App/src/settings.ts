@@ -18,12 +18,13 @@ export interface Settings {
   lang: Lang;
   quiet: QuietHours;
   push: PushState;
+  localAlerts: boolean; // notification + vibration for new alerts while the app is running (works in Expo Go)
 }
 
 const KEY = "smartmat.settings";
 export const defaultQuiet: QuietHours = { enabled: false, from: "22:00", to: "07:00" };
 export const defaultPush: PushState = { enabled: false, token: null };
-export const defaultSettings: Settings = { serverUrl: "", lang: defaultLang, quiet: defaultQuiet, push: defaultPush };
+export const defaultSettings: Settings = { serverUrl: "", lang: defaultLang, quiet: defaultQuiet, push: defaultPush, localAlerts: true };
 
 // Server address, language, quiet hours and the push token only. The PIN is never stored: it is asked for on every alert action.
 export async function loadSettings(): Promise<Settings> {
@@ -36,6 +37,7 @@ export async function loadSettings(): Promise<Settings> {
       lang: data.lang === "en" ? "en" : "nb",
       quiet: { ...defaultQuiet, ...(data.quiet ?? {}) },
       push: { ...defaultPush, ...(data.push ?? {}) },
+      localAlerts: data.localAlerts !== false,
     };
   } catch {
     return defaultSettings;

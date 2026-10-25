@@ -1,6 +1,7 @@
 import { Tabs, useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 
+import { shouldGoToSetup } from "../../firstRun";
 import { useApp } from "../../state";
 import { colors } from "../../theme";
 
@@ -11,7 +12,7 @@ export default function TabsLayout() {
   // First run: send the user to Settings once. (A <Redirect> rendered while pathname !== "/settings" looped with
   // "Maximum update depth exceeded" on Expo SDK 57.)
   useEffect(() => {
-    if (!ready || settings.serverUrl || sent.current) return;
+    if (!shouldGoToSetup(ready, settings.serverUrl, sent.current)) return;
     sent.current = true;
     router.replace("/settings");
   }, [ready, settings.serverUrl, router]);

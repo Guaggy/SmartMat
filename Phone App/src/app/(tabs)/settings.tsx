@@ -1,11 +1,13 @@
 import Constants from "expo-constants";
+import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 
 import { ApiError, createApi, normalizeUrl } from "../../api";
 import { PinDialog } from "../../components/PinDialog";
-import { alertErrorKey } from "../../errors";
-import { platform, registerForPush, timeZone, type PushOutcome } from "../../push";
+import { alertErrorKey, connectionErrorKey } from "../../errors";
+import { isExpoGo } from "../../env";
+import { ensureLocalPermission, platform, registerForPush, timeZone, type PushOutcome } from "../../push";
 import { parseTime } from "../../quietHours";
 import { useApp } from "../../state";
 import type { Lang } from "../../strings";
@@ -15,6 +17,8 @@ type Result = { ok: boolean; text: string } | null;
 
 export default function Settings() {
   const { settings, update, t } = useApp();
+  const router = useRouter();
+  const expoGo = isExpoGo();
   const [url, setUrl] = useState(settings.serverUrl);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Result>(null);
@@ -39,27 +43,36 @@ export default function Settings() {
 
   async function test() {
     const address = normalizeUrl(url);
-    if (!address) return;
+    if (!address) return setResult({ ok: false, text: t("urlInvalid") });
     setBusy(true);
     setResult(null);
     try {
-      const health = await createApi(address, 5000).health();
+      const health = await createApi(address, 6000).health();
       setResult({ ok: true, text: t("connectedOk", { n: health.mats, v: health.version }) });
-    } catch {
-      setResult({ ok: false, text: t("connectionFailed") });
+    } catch (e) {
+      const key = connectionErrorKey(e, address);
+      setResult({ ok: false, text: t(key, { s: e instanceof ApiError ? e.status : 0 }) });
     }
     setBusy(false);
   }
 
   async function save() {
     const address = normalizeUrl(url);
+    if (!address) return setResult({ ok: false, text: t("urlInvalid") });
+    const first = !settings.serverUrl;
     setUrl(address);
     await update({ serverUrl: address });
     setResult({ ok: true, text: t("saved") });
+    if (first) router.replace("/"); // first setup done: show the mats
+  }
+
+  async function setLocalAlerts(on: boolean) {
+    await update({ localAlerts: on });
+    if (on) await ensureLocalPermission();
   }
 
   const failure = (reason: Extract<PushOutcome, { ok: false }>["reason"]) =>
-    t(({ denied: "pushDenied", noProject: "pushNoProject", unsupported: "pushUnsupported", error: "pushError" } as const)[reason]);
+    t(({ denied: "pushDenied", noProject: "pushNoProject", unsupported: "pushUnsupported", expoGo: "pushExpoGo", error: "pushError" } as const)[reason]);
 
   async function enablePush(pin: string) {
     if (!api) return;
@@ -121,7 +134,7 @@ export default function Settings() {
         style={styles.input}
         value={url}
         onChangeText={setUrl}
-        placeholder="192.168.1.50:8000"
+        placeholder="100.101.102.103:8000"
         placeholderTextColor={colors.muted}
         autoCapitalize="none"
         autoCorrect={false}
@@ -145,12 +158,20 @@ export default function Settings() {
         ))}
       </View>
 
+      <Text style={styles.label}>{t("localTitle")}</Text>
+      <View style={styles.switchRow}>
+        <Text style={styles.switchLabel}>{t("localOn")}</Text>
+        <Switch value={settings.localAlerts} onValueChange={setLocalAlerts} trackColor={{ true: colors.accent, false: colors.line }} />
+      </View>
+      <Text style={styles.hint}>{t("localHint")}</Text>
+
       <Text style={styles.label}>{t("pushTitle")}</Text>
+      {expoGo ? <Text style={styles.hint}>{t("pushExpoGo")}</Text> : null}
       <View style={styles.switchRow}>
         <Text style={styles.switchLabel}>{t("pushOn")}</Text>
         <Switch
           value={settings.push.enabled}
-          disabled={!api}
+          disabled={!api || expoGo}
           onValueChange={(on) => (on ? (setPinProblem(null), setPinOpen(true)) : disablePush())}
           trackColor={{ true: colors.accent, false: colors.line }}
         />
@@ -161,7 +182,7 @@ export default function Settings() {
           {t("pushToken")}: {settings.push.token}
         </Text>
       ) : null}
-      <Text style={styles.hint}>{t("pushHint")}</Text>
+      {expoGo ? null : <Text style={styles.hint}>{t("pushHint")}</Text>}
       <PinDialog
         visible={pinOpen}
         title={t("pushDialogTitle")}

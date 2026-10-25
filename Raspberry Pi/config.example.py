@@ -157,6 +157,12 @@ RISK_NEAR_PERCENT = 80        # "medium" risk starts at this percent of the "hig
 # icon); the dashboard value wins over this file, and "reset" goes back to what is written here.
 PUSH_ENABLED = True           # push a raised alert to phones registered by the phone app (needs internet access to exp.host)
 PUSH_ACCESS_TOKEN = ""        # optional Expo access token (expo.dev > Access tokens) so only this server can push to the phones
+NTFY_ENABLED = False          # second push channel through ntfy, for an iPhone without a dev build (Phone App/README.md); needs PUSH_ENABLED
+NTFY_URL = "https://ntfy.sh"  # public relay, or your own ntfy server, e.g. "http://100.x.y.z:8080" on Tailscale
+NTFY_TOPIC = ""               # unguessable name (ntfy.sh topics are readable by anyone who knows them), e.g. "smartmat-k3j9x2q7vb"
+NTFY_TOKEN = ""               # optional ntfy access token (tk_...) for a protected topic on your own server
+NTFY_CLICK_URL = ""           # optional: tapping the notification opens this, e.g. "http://100.x.y.z:8000" ({alert_id} is replaced)
+NTFY_LANG = "en"              # "en" or "nb": language of the notification text
 RETENTION_DAYS = 30           # events, timeline and history snapshots older than this are deleted
 HISTORY_ENABLED = True        # keep a small snapshot (grid + key numbers, ~0.5 KB) per mat for playback and exports
 HISTORY_INTERVAL_S = 300      # ... every this many seconds, and at every alert raised/cleared

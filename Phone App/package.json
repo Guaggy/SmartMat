@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "doctor": "expo-doctor",
     "test": "jest",
-    "mock": "node mock-server/server.js"
+    "mock": "node mock-server/server.js",
+    "mock:alert": "node scripts/mock-alert.mjs"
   },
   "dependencies": {
     "@types/jest": "29.5.14",
@@ -36,13 +37,15 @@
   },
   "devDependencies": {
     "@react-native/jest-preset": "^0.86.3",
+    "@testing-library/react-native": "^13.3.3",
     "@types/react": "~19.2.4",
     "typescript": "~6.0.3"
   },
   "jest": {
     "preset": "jest-expo",
     "testMatch": [
-      "**/__tests__/**/*.test.ts"
+      "**/__tests__/**/*.test.ts",
+      "**/__tests__/**/*.test.tsx"
     ]
   }
 }
