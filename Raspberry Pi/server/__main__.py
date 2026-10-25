@@ -27,6 +27,7 @@ from processing.calibration import IndividualCalibration, UniformCalibration, lo
 from server.alerts import AlertManager
 from server.app import DEMO_PREFIX, create_app
 from server.engine import MatEngine, grid_shape
+from server.history import HistoryRecorder
 from server.passports import PassportService
 from server.push import PushSender
 from server.settings import SITE, Settings
@@ -163,8 +164,10 @@ class MqttMat:
 
 
 class Server:
-    def __init__(self, store, alerts, demo=0, serial_ports=(), use_mqtt=True, pusher=None, settings=None):
+    def __init__(self, store, alerts, demo=0, serial_ports=(), use_mqtt=True, pusher=None, settings=None,
+                 history=None):
         self.store, self.alerts = store, alerts
+        self.history = history if history is not None else HistoryRecorder(store)
         self.settings = settings if settings is not None else Settings(store)
         self.pusher = pusher if pusher is not None else PushSender(store, enabled=self.settings.get("push_enabled"))
         self.engines = {}   # chip_id -> MatEngine (read by the web app)
@@ -290,6 +293,29 @@ class Server:
         for alert in self.alerts.forget(chip_id, now):
             self.store.log(now, "alert cleared", chip_id, None, {"alert": alert["id"], "kind": alert["kind"]})
 
+    def forget(self, chip_id, now):
+        """Remove a retired mat like hide() and also empty its retained topics on the broker, so discovery does not
+        hand it back. Returns whether the broker was cleared (it may be unreachable; the mat stays forgotten)."""
+        if chip_id not in self.hidden:
+            self.hide(chip_id, now)
+        return self.clear_retained(chip_id)
+
+    def clear_retained(self, chip_id):
+        if self.discovery is None:
+            return False
+        try:
+            from paho.mqtt import publish
+            mqtt = app_settings.effective_mqtt()
+            auth = {"username": mqtt["username"], "password": mqtt["password"]} if mqtt["username"] else None
+            publish.multiple([{"topic": f"smartmat/{chip_id}/{leaf}", "payload": b"", "retain": True}
+                              for leaf in ("meta", "status")], hostname=mqtt["host"], port=mqtt["port"], auth=auth,
+                             client_id=f"smartmat-server-forget-{chip_id}")
+        except Exception as error:
+            print(f"Could not clear {chip_id} on the broker: {type(error).__name__}: {error}")
+            return False
+        self.discovery.mats.pop(chip_id, None)   # discovery keeps what it saw; the broker no longer has it
+        return True
+
     def show(self, chip_id):
         """Bring a removed mat back: the next discovery round opens it again if the broker still has it"""
         self.hidden.discard(chip_id)
@@ -330,7 +356,8 @@ class Server:
                 snap = engine.snapshot()
                 if snap["online"]:  # an offline mat leaves a gap in the timeline ("no data")
                     states.append((chip_id, snap["posture"], snap["risk"]))
-                self._update_alerts(chip_id, snap["risk"], snap["online"], now)
+                self.history.observe(chip_id, snap, engine, now)
+                self._update_alerts(chip_id, snap["risk"], snap["online"], now, snap, engine)
             except Exception as error:
                 self._report(chip_id, "tick", error, now)
         # an alert saved before a restart for a mat that has no engine (gone from the broker, USB mat no longer set up):
@@ -342,9 +369,10 @@ class Server:
                 self._report(chip_id, "tick", error, now)
         self.store.record_states(now, states)
 
-    def _update_alerts(self, chip_id, risk, online, now):
+    def _update_alerts(self, chip_id, risk, online, now, snap=None, engine=None):
         for kind, alert in self.alerts.update(chip_id, risk, online, now):
             self.store.log(now, f"alert {kind}", chip_id, None, {"alert": alert["id"], "kind": alert["kind"]})
+            self.history.alert(kind, alert, snap, engine, now)
             if kind == "raised":
                 self.pusher.notify(alert)
 
