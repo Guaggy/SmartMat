@@ -281,6 +281,14 @@ class IndividualCalibration:
         self._compiled = (key, linear, offsets, slopes, others)
         return self._compiled
 
+    def calibrated_mask(self):
+        """is_calibrated(row, col) for the whole grid at once (from the compiled form, so cached between changes)"""
+        _key, linear, _offsets, _slopes, others = self._compile()
+        mask = linear.copy()
+        for row, col, _cell in others:
+            mask[row, col] = True
+        return mask
+
     def apply(self, grid):
         if grid.shape != (config.TOTAL_ROWS, config.TOTAL_COLS):
             raise ValueError("Calibration grid size does not match configuration")
@@ -364,6 +372,9 @@ class UniformCalibration:
 
     def is_calibrated(self, row=None, col=None):
         return self.exists
+
+    def calibrated_mask(self):
+        return np.full((config.TOTAL_ROWS, config.TOTAL_COLS), self.exists)
 
     def set_offset(self, raw):
         raw = float(raw)

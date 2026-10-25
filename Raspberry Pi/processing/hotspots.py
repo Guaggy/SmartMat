@@ -20,12 +20,12 @@ from processing.temporal import FULL, PARTIAL
 
 
 def connected_regions(mask):
-    """Return four-neighbor connected cell sets."""
-    rows, cols = mask.shape
-    unseen = set(zip(*np.nonzero(mask)))
+    """Return four-neighbor connected cell sets, ordered by their first cell in row-major order."""
+    unseen = set(map(tuple, np.argwhere(mask).tolist()))  # plain ints hash faster than numpy scalars
     regions = []
-    while unseen:
-        start = min(unseen)
+    for start in sorted(unseen):  # row-major, so the same order as repeatedly taking min(unseen)
+        if start not in unseen:
+            continue
         unseen.remove(start)
         region = {start}
         pending = [start]
