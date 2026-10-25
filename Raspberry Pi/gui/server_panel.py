@@ -107,7 +107,12 @@ class ServerPanel:
             ("Send analysis settings...", self._push), ("Get analysis settings", self._pull))]
         for button in self.analysis_buttons:
             button.pack(side=tk.LEFT, padx=(0, 8))
-        for row, variable in enumerate((self.marker_var, self.hint_var, self.status_var), start=5):
+        history_bar = ttk.Frame(self.frame)
+        history_bar.grid(row=5, column=0, columnspan=4, sticky="w", pady=(2, 6))
+        self.history_button = ttk.Button(history_bar, text="History...", command=self._history)
+        self.history_button.pack(side=tk.LEFT)
+        ttk.Label(history_bar, text="  Play back a mat's rough history (a snapshot every few minutes) from the server.").pack(side=tk.LEFT)
+        for row, variable in enumerate((self.marker_var, self.hint_var, self.status_var), start=6):
             ttk.Label(self.frame, textvariable=variable, wraplength=760, justify=tk.LEFT).grid(
                 row=row, column=0, columnspan=4, sticky="w")
         self._tick()
@@ -132,6 +137,7 @@ class ServerPanel:
         mat = self._mat()
         state = ["disabled"] if self.busy else ["!disabled"]
         self.test_button.state(state)
+        self.history_button.state(state)
         for button in (*self.mat_buttons, *self.analysis_buttons):
             button.state(["disabled"] if self.busy or not mat else ["!disabled"])
         self.hint_var.set("" if mat else NO_MAT_HINT)
@@ -313,6 +319,30 @@ class ServerPanel:
                     "" if detail is None else json.dumps(detail, separators=(",", ":"))))
 
         threading.Thread(target=thread, daemon=True).start()
+
+    # ---- history playback (gui/history_window.py; the logic is in client/history_sync.py)
+
+    def _history(self):
+        """Ask the server for its mats, then open the history window (it picks the range and loads in its own thread)"""
+        url = self._url()
+        if url is None:
+            return
+        self.status_var.set("Reading the mat list ...")
+
+        def done(result):
+            ok, data = result
+            if not ok:
+                self.status_var.set(f"Could not read the mat list: {data}")
+                return
+            mats = [(m["id"], f"{m.get('name') or m['id']} ({m['id']})") for m in data if isinstance(m, dict) and m.get("id")]
+            if not mats:
+                self.status_var.set("The server has no mats yet.")
+                return
+            self.status_var.set("")
+            from gui.history_window import HistoryWindow   # here, so the panel loads without matplotlib's Tk backend
+            HistoryWindow(self.frame, url, mats, mat=self._mat())
+
+        self._run(lambda: ServerClient(url).get_overview(), done)
 
     # ---- analysis settings: compare, push, pull, preview (the logic is in analysis_sync.py)
 
