@@ -8,6 +8,9 @@ import os
 import re
 import sqlite3
 import threading
+import zlib
+
+import numpy as np
 
 import config
 
@@ -39,6 +42,10 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS hidden_mats (chip_id TEXT PRIMARY KEY, t REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS config_layers (scope TEXT NOT NULL, version INTEGER NOT NULL, t REAL NOT NULL, user TEXT,
     reason TEXT, overrides TEXT NOT NULL, changes TEXT NOT NULL, PRIMARY KEY (scope, version));
+CREATE TABLE IF NOT EXISTS snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, t REAL NOT NULL, chip_id TEXT NOT NULL,
+    reason TEXT NOT NULL, alert_id TEXT, alert_kind TEXT, rows INTEGER, cols INTEGER, unit TEXT, scale_max REAL,
+    grid BLOB, peak_grid BLOB, data TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS snapshots_mat ON snapshots (chip_id, t);
 CREATE INDEX IF NOT EXISTS timeline_mat ON timeline (chip_id, t_end);
 CREATE INDEX IF NOT EXISTS events_mat ON events (chip_id, id);
 """
@@ -263,6 +270,66 @@ class Store:
                 + self._rows("SELECT * FROM alerts WHERE t_cleared IS NOT NULL AND state != 'open' "
                              "ORDER BY t_cleared DESC LIMIT ?", (int(history),)))
 
+    # ---- snapshot history (server/history.py): a zlib 8-bit grid and the key numbers (as JSON in `data`) per snapshot
+
+    SNAPSHOT_COLUMNS = ("id", "t", "chip_id", "reason", "alert_id", "alert_kind", "rows", "cols", "unit", "scale_max")
+
+    def add_snapshot(self, t, chip_id, reason, numbers, grid=None, peak_grid=None, alert=None, unit=None, scale_max=None):
+        """grid / peak_grid: uint8 numpy arrays (rows x cols) or None; numbers: the JSON-ready key figures"""
+        shape = (grid if grid is not None else peak_grid)
+        rows, cols = (None, None) if shape is None else shape.shape
+        pack = lambda a: None if a is None else zlib.compress(a.tobytes(), 6)
+        with self._lock, self._db:
+            return self._db.execute(
+                "INSERT INTO snapshots (t, chip_id, reason, alert_id, alert_kind, rows, cols, unit, scale_max, grid, peak_grid, data)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (t, chip_id, reason, (alert or {}).get("id"), (alert or {}).get("kind"), rows, cols, unit, scale_max,
+                 pack(grid), pack(peak_grid), json.dumps(numbers, separators=(",", ":")))).lastrowid
+
+    @staticmethod
+    def _snapshot(row, with_grids):
+        out = {key: row[key] for key in Store.SNAPSHOT_COLUMNS}
+        out.update(json.loads(row["data"]))
+        if with_grids:
+            for name in ("grid", "peak_grid"):
+                blob = row[name]
+                out[name] = None if blob is None else (
+                    np.frombuffer(zlib.decompress(blob), dtype="uint8").reshape(row["rows"], row["cols"]).tolist())
+        return out
+
+    def snapshots(self, chip_id, since=None, until=None, limit=500, with_grids=False, after=False):
+        """Oldest first, at most `limit`+1 rows are read so the caller can tell whether there are more: (rows, more)"""
+        where, args = ["chip_id = ?"], [chip_id]
+        if since is not None:
+            where.append("t > ?" if after else "t >= ?")
+            args.append(since)
+        if until is not None:
+            where.append("t <= ?")
+            args.append(until)
+        columns = "*" if with_grids else ", ".join((*self.SNAPSHOT_COLUMNS, "data"))
+        rows = self._rows(f"SELECT {columns} FROM snapshots WHERE {' AND '.join(where)} ORDER BY t, id LIMIT ?",
+                          (*args, int(limit) + 1))
+        return [self._snapshot(row, with_grids) for row in rows[:int(limit)]], len(rows) > int(limit)
+
+    def snapshot(self, chip_id, snap_id):
+        rows = self._rows("SELECT * FROM snapshots WHERE id = ? AND chip_id = ?", (int(snap_id), chip_id))
+        return self._snapshot(rows[0], True) if rows else None
+
+    def events_between(self, since=None, until=None, limit=5000):
+        """Oldest first, for the audit export"""
+        where, args = [], []
+        if since is not None:
+            where.append("t >= ?")
+            args.append(since)
+        if until is not None:
+            where.append("t <= ?")
+            args.append(until)
+        rows = self._rows(f"SELECT * FROM events {'WHERE ' + ' AND '.join(where) if where else ''} ORDER BY id LIMIT ?",
+                          (*args, int(limit)))
+        for row in rows:
+            row["detail"] = None if row["detail"] is None else json.loads(row["detail"])
+        return rows
+
     # ---- event log (append-only) and timeline
 
     def log(self, t, kind, chip_id=None, user=None, detail=None):
@@ -310,3 +377,4 @@ class Store:
             self._db.execute("DELETE FROM events WHERE t < ?", (cutoff,))
             self._db.execute("DELETE FROM timeline WHERE t_end < ?", (cutoff,))
             self._db.execute("DELETE FROM alerts WHERE t_cleared IS NOT NULL AND t_cleared < ?", (cutoff,))
+            self._db.execute("DELETE FROM snapshots WHERE t < ?", (cutoff,))

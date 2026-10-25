@@ -197,6 +197,86 @@ dashboard shows "Acknowledged by <user>". Error texts start with a capital and a
   removed after a restart. `show` lets discovery open it again (it reappears when it next sends data).
 - After a write the dashboard re-reads overview, alerts, the mat and the timeline at once.
 
+## Snapshot history (playback, exports)
+
+The server keeps a small snapshot per mat every `HISTORY_INTERVAL_S` (default 300 s) while the mat is online and
+occupied-or-not, and at every alert raise/clear (`reason`). Kept for `retention_days`. `HISTORY_ENABLED = False`
+turns it off (the calls then answer with an empty list and `enabled: false`). All reads need no login.
+
+Snapshot object (the list form has no grids):
+
+```json
+{"id": 812, "t": 1792141200.0, "chip_id": "sm-101", "reason": "periodic|alert_raised|alert_cleared",
+ "alert_id": null, "alert_kind": null,
+ "rows": 20, "cols": 20, "unit": "kPa|relative", "scale_max": 50.0,
+ "peak_kpa": 46.0, "contact_cells": 143, "contact_area_cm2": 612.5, "load_kg": 58.2,
+ "risk": "high|medium|low|none|offline", "score": 1.12, "posture": "left|right|forward|centred|none",
+ "occupied": true,
+ "hotspots": [{"id": 1, "peak_kpa": 46.0, "cells": 9, "centre": [9, 4], "active_s": 12.5, "persistent": false}],
+ "time_in_position_s": 718.0, "since_movement_s": 95.0, "since_reposition_s": 1800.0,
+ "movements": 42, "repositions": 5}
+```
+
+- `grid` / `peak_grid` (detail and `with_grids` only): rows x cols arrays of integers 0-255, oriented like the
+  overview grid (row 0 back of the seat, last row the front). Real value = `v / 255 * scale_max` in `unit` (a dead
+  cell is 0). `grid` is the instant the snapshot was taken, `peak_grid` the per-cell maximum over the interval
+  since the last periodic snapshot (periodic snapshots only, else `null`). `grid` is `null` when the mat had no
+  picture (an offline mat's alert).
+- `score`: highest `value / threshold` of the summary risk indices (1.0 = at the limit), `null` if unknown.
+  `load_kg`: sum of pressure x cell area / g, `null` when unit is `relative` or the mat size is unknown.
+  `contact_cells` / `contact_area_cm2` use the mat's contact threshold; area is `null` without a known cell size.
+  `since_movement_s`: seconds since the last detected movement, `since_reposition_s`: since the last
+  repositioning, both `null` when none seen since the mat was opened. `movements` / `repositions` are running
+  counters of the analysis (they restart from 0 when the server or the mat's analysis restarts).
+  `time_in_position_s` as in the overview.
+
+### GET /api/mats/<id>/history?from=&to=&limit=&with_grids=1
+
+`{"id", "enabled", "interval_s", "snapshots": [snapshot...], "truncated": false, "next_from": null}`
+
+Oldest first. `from` / `to` are unix seconds (default: the last 24 hours up to now). `limit` default 500, max 5000;
+with `with_grids=1` the limit is capped at 300 and every snapshot carries `grid` and `peak_grid`. When more rows
+match than are returned `truncated` is true and `next_from` is the `t` of the last row returned. `after=1` makes `from`
+exclusive (`t > from` instead of `t >= from`). Playback loop: call with `from`, play, call again with `from=next_from&after=1`. 404 for an unknown mat.
+
+### GET /api/mats/<id>/history/<snap_id>
+
+One snapshot with `grid` and `peak_grid`. 404 when it does not exist or belongs to another mat.
+
+## CSV exports
+
+`text/csv; charset=utf-8` with a `Content-Disposition: attachment` filename, `,` separated, first row the header, times
+as ISO 8601 UTC (`time_iso`) and unix seconds (`t`). No login (like every read). Optional `from`, `to` (unix seconds)
+and `limit` on all three.
+
+- `GET /api/export/audit.csv`: the event log (`time_iso,t,kind,mat,user,reason,detail`): settings changes, mats
+  removed/forgotten/restored, alerts handled, users. `reason` is the free text an admin gave; `detail` is the JSON.
+- `GET /api/mats/<id>/history.csv`: `time_iso,t,reason,risk,score,posture,occupied,peak_kpa,contact_cells,contact_area_cm2,load_kg,hotspots,since_movement_s,since_reposition_s,alert_kind`.
+- `GET /api/mats/<id>/repositioning.csv`: periodic snapshots only: `time_iso,t,posture,occupied,since_movement_s,since_reposition_s,movements,repositions,repositions_per_hour`.
+  `repositions_per_hour` is the repositionings counted since the previous row divided by the hours between them
+  (empty on the first row).
+
+## Forgetting a retired mat
+
+| Call | Body | Success |
+|---|---|---|
+| `POST /api/mats/<id>/forget` | `{"pin", "reason"?}` (admin only) | `{"ok": true, "user": "name", "broker_cleared": true}` |
+| `POST /api/mats/<id>/restore` | `{"pin"}` (admin only; same as `/show`) | `{"ok": true, "user": "name"}` |
+
+`forget` does what `hide` does (offline mats only, 409 otherwise; stops reading it, closes its alerts, drops it from
+overview/alerts/mat calls, stays removed after a restart) and also publishes an empty retained payload to
+`smartmat/<id>/meta` and `smartmat/<id>/status` so the broker stops handing the mat to discovery.
+`broker_cleared: false` means the broker could not be reached (the mat is still forgotten; it may return when the
+broker is back and the mat boots again, then it needs forgetting again). It is logged as `mat forgotten` (mat, who,
+when, `reason`). A forgotten mat is listed in `/api/hidden-mats` and brought back with `restore` (or `show`); it
+reappears when it next publishes. Its history is kept until retention removes it. 404 for an unknown mat, 409 for an online one.
+
+## Open alerts survive a restart
+
+Alerts are saved when raised, handled or cleared. After a restart the unresolved ones are restored as they were
+(same id, same state, `t_raised`), without a second `alert raised` event or push, and wait `ALERT_RESTORE_GRACE_S`
+(60 s) for a silent mat to report again before the `offline` rules may clear them.
+
 ## What the dashboard stores in the browser
 
 `localStorage` keys (all optional, every access in try/catch): `sm.lang` (`nb`|`en`), `sm.theme` (`light`|`dark`),

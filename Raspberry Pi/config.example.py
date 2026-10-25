@@ -157,6 +157,8 @@ RISK_NEAR_PERCENT = 80        # "medium" risk starts at this percent of the "hig
 # icon); the dashboard value wins over this file, and "reset" goes back to what is written here.
 PUSH_ENABLED = True           # push a raised alert to phones registered by the phone app (needs internet access to exp.host)
 PUSH_ACCESS_TOKEN = ""        # optional Expo access token (expo.dev > Access tokens) so only this server can push to the phones
-RETENTION_DAYS = 30           # events and timeline older than this are deleted
+RETENTION_DAYS = 30           # events, timeline and history snapshots older than this are deleted
+HISTORY_ENABLED = True        # keep a small snapshot (grid + key numbers, ~0.5 KB) per mat for playback and exports
+HISTORY_INTERVAL_S = 300      # ... every this many seconds, and at every alert raised/cleared
 PIN_LOCKOUT_ATTEMPTS = 0      # wrong PINs in a row before a user is locked out (0 = no lockout)
 PIN_LOCKOUT_S = 60            # how long a lockout lasts
