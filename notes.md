@@ -6,21 +6,20 @@
 
 ### Backlog (2026-10-25 plan)
 
-Nothing below is built yet unless a later note says so.
+Built 2026-10-25, all untested on real hardware (no Tk, Pi or iPhone in the cloud session). Checks to do yourself are marked "verify".
 
-- Desktop (Tk): reduce CPU use of the live view.
-- Web dashboard: rework the heatmap and add layers.
-- History: a snapshot every 5 minutes, with playback in the web dashboard and in the Tk app.
-- Alerts: persist open alerts, so a restart does not raise and push them again.
-- Mats: a "forget mat" action (retired mats stay listed as offline while the broker holds their retained `meta`).
-- CSV exports: audit log, history, repositioning.
-- Phone: ntfy push, and testing the app in Expo Go.
-- Demo mode.
-- Kiosk: a toggle for the alert sound.
-- Hardware tests still open: test H on the Pi, the passport on a real board, the resistive board, two boards together
-  (the S3 bridge with the real mat has run once, see `ESP32_China/notes.md`).
-- Regulated path: MQTT TLS, HTTPS through `tailscale serve`, a golden test (one recording through both the desktop pipeline
-  and the server engine), per-mat occupancy and index-hold settings.
+- Desktop (Tk) CPU: the cost was the matplotlib redraw, not the analysis. The heatmap is blitted (`gui/blit.py`) and redrawn at `UI_MAX_FPS` (5); knobs `UI_*` in `config.example.py`; findings in `Raspberry Pi/docs/perf_tk.md`. Verify on a real desktop: stale pixels, colorbar after resize/theme/tab change, CPU against `UI_BLIT = False`. "Show numbers" still costs ~300 ms per redraw; tool-tab figures are still rebuilt on each refresh.
+- Web heatmap: sharp bicubic WebGL (2D fallback), hotspot outline that follows the real cell shape, tweening, layer and view dropdowns, hotspot list, balance bars, indicative load, optional alert sound (off by default). Verify on the Pi kiosk Chromium (WebGL vs `--disable-gpu`) and on a tablet/phone.
+- History: a snapshot every `HISTORY_INTERVAL_S` (300 s) and at each alert raise/clear (`HISTORY_ENABLED`), playback in the web dashboard (Live | History) and in the Tk app (Engineering > Connection > SmartMat server > History...), save as recording. The history rows only keep the hotspot centre and size, so the web draws an approximate ring. Verify the Tk window on a real desktop.
+- Alerts: open alerts were already persisted (`store.save_alert`, restored at startup with the offline grace period).
+- Forget mat (admin PIN, logged, clears the broker's retained `meta`/`status`); restore through the removed-mats list. The real-broker clearing is untested.
+- CSV exports: `/api/export/audit.csv`, `/api/mats/<id>/history.csv`, `/api/mats/<id>/repositioning.csv`. Open reads like the rest of the read API.
+- Repositioning, light: time since movement on the mat rows (`since_movement_s`, `since_reposition_s`), "movements in the last hour" in the panel, one switch to hide it (Settings > This screen). No chart.
+- Phone: Expo Go works without remote push; in-app banner, vibration and local notification while the app is open; optional ntfy channel from the server (`NTFY_*`, off by default) for background alerts on an iPhone without an Apple account. Steps in `Phone App/README.md`. Verify on the iPhone over Tailscale.
+- Demo mode: `python -m server --demo-scenario [--demo-speed X]` (off by default, demo mats do not push); `tools/seed_demo_history.py` fills a demo history. Check that the live demo mats show movement ages (a direct engine run does; the live server showed null once).
+- Still open: hardware tests (test H on the Pi, the passport on a real board, the resistive board, two boards together; the S3 bridge with the real mat has run once, see `ESP32_China/notes.md`), Apple Developer account for native push/TestFlight.
+- Regulated path: MQTT TLS, HTTPS through `tailscale serve`, a golden test (one recording through both the desktop pipeline and the server engine), per-mat occupancy and index-hold settings.
+- Run the full test suite once on a machine with Tk: 16 test files need tkinter and did not run in the cloud session.
 
 ### Thoughts
 

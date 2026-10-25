@@ -11,8 +11,8 @@ ESP32 --MQTT/Serial--> sources/ --> processing/ (calibration, analysis, detectio
 
 | Folder / file | Part | What |
 |---|---|---|
-| `server/`, `deploy/`, `SmartMatServer.spec`, `requirements-server.txt` | headless | The server (`python -m server`), its dashboard (`server/static/`), the Pi/Windows service files. Never imports `gui/` or tkinter; install only `requirements-server.txt` on a Pi. |
-| `main.py`, `gui/`, `client/`, `SmartMat*.spec`, `build_exe*.bat`, `requirements.txt` | desktop | `main.py` starts the desktop app (`--server` starts the server instead). `client/` is the desktop's side of the server and the mats (server API client, settings sync, passport over MQTT), free of tkinter. |
+| `server/`, `deploy/`, `SmartMatServer.spec`, `requirements-server.txt` | headless | The server (`python -m server`), its dashboard (`server/static/`), the Pi/Windows service files. History snapshots (`history.py`), CSV exports, a scripted demo (`demo_scenario.py`, `tools/seed_demo_history.py`) and an optional ntfy channel (`push.py`) live here. Never imports `gui/` or tkinter; install only `requirements-server.txt` on a Pi. |
+| `main.py`, `gui/`, `client/`, `SmartMat*.spec`, `build_exe*.bat`, `requirements.txt` | desktop | `main.py` starts the desktop app (`--server` starts the server instead). `client/` is the desktop's side of the server and the mats (server API client, settings sync, passport over MQTT, history playback data in `history_sync.py`), free of tkinter. Window code for the history player is `gui/history_window.py`; `gui/blit.py` keeps the live heatmap cheap (`UI_*` knobs in `config.example.py`). |
 | `processing/`, `sources/`, `matlink/` | shared | Calibration and analysis; the serial, MQTT and simulated sources; the mat passport format and MQTT link (`matlink/`). |
 | `config.example.py`, `config.py`, `app_settings.py`, `paths.py`, `general.py`, `branding.py`, `assets/`, `samples/` | shared | Settings, where data lives, the logo, a demo recording. `config.py` is yours (not in git); copy it from the example. |
 | `tools/` | both | End-to-end check, demo mat publisher, passport tool, fake passport device, raw capture. |
