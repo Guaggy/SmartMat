@@ -148,6 +148,7 @@ def create_app(store, alerts, engines, clock=time.time, settings=None, control=N
         if has_frame:  # an offline mat keeps its last picture; before the first frame there is none
             detail = {key: snap[key] for key in SNAPSHOT_KEYS}
             detail["indices"] = [i for i in snap["indices"] if i["state"] in ("ok", "near", "over")]
+            detail.update(engine.detail(request.args.get("layer"), request.args.get("view")))  # readouts, other layers
         age = round(max(0.0, engine.clock() - engine.last_t), 1) if has_frame else None
         return jsonify(dict(mat_row(chip_id, store.mats(), snap, alerts.open_alerts(chip_id)), snapshot=detail,
                             age_s=age, stale=not snap["online"]))

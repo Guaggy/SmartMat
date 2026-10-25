@@ -77,9 +77,18 @@
     <p class="pm-sub" id="pmSub"></p>
     <div id="pmBody" hidden>
       <p class="note bad" id="pmStale" hidden></p>
+      <div class="mapctl">
+        <label><span data-i="layer"></span>
+          <select id="layer" data-i-label="layer"></select></label>
+        <label><span data-i="mode"></span>
+          <select id="view" data-i-label="mode"></select></label>
+      </div>
       <div class="mapbox">
         <div class="front" data-i="front"></div>
-        <div class="seat" id="seat"><canvas id="map" width="160" height="160"></canvas></div>
+        <div class="seat" id="seat">
+          <canvas id="map" aria-hidden="true"></canvas><canvas id="mapOv" role="img" data-i-label="pressureMap"></canvas>
+        </div>
+        <p class="cop-key muted" id="copKey"></p>
       </div>
       <div class="ramp-row"><span data-i="low"></span><div class="ramp" id="ramp"></div><span data-i="high"></span></div>
       <p class="ramp-unit muted" id="rampUnit"></p>
@@ -88,12 +97,15 @@
       <div class="tiles">
         <div class="tile"><div class="v" id="peakV"></div><div class="k" id="peakK"></div></div>
         <div class="tile"><div class="v" id="reliefV"></div><div class="k" data-i="sinceRelief"></div></div>
+        <div class="tile"><div class="v" id="areaV"></div><div class="k" data-i="contactArea"></div></div>
+        <div class="tile"><div class="v" id="loadV"></div><div class="k" id="loadK"></div></div>
       </div>
+      <div class="bal" id="bal" hidden></div>
+      <h3 data-i="hotspots"></h3>
+      <div class="spots" id="pmSpots"></div>
       <details class="more">
         <summary data-i="details"></summary>
         <dl class="kv" id="pmKv"></dl>
-        <h3 data-i="hotspots"></h3>
-        <dl class="kv" id="pmSpots"></dl>
         <h3 data-i="indices"></h3>
         <dl class="kv" id="pmIdx"></dl>
       </details>
@@ -131,8 +143,11 @@
   </div>
 </dialog>
 
+<div class="flash" id="flash" aria-hidden="true"></div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<script src="heatmap.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

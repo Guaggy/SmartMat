@@ -18,6 +18,13 @@ const i18n = {
     risk_high: "Høy risiko", risk_medium: "Middels risiko", risk_low: "Lav risiko", risk_none: "Ingen bruker", risk_offline: "Frakoblet",
     h: "t", min: "min", ago: "{t} siden",
     pressureMap: "Trykkart", front: "Foran", low: "Lav", high: "Høy", edit: "Rediger", toList: "Til listen",
+    layer: "Data", mode: "Visning", layer_pressure: "Trykk", layer_exposure: "Eksponering (trykk x tid)", layer_burden: "Belastning",
+    layer_since_relief: "Tid siden avlastning", layer_loaded_time: "Belastet tid", view_live: "Sanntid", view_average: "Glattet (snitt over 5 bilder)",
+    mapUnitLayer: "{n} {u} full farge", contactArea: "Kontaktflate", loadIndic: "Veiledende last", loadHint: "ca., ikke en veiing", loadNoSize: "Matstørrelse ikke satt",
+    loadLow: "leses for lavt, celler ved sensorgrensen", defaultCurve: "standardkurve, ikke kalibrert", nCells: "{n} celler", sinceMove: "Tid siden bevegelse", never: "ingen ennå",
+    balance: "Fordeling", balL: "Venstre", balR: "Høyre", balF: "Foran", balB: "Bak", copKey: "+ = trykktyngdepunkt", spotArea: "{n} celler", spotAreaCm: "{n} celler, {a} cm²",
+    spotPeak: "{p} kPa", spotSel: "Marker hotspot {id}", noSpots: "Ingen hotspots nå.",
+    screenSettings: "Denne skjermen", alertSound: "Lyd og blink ved nytt varsel", alertSoundHint: "Kort pip og et rødt blink når et nytt varsel kommer. Gjelder bare denne nettleseren og er av som standard. Nettleseren krever at du har trykket på siden først.", alertTest: "Test",
     highestPressure: "Høyeste trykk", highestRelative: "Høyeste signal", sinceRelief: "Tid siden avlastning",
     timeInPos: "Tid i stilling", lastData: "Siste data", hotspots: "Hotspots", indices: "Indikatorer", none: "Ingen",
     persistent: "vedvarende", activeFor: "aktiv {t}",
@@ -142,6 +149,13 @@ const i18n = {
     risk_high: "High risk", risk_medium: "Medium risk", risk_low: "Low risk", risk_none: "No user", risk_offline: "Offline",
     h: "h", min: "min", ago: "{t} ago",
     pressureMap: "Pressure map", front: "Front", low: "Low", high: "High", edit: "Edit", toList: "To the list",
+    layer: "Data", mode: "View", layer_pressure: "Pressure", layer_exposure: "Exposure (pressure x time)", layer_burden: "Burden",
+    layer_since_relief: "Time since relief", layer_loaded_time: "Loaded time", view_live: "Live", view_average: "Smoothed (average of 5 frames)",
+    mapUnitLayer: "{n} {u} full colour", contactArea: "Contact area", loadIndic: "Indicative load", loadHint: "approx., not a weighing", loadNoSize: "Mat size not set",
+    loadLow: "reads low, cells at the sensor limit", defaultCurve: "default curve, not calibrated", nCells: "{n} cells", sinceMove: "Time since movement", never: "none yet",
+    balance: "Balance", balL: "Left", balR: "Right", balF: "Front", balB: "Back", copKey: "+ = centre of pressure", spotArea: "{n} cells", spotAreaCm: "{n} cells, {a} cm²",
+    spotPeak: "{p} kPa", spotSel: "Highlight hotspot {id}", noSpots: "No hotspots right now.",
+    screenSettings: "This screen", alertSound: "Sound and flash on a new alert", alertSoundHint: "A short beep and a red flash when a new alert comes in. Only for this browser, off by default. The browser needs a tap on the page first.", alertTest: "Test",
     highestPressure: "Highest pressure", highestRelative: "Highest signal", sinceRelief: "Time since relief",
     timeInPos: "Time in position", lastData: "Last data", hotspots: "Hotspots", indices: "Indices", none: "None",
     persistent: "persistent", activeFor: "active {t}",
@@ -471,7 +485,7 @@ function renderUnits() {
 
 function select(id) {
   if (S.selected === id) S.open = !S.open;
-  else { S.selected = id; S.open = true; S.mat = null; S.timeline = null; }
+  else { S.selected = id; S.open = true; S.mat = null; S.timeline = null; S.spot = null; if (S.hm) S.hm.reset(); }
   renderList();
   renderPanel();
   fetchMat();
@@ -548,58 +562,127 @@ async function fetchTimeline() {
 // ---------- pressure panel ----------
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
-function ramp(v) { // v 0..1 -> [r,g,b] along the shared colour ramp
-  v = Math.max(0, Math.min(1, v));
-  const s = S.ramp;
-  let i = 1;
-  while (i < s.length - 1 && v > s[i][0]) i++;
-  const f = Math.max(0, Math.min(1, (v - s[i - 1][0]) / (s[i][0] - s[i - 1][0] || 1)));
-  return [0, 1, 2].map((k) => s[i - 1][1][k] + (s[i][1][k] - s[i - 1][1][k]) * f);
+// The map itself (heat, hotspot outlines, motion) lives in heatmap.js; this part feeds it and builds the controls around it.
+const LAYERS = ["pressure", "exposure", "burden", "since_relief", "loaded_time"];
+const VIEWS = ["live", "average"];
+S.layer = LAYERS.includes(store.get("layer")) ? store.get("layer") : "pressure";
+S.view = VIEWS.includes(store.get("view")) ? store.get("view") : "live";
+S.spot = null;     // the highlighted hotspot id (list and map)
+S.mapKey = "";     // mat + layer + view of the picture on screen: a change redraws without a tween
+
+function mapInit() {
+  S.hm = HeatMap.create({ seat: $("seat"), canvas: $("map"), overlay: $("mapOv"), onPick: pickSpot });
+  S.hm.setRamp(S.ramp);
 }
 
-// Front is drawn on top, like the slide. Row 0 of the grid is the back of the seat, so the grid is turned half a turn
-// (not mirrored): seen from above the sitter's own left and right stay on the viewer's left and right.
+// A grid, its hotspots and the centre of pressure in; the map tweens from the grid it shows now.
 function drawMap(snap) {
-  const canvas = $("map"), K = 8;
-  const grid = snap.grid.map((row) => [...row].reverse()).reverse();
-  const rowsN = grid.length, colsN = grid[0].length;
-  $("seat").style.setProperty("--cols", colsN);
-  $("seat").style.setProperty("--rows", rowsN);
-  canvas.width = colsN * K;
-  canvas.height = rowsN * K;
-  const ctx = canvas.getContext("2d"), img = ctx.createImageData(canvas.width, canvas.height);
-  const at = (r, c) => grid[Math.max(0, Math.min(rowsN - 1, r))][Math.max(0, Math.min(colsN - 1, c))] ?? 0;
-  for (let y = 0; y < canvas.height; y++) {
-    const fy = (y + 0.5) / K - 0.5, r0 = Math.floor(fy), ty = fy - r0;
-    for (let xp = 0; xp < canvas.width; xp++) {
-      const fx = (xp + 0.5) / K - 0.5, c0 = Math.floor(fx), tx = fx - c0;
-      const top = at(r0, c0) * (1 - tx) + at(r0, c0 + 1) * tx, bot = at(r0 + 1, c0) * (1 - tx) + at(r0 + 1, c0 + 1) * tx;
-      const v = (top * (1 - ty) + bot * ty) / snap.scale_max, rgb = ramp(v), p = (y * canvas.width + xp) * 4;
-      const a = Math.max(0, Math.min(1, (v - 0.02) / 0.16)); // low pressure fades out: the seat and its dot grid show through
-      img.data.set([rgb[0], rgb[1], rgb[2], Math.round(255 * a * a * (3 - 2 * a))], p);
-    }
+  const key = [S.selected, snap.layer || "pressure", snap.view || "live"].join("|");
+  $("seat").style.setProperty("--cols", snap.grid[0].length);
+  $("seat").style.setProperty("--rows", snap.grid.length);
+  $("seat").classList.toggle("pick", snap.hotspots.length > 0);
+  const rel = snap.unit === "relative";
+  S.hm.set({
+    grid: snap.grid, scale: snap.scale_max, snap: key !== S.mapKey,
+    spots: snap.hotspots.map((h) => ({ id: h.id, peak: rel ? null : h.peak_kpa, persistent: h.persistent, cells: h.cells })),
+    cop: snap.cop || null,
+  });
+  S.mapKey = key;
+  if (S.spot != null && !snap.hotspots.some((h) => h.id === S.spot)) pickSpot(null);
+}
+
+function pickSpot(id) { // a click on a hotspot (map or list) highlights it; the same again clears it
+  S.spot = id === S.spot ? null : id;
+  S.hm.select(S.spot);
+  for (const [sid, r] of S.spotRows) r.classList.toggle("sel", sid === S.spot);
+}
+
+// Data and View dropdowns: what the server is asked for (/api/mats/<id>?layer=..&view=..)
+function fillSelect(sel, values, prefix, current) {
+  const sig = lang + values.join(",");
+  if (sel.dataset.sig !== sig) {
+    sel.dataset.sig = sig;
+    sel.textContent = "";
+    for (const v of values) { const o = el("option", "", t(prefix + v)); o.value = v; sel.append(o); }
   }
-  ctx.putImageData(img, 0, 0);
-  // hotspots: a dashed red ring round each area, on a thin light halo so it reads on any colour
-  for (const spot of snap.hotspots) {
-    const cells = spot.cells.map(([r, c]) => [rowsN - 1 - r, colsN - 1 - c]);
-    const rs = cells.map((c) => c[0]), cs = cells.map((c) => c[1]);
-    const y0 = Math.min(...rs), y1 = Math.max(...rs) + 1, x0 = Math.min(...cs), x1 = Math.max(...cs) + 1;
-    const rx = Math.min(canvas.width / 2 - 2, Math.max(2 * K, ((x1 - x0) / 2) * K * 1.08 + 0.8 * K));
-    const ry = Math.min(canvas.height / 2 - 2, Math.max(2 * K, ((y1 - y0) / 2) * K * 1.08 + 0.8 * K));
-    const cx = Math.min(canvas.width - rx - 1, Math.max(rx + 1, ((x0 + x1) / 2) * K));   // the ring stays on the map
-    const cy = Math.min(canvas.height - ry - 1, Math.max(ry + 1, ((y0 + y1) / 2) * K));
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
-    ctx.setLineDash([]);
-    ctx.lineWidth = spot.persistent ? 3.6 : 3;
-    ctx.strokeStyle = cssVar("--panel");
-    ctx.stroke();
-    ctx.setLineDash([5, 3.5]);
-    ctx.lineWidth = spot.persistent ? 2 : 1.5;
-    ctx.strokeStyle = cssVar("--bad");
-    ctx.stroke();
-  }
+  sel.value = values.includes(current) ? current : values[0];
+}
+function renderControls(snap) {
+  const rel = !snap || snap.unit === "relative" || !snap.layers;
+  fillSelect($("layer"), rel ? ["pressure"] : snap.layers, "layer_", S.layer);
+  fillSelect($("view"), VIEWS, "view_", S.view);
+  $("layer").disabled = rel;
+  $("view").disabled = rel || S.layer !== "pressure";
+}
+function onControl(key, sel) {
+  S[key] = sel.value;
+  store.set(key, S[key]);
+  renderControls(S.mat && S.mat.snapshot);
+  fetchMat();
+}
+
+// ---------- readouts ----------
+function setBig(node, main, unit) { // "12" with a small unit after it
+  node.textContent = main;
+  if (unit) node.append(el("small", "", " " + unit));
+}
+function renderReadouts(snap, d, row, stale) {
+  const rel = !snap || snap.unit === "relative", unocc = snap && snap.occupied === false;
+  const has = snap && !rel && !unocc && !stale;
+  const sat = d.saturated_cells || 0;
+  const area = has && snap.contact_area_cm2 != null ? [num(snap.contact_area_cm2, 0), "cm²"] : has && snap.contact_cells != null ? [String(snap.contact_cells), t("nCells", { n: "" }).trim()] : ["–", ""];
+  setBig($("areaV"), area[0], area[1]);
+  setBig($("loadV"), has && snap.load_kg != null ? (sat > 0 ? "≥ " : "≈ ") + num(snap.load_kg, 0) : "–", has && snap.load_kg != null ? "kg" : "");
+  const hint = snap && snap.cell_area_cm2 == null ? t("loadNoSize") : sat > 0 ? t("loadLow") : snap && snap.calibrated === false ? t("defaultCurve") : t("loadHint");
+  const k = $("loadK");
+  k.textContent = t("loadIndic");
+  k.append(el("small", "", hint));
+  renderBalance(has ? snap : null);
+  setText($("copKey"), snap && snap.cop && !stale ? t("copKey") : "");
+}
+function balanceRow(left, right, pct) {
+  const r = el("div", "bal-row"), bar = el("div", "bal-bar"), fill = el("i");
+  fill.style.width = pct + "%";
+  bar.append(fill);
+  r.append(el("span", "", left + " " + num(pct, 0) + " %"), bar, el("span", "", right + " " + num(100 - pct, 0) + " %"));
+  return r;
+}
+function renderBalance(snap) {
+  const host = $("bal");
+  host.hidden = !(snap && snap.left_percent != null);
+  if (host.hidden) return;
+  host.textContent = "";
+  host.append(balanceRow(t("balL"), t("balR"), snap.left_percent), balanceRow(t("balF"), t("balB"), snap.front_percent));
+}
+
+// ---------- hotspot list: click a row to highlight the hotspot on the map ----------
+S.spotRows = new Map();
+function spotRow(id) {
+  const b = el("button", "spot"), a = el("b"), p = el("span", "pk"), d = el("span", "muted"), sub = el("span", "sub");
+  b.type = "button";
+  b.append(a, p, d, sub);
+  b.addEventListener("click", () => pickSpot(id));
+  return Object.assign(b, { parts: { a, p, d, sub } });
+}
+function renderSpots(snap, cellCm2) {
+  const host = $("pmSpots"), list = snap ? snap.hotspots : [], rel = snap && snap.unit === "relative";
+  for (const [id, r] of S.spotRows) if (!list.some((h) => h.id === id)) { r.remove(); S.spotRows.delete(id); }
+  list.forEach((h, i) => {
+    let r = S.spotRows.get(h.id);
+    if (!r) { r = spotRow(h.id); S.spotRows.set(h.id, r); }
+    r.classList.toggle("sel", h.id === S.spot);
+    r.title = t("spotSel", { id: h.id });
+    const n = h.cells.length, cm = cellCm2 == null ? null : n * cellCm2;
+    setText(r.parts.a, "#" + h.id);
+    setText(r.parts.p, rel ? "" : t("spotPeak", { p: num(h.peak_kpa) }));
+    setText(r.parts.d, t("activeFor", { t: dur(h.active_s) }) + (h.persistent ? ", " + t("persistent") : ""));
+    setText(r.parts.sub, cm == null ? t("spotArea", { n }) : t("spotAreaCm", { n, a: num(cm, 0) }));
+    if (host.children[i] !== r) host.insertBefore(r, host.children[i] || null);   // only moves a row when the order changed
+  });
+  const none = host.querySelector(".none");
+  if (!list.length && !none) host.append(el("p", "none", t("noSpots")));
+  else if (list.length && none) none.remove();
+  else if (none) setText(none, t("noSpots"));
 }
 
 function kv(host, pairs, empty) {
@@ -612,6 +695,13 @@ function kv(host, pairs, empty) {
     wrap.append(dt, dd);
     host.append(wrap);
   }
+}
+
+function rampCaption(snap) { // what full colour means for the layer on screen
+  if (snap.unit === "relative") return t("mapUnitRel");
+  const layer = snap.layer || "pressure", n = snap.scale_max;
+  if (layer === "pressure") return t("mapUnit", { n: num(n, 0) });
+  return t("mapUnitLayer", { n: layer === "since_relief" || layer === "loaded_time" ? dur(n) : num(n, 0), u: layer === "burden" || layer === "since_relief" || layer === "loaded_time" ? "" : snap.unit }).replace(/\s+/g, " ");
 }
 
 function renderPanel() {
@@ -637,9 +727,10 @@ function renderPanel() {
   $("pmSat").hidden = !(sat > 0);
   setText($("pmUncal"), unocc ? t("unoccupied") : t("uncal"));
   $("pmUncal").hidden = !(rel || unocc);
+  renderControls(snap);
   if (snap) {
     drawMap(snap);
-    setText($("rampUnit"), rel ? t("mapUnitRel") : t("mapUnit", { n: num(snap.scale_max, 0) }));
+    setText($("rampUnit"), rampCaption(snap));
   }
   setText($("peakK"), rel ? t("highestRelative") : t("highestPressure"));
   const peak = snap && snap.peak_kpa != null && !unocc ? snap.peak_kpa : null;
@@ -648,14 +739,13 @@ function renderPanel() {
   if (hasPeak) { const u = el("small", "", " kPa"); $("peakV").append(u); }
   setText($("reliefV"), row.since_relief_s == null || stale ? "–" : dur(row.since_relief_s));
 
+  renderReadouts(snap, d, row, stale);
+  renderSpots(snap, snap ? snap.cell_area_cm2 : null);
   kv($("pmKv"), [
     [t("timeInPos"), stale ? "–" : dur(row.time_in_position_s)],
+    [t("sinceMove"), stale || !snap ? "–" : snap.since_movement_s == null ? t("never") : dur(snap.since_movement_s)],
     [t("lastData"), age == null ? "–" : t("ago", { t: dur(age) })],
   ]);
-  kv($("pmSpots"), (snap ? snap.hotspots : []).map((h) => [
-    "#" + h.id + " " + num(h.peak_kpa) + " kPa",
-    t("activeFor", { t: dur(h.active_s) }) + (h.persistent ? ", " + t("persistent") : ""),
-  ]), t("none"));
   kv($("pmIdx"), (snap ? snap.indices : []).map((ix) => {
     const k = el("span");
     k.append(el("span", "sq " + ix.state), document.createTextNode(ix.name));
@@ -667,8 +757,10 @@ async function fetchMat() {
   const id = S.selected;
   if (!id) return;
   try {
-    const m = await api("/api/mats/" + encodeURIComponent(id));
-    if (id !== S.selected) return;
+    const layer = S.layer, view = S.view;
+    const query = (layer !== "pressure" ? "&layer=" + layer : "") + (view !== "live" ? "&view=" + view : "");
+    const m = await api("/api/mats/" + encodeURIComponent(id) + (query ? "?" + query.slice(1) : ""));
+    if (id !== S.selected || layer !== S.layer || view !== S.view) return;   // the person changed mat or layer meanwhile
     S.mat = m;
   } catch (e) {
     if (e.status === 404) { S.selected = null; S.mat = null; }
@@ -1142,6 +1234,7 @@ function renderSettings() {
   back.addEventListener("click", () => showView("dash"));
   top.append(back);
   page.append(top, el("h1", "", t("settings")), el("p", "muted", t("setIntro")));
+  renderScreenSettings(page);
   if (!SET.items) { page.append(el("p", "muted", SET.failed ? t("netErr") : t("loading"))); return; }
   page.append(el("p", "muted small", t("cfgVersion", { v: SET.stamp })));
 
@@ -1160,6 +1253,19 @@ function renderSettings() {
   page.append(users);
   renderHistory(page, SET);
   savebar(page, SET);
+}
+
+function renderScreenSettings(page) { // this browser only (localStorage), no PIN
+  const line = el("label", "setline"), box = el("input"), test = el("button", "btn", t("alertTest"));
+  box.type = "checkbox";
+  box.checked = cue.on;
+  box.addEventListener("change", () => setCue(box.checked));
+  line.append(box, document.createTextNode(t("alertSound")));
+  test.type = "button";
+  test.addEventListener("click", () => { unlockAudio(true); alertCue(true); });
+  const row = el("div", "setline");
+  row.append(line, test);
+  page.append(el("h2", "", t("screenSettings")), row, el("p", "muted small", t("alertSoundHint")));
 }
 
 function renderMatConfig() {
@@ -1311,11 +1417,52 @@ function applyLang() {
 function applyTheme(mode, save = true) {
   const dark = mode === "dark";
   document.documentElement.dataset.theme = dark ? "dark" : "light";
+  if (S.hm) S.hm.refreshColors();
   if (save) store.set("theme", dark ? "dark" : "light");
   for (const [id, kind] of [["logo", "lockup"], ["logoMark", "mark"]]) $(id).src = `img/logo_${kind}_${dark ? "dark" : "light"}.png`;
   document.querySelector('meta[name="theme-color"]').content = cssVar("--brandbar") || "#FFFFFF";
   const snap = S.mat && S.mat.snapshot;
   if (snap && save) renderPanel();
+}
+
+// ---------- kiosk alert cue: a short beep and a red flash on a new alert (off by default, per screen) ----------
+const cue = { on: store.get("alertcue") === "1", ctx: null };
+function unlockAudio(force = false) { // browsers only start audio after a tap or key press on the page
+  if (!cue.on && !force) return;
+  try {
+    if (!cue.ctx) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) cue.ctx = new AC(); }
+    if (cue.ctx && cue.ctx.state === "suspended") cue.ctx.resume();
+  } catch (e) { /* no audio: the flash still works */ }
+}
+for (const ev of ["pointerdown", "keydown", "touchend"]) document.addEventListener(ev, () => unlockAudio(), { passive: true });
+function beep() {
+  const c = cue.ctx;
+  if (!c || c.state !== "running") return;
+  const now = c.currentTime;
+  for (const [k, hz] of [[0, 880], [0.22, 1175]]) {
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = "sine";
+    o.frequency.value = hz;
+    g.gain.setValueAtTime(0.0001, now + k);
+    g.gain.exponentialRampToValueAtTime(0.25, now + k + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + k + 0.18);
+    o.connect(g).connect(c.destination);
+    o.start(now + k);
+    o.stop(now + k + 0.2);
+  }
+}
+function alertCue(force = false) {
+  if (!cue.on && !force) return;
+  const f = $("flash");
+  f.classList.remove("on");
+  void f.offsetWidth;   // restart the animation
+  f.classList.add("on");
+  beep();
+}
+function setCue(on) {
+  cue.on = on;
+  store.set("alertcue", on ? "1" : "0");
+  unlockAudio();
 }
 
 // ---------- wiring ----------
@@ -1346,6 +1493,8 @@ async function loadOverview() {
   try {
     const d = await api("/api/overview");
     S.mats = d.mats;
+    if (S.overviewSeen && d.open_alerts > S.openAlerts) alertCue();   // a new alert since the last look
+    S.overviewSeen = true;
     S.openAlerts = d.open_alerts;
     S.offset = d.server_time - Date.now() / 1000;
     setLost(false);
@@ -1370,6 +1519,7 @@ async function loadTheme() { // colour ramp shared with the desktop app; the bui
     if (Array.isArray(stops) && stops.length > 1) S.ramp = stops.map(([v, c]) => [Number(v), c.map(Number)]);
     const g = S.ramp.map(([v, c]) => `rgb(${c[0]},${c[1]},${c[2]}) ${Math.round(v * 100)}%`).join(",");
     $("ramp").style.background = `linear-gradient(90deg, ${g})`;
+    S.hm.setRamp(S.ramp);
     renderPanel();
   } catch (e) { /* fallback ramp */ }
 }
@@ -1399,10 +1549,13 @@ if (KIOSK) {
   for (const ev of ["pointerup", "pointercancel", "pointerleave"]) brand.addEventListener(ev, () => clearTimeout(held));
 }
 
+mapInit();
+$("layer").addEventListener("change", () => onControl("layer", $("layer")));
+$("view").addEventListener("change", () => onControl("view", $("view")));
 applyLang();
 $("ramp").style.background = "linear-gradient(90deg," + S.ramp.map(([v, c]) => `rgb(${c.join(",")}) ${Math.round(v * 100)}%`).join(",") + ")";
 loadTheme();
 every(2000, loadOverview);
-every(1000, fetchMat);
+every(500, fetchMat);
 every(5000, fetchTimeline);
 every(10000, checkSetup);

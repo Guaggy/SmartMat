@@ -2,6 +2,7 @@
 
 import threading
 import time
+from collections import deque
 from contextlib import contextmanager
 
 import numpy as np
@@ -18,8 +19,8 @@ from processing.occupancy import OccupancyDetector
 from processing.posture import (FORWARD_CELLS as POSTURE_FORWARD_CELLS, SIDE_CELLS as POSTURE_SIDE_CELLS,
                                 PostureTracker, classify_posture, risk_from)
 from processing.settings import apply_settings
-from processing.signals import Context, read_signal
-from processing.statistics import contact_mask
+from processing.signals import SIGNALS, Context, read_signal
+from processing.statistics import contact_mask, pressure_statistics
 from processing.temporal import TemporalAnalysis
 from server.settings import ENGINEERING_GROUPS, unflatten
 
@@ -27,6 +28,11 @@ STALE_AFTER_S = config.STALE_AFTER_S
 INDEX_UPDATE_INTERVAL_S = config.INDEX_UPDATE_INTERVAL_S
 SATURATION_LIMIT = config.VALUE_MAX_DEFAULT - config.HEALTH_SATURATION_MARGIN
 NO_ORIENTATION = {"rotation": 0, "mirror_h": False, "mirror_v": False}
+# What the dashboard can ask for besides the live pressure (MatEngine.detail): grids the trackers already keep
+LAYERS = ("pressure", "exposure", "burden", "since_relief", "loaded_time")
+VIEWS = ("live", "average")
+AVERAGE_FRAMES = 5   # the same period as processing.modes.AverageMode
+GRAVITY = 9.81
 ENGINE_RULES = ("stale_after_s", "relief_minutes", "near_percent", "posture_hold_s", "posture_side_cells",
                 "posture_forward_cells")
 
@@ -129,6 +135,7 @@ class MatEngine:
             self.profile = profile
             self.profile_version = version
             self.frame = None
+            self._recent = deque(maxlen=AVERAGE_FRAMES)   # the last displayed grids, for the average view
             self.last_t = None
             self._last_index_t = None
             self.saturated = 0
@@ -181,12 +188,18 @@ class MatEngine:
                                 t, repositioned)
             self.saturated = _saturated_cells(frame["raw"])
             self.frame, self.last_t = frame, t
+            self._recent.append(self._display_grid(frame))
 
     # ---- state
 
     def online(self, t):
         stale_after = self.params.get("stale_after_s", STALE_AFTER_S)
         return self.last_t is not None and t - self.last_t <= stale_after and self.status != "offline"
+
+    @staticmethod
+    def _display_grid(frame):
+        """What the map shows: kPa, or the tared signal while the mat has no pressure calibration"""
+        return frame["pressure"] if frame["pressure"] is not None else frame["baseline_subtracted"]
 
     def snapshot(self, t=None):
         """JSON-ready state: the web dashboard's snapshot plus posture, risk, saturation and online"""
@@ -204,10 +217,9 @@ class MatEngine:
             if self.frame is None:
                 return snap
             pressure = self.frame["pressure"]
+            grid = self._display_grid(self.frame)   # not calibrated: the tared signal, and the unit says so
             if pressure is not None:
-                grid, snap["unit"], snap["scale_max"] = pressure, "kPa", float(config.PRESSURE_DISPLAY_MAX_KPA)
-            else:  # not calibrated: the tared signal, and say so
-                grid = self.frame["baseline_subtracted"]
+                snap["unit"], snap["scale_max"] = "kPa", float(config.PRESSURE_DISPLAY_MAX_KPA)
             # same shape as gui/web.build_snapshot (the server must not import gui/)
             peak = np.nanmax(pressure) if pressure is not None and np.isfinite(pressure).any() else None
             snap["peak_kpa"] = None if peak is None else round(float(peak), 1)  # relative signal: no kPa
@@ -229,3 +241,57 @@ class MatEngine:
                 since = since[np.isfinite(since)]
                 snap["since_relief_s"] = round(float(since.max()), 1) if since.size else None
             return snap
+
+    # ---- on request (the selected mat's detail view only, so idle mats cost nothing)
+
+    @staticmethod
+    def _rounded(grid):
+        return [[round(float(v), 2) if np.isfinite(v) else None for v in row] for row in grid]
+
+    @staticmethod
+    def _share_high(weight, axis):
+        """Percent of the weight on the high-index half along `axis` (a middle row/column counts half)"""
+        along = weight.sum(axis=1 - axis)
+        mid = (len(along) - 1) / 2
+        index = np.arange(len(along))
+        return float((along[index > mid].sum() + along[index == mid].sum() / 2) / along.sum() * 100)
+
+    def detail(self, layer=None, view=None):
+        """Extra readouts and, when asked for, another grid: layer is one of LAYERS (a signal from processing.signals),
+        view "average" smooths the pressure over the last AVERAGE_FRAMES frames. Unknown names mean the default.
+        {} before the first frame. Load in kg is indicative: calibrated pressure x cell area, not a weighing."""
+        layer = layer if layer in LAYERS else "pressure"
+        with self._lock:
+            if self.frame is None:
+                return {}
+            pressure = self.frame["pressure"]
+            out = {"layer": "pressure", "view": "live", "layers": list(LAYERS), "views": list(VIEWS),
+                   "cell_area_cm2": None if self.cell_area_m2 is None else round(self.cell_area_m2 * 10_000, 3)}
+            if pressure is None:   # not calibrated: only the relative signal exists
+                return out
+            if layer != "pressure":
+                context = Context(pressure, self.last_t, self.contact_threshold_kpa, self.temporal, self.hotspots,
+                                  self.motion, None)
+                grid = read_signal(layer, context)
+                if layer == "since_relief":
+                    grid = np.where(contact_mask(pressure, self.contact_threshold_kpa), grid, np.nan)
+                out.update(layer=layer, unit=SIGNALS[layer].unit, scale_max=float(SIGNALS[layer].reference),
+                           grid=self._rounded(grid))
+            elif view == "average" and len(self._recent) > 1:
+                out.update(view="average", grid=self._rounded(np.nanmean(np.asarray(self._recent), axis=0)))
+            stats = pressure_statistics(pressure, self.contact_threshold_kpa, self.cell_area_m2)
+            out["contact_cells"] = stats["contact_cells"]
+            area = stats["contact_area_m2"]
+            out["contact_area_cm2"] = None if area is None else round(area * 10_000, 1)
+            out["load_kg"] = None if stats["force_n"] is None else round(stats["force_n"] / GRAVITY, 1)
+            if stats["cop_x"] is not None:
+                out["cop"] = [round(stats["cop_y"], 2), round(stats["cop_x"], 2)]   # [row, col] of the oriented grid
+            weight = np.where(np.isfinite(pressure), np.maximum(pressure, 0), 0)
+            if weight.sum() > 0:   # column 0 is the sitter's right, the last row the front edge
+                out["left_percent"] = round(self._share_high(weight, 1), 1)
+                out["front_percent"] = round(self._share_high(weight, 0), 1)
+            for key, stamp in (("since_movement_s", self.motion.last_movement_event),
+                               ("since_reposition_s", self.motion.last_reposition)):
+                out[key] = round(self.last_t - stamp, 1) if np.isfinite(stamp) else None
+            out["calibrated"] = self.profile is not None
+            return out
