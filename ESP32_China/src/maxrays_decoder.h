@@ -85,8 +85,10 @@ class MaxraysDecoder {
         const size_t next = find_header(min_size);
         if (next < used_ && next <= max_size) {
           size = next;
-        } else if (size != 0 && used_ >= size + 2) {
+        } else if (size != 0 && used_ >= max_size + 2) {
           size = 0;  // nothing confirms it: a packet that lost bytes
+        } else if (size != 0 && used_ >= size + 2) {
+          return;  // the next header is not here yet (this mat sends 4 trailer bytes: wait for it)
         }
         if (size == 0) {  // false header or truncated packet
           erase(1);

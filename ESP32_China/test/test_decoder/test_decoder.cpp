@@ -110,6 +110,22 @@ void test_declared_length_plus_four() {
   TEST_ASSERT_EQUAL(0, d.invalid_frames);
 }
 
+// The real mat (seen on hardware): declared 406 but 4 trailer bytes, so each packet is 408 bytes long.
+void test_four_trailer_bytes_in_small_chunks() {
+  MaxraysDecoder d; Sink s;
+  Bytes data;
+  for (int n = 0; n < 5; ++n) {
+    Bytes p = make_packet(static_cast<uint8_t>(n), 0x0196);
+    p.push_back(0x01);
+    p.push_back(0x99);
+    append(data, p);
+  }
+  feed_all(d, s, data, 256);
+  TEST_ASSERT_TRUE(s.firsts.size() >= 4);  // the last one may wait for the next header
+  TEST_ASSERT_TRUE(s.payload_ok);
+  TEST_ASSERT_EQUAL(0, d.invalid_frames);
+}
+
 void test_reset_drops_partial_packet() {
   MaxraysDecoder d; Sink s;
   Bytes p = make_packet(0);
@@ -129,6 +145,7 @@ int main(int, char**) {
   RUN_TEST(test_false_header_in_noise);
   RUN_TEST(test_lone_trailing_a5_kept_across_chunks);
   RUN_TEST(test_declared_length_plus_four);
+  RUN_TEST(test_four_trailer_bytes_in_small_chunks);
   RUN_TEST(test_reset_drops_partial_packet);
   return UNITY_END();
 }

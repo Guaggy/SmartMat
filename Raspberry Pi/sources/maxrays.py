@@ -58,8 +58,10 @@ class MaxraysDecoder:
                 nxt = buf.find(self.HEADER, min_size)
                 if 0 <= nxt <= max_size:
                     size = nxt
-                elif size is not None and len(buf) >= size + 2:
+                elif size is not None and len(buf) >= max_size + 2:
                     size = None  # nothing confirms it: a packet that lost bytes
+                elif size is not None and len(buf) >= size + 2:
+                    break  # the next header is not here yet (this mat sends 4 trailer bytes: wait for it)
                 if size is None:  # false header or truncated packet
                     del buf[0]
                     st.bytes_discarded += 1

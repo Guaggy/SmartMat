@@ -79,6 +79,15 @@ class MaxraysDecoderTests(unittest.TestCase):
         np.testing.assert_array_equal(out[1], self.values)
         self.assertGreaterEqual(self.dec.stats.invalid_frames, 1)
 
+    def test_four_trailer_bytes_in_small_chunks(self):
+        # the real mat (seen on hardware): declared 406 but 4 trailer bytes, so each packet is 408 bytes long
+        pkt = b"\xA5\x5A" + (406).to_bytes(2, "big") + self.values.tobytes() + b"\x01\x99\x01\x99"
+        data, out = pkt * 5, []
+        for i in range(0, len(data), 256):
+            out += self.dec.feed(data[i:i + 256])
+        self.assertGreaterEqual(len(out), 4)  # the last one may wait for the next header
+        self.assertEqual(self.dec.stats.invalid_frames, 0)
+
     @unittest.skipUnless(os.path.exists(FIXTURE), "tests/fixtures/maxrays_capture.bin not present")
     def test_real_capture(self):
         with open(FIXTURE, "rb") as f:
