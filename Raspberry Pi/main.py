@@ -24,12 +24,30 @@ def selftest():
         f"config={config.__file__}\nmats={general.MATS_FILE}\n"
         f"recordings={RECORDINGS_DIR}\nserver /api/health={health}\n", encoding="utf-8")
 
-def main():
-    if "--selftest" in sys.argv:
-        return selftest()
-    if "--server" in sys.argv:  # headless: same as python -m server (no tkinter)
+def parse_args(argv):
+    """(known options, the rest). add_help is off so that `--server --help` reaches the server's own help."""
+    import argparse
+    parser = argparse.ArgumentParser(
+        prog="main.py", add_help=False, allow_abbrev=False,
+        description="SmartMat desktop app. With no option it opens the app window.",
+        epilog="With --server, every other option goes to the server (same as python -m server); try: main.py --server --help")
+    parser.add_argument("-h", "--help", action="store_true", help="show this help and exit")
+    parser.add_argument("--selftest", action="store_true", help="headless smoke test of a frozen build; writes selftest.txt")
+    parser.add_argument("--server", action="store_true", help="run the headless server instead of the app (no tkinter)")
+    args, rest = parser.parse_known_args(argv)
+    return parser, args, rest
+
+
+def main(argv=None):
+    parser, args, rest = parse_args(sys.argv[1:] if argv is None else argv)
+    if args.server:
         from server.__main__ import main as server_main
-        return server_main([arg for arg in sys.argv[1:] if arg != "--server"])
+        return server_main(rest + (["--help"] if args.help else []))
+    if args.help:
+        parser.print_help()
+        return 0
+    if args.selftest:
+        return selftest()
     from gui.desktop import DesktopApp
     app = DesktopApp()
     app.run()

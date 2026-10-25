@@ -57,9 +57,16 @@ def resource_path(name):
     return RESOURCE_DIR / name
 
 
+_warned_missing = False
+BROKER_FALLBACK = "localhost:1883 with no login (or what is saved in settings.json under Engineering > Connection)"
+
+
 def fill_config_defaults(example=None):
     """Add any setting the user's config.py lacks (an older copy) from config.example.py, so a new release never
-    fails to import because of a newly added setting. Existing user values are never touched."""
+    fails to import because of a newly added setting. Existing user values are never touched.
+    Logs one warning that lists every missing key (also the lowercase broker/login ones, which have a fallback
+    instead of a default being filled in)."""
+    global _warned_missing
     import importlib.util
     try:
         import config
@@ -71,9 +78,18 @@ def fill_config_defaults(example=None):
     spec = importlib.util.spec_from_file_location("_config_example", example)
     defaults = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(defaults)
-    for name, value in vars(defaults).items():
-        if name.isupper() and not hasattr(config, name):
-            setattr(config, name, value)
+    missing = [name for name in vars(defaults) if not name.startswith("_") and not hasattr(config, name)
+               and (name.isupper() or name.startswith(("broker_", "mqtt_")))]
+    for name in missing:
+        if name.isupper():
+            setattr(config, name, getattr(defaults, name))
+    if missing and not _warned_missing:
+        _warned_missing = True
+        import logging
+        logging.getLogger("smartmat.config").warning(
+            "config.py (%s) is older than config.example.py and lacks: %s. Settings in capitals use the example's value; "
+            "the broker falls back to %s. Copy the missing lines from config.example.py to silence this.",
+            getattr(config, "__file__", "?"), ", ".join(missing), BROKER_FALLBACK)
 
 
 fill_config_defaults()

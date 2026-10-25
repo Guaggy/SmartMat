@@ -93,3 +93,24 @@ class FillConfigDefaultsTests(unittest.TestCase):
             finally:
                 if hasattr(config, "BRAND_NEW_SETTING"):
                     del config.BRAND_NEW_SETTING
+
+    def test_missing_keys_are_warned_about_once(self):
+        import config
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            example = Path(folder) / "config.example.py"
+            example.write_text('BRAND_NEW_SETTING = 7\nmqtt_brand_new = "x"\n', encoding="utf-8")
+            paths._warned_missing = False
+            try:
+                with self.assertLogs("smartmat.config", level="WARNING") as logged:
+                    paths.fill_config_defaults(example)
+                    paths.fill_config_defaults(example)  # second call: no second warning
+                self.assertEqual(len(logged.records), 1)
+                message = logged.output[0]
+                self.assertIn("BRAND_NEW_SETTING", message)
+                self.assertIn("mqtt_brand_new", message)
+                self.assertIn("localhost:1883", message)
+            finally:
+                paths._warned_missing = False
+                if hasattr(config, "BRAND_NEW_SETTING"):
+                    del config.BRAND_NEW_SETTING
