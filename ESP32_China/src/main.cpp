@@ -241,6 +241,17 @@ void read_mat() {
     while (count < sizeof(chunk) && mat_serial.available() > 0) {
       chunk[count++] = static_cast<uint8_t>(mat_serial.read());
     }
+#ifdef DUMP_RAW  // diagnostic: print the first ~900 raw bytes of the mat stream as hex, once
+    static size_t dumped = 0;
+    if (dumped < 900) {
+      if (dumped == 0) Serial.println("
+--- raw dump start ---");
+      for (size_t i = 0; i < count; ++i) Serial.printf("%02X ", chunk[i]);
+      dumped += count;
+      if (dumped >= 900) Serial.println("
+--- raw dump end ---");
+    }
+#endif
     decoder.feed(chunk, count, [](const uint8_t* payload) { accumulator.add(payload); });
   }
 }
