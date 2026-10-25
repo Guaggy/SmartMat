@@ -72,9 +72,9 @@ class SensorHealth:
         else:
             unloaded = in_range & (raw <= HEALTH_UNLOADED_MAX)
         values = np.where(in_range, raw, np.nan)
-        self.history.append((values, unloaded))
+        self.history.append((values, unloaded, np.where(unloaded, values, np.nan)))  # masked once, not per window pass
         recent = np.stack([item[0] for item in self.history])
-        unloaded_recent = np.stack([np.where(item[1], item[0], np.nan) for item in self.history])
+        unloaded_recent = np.stack([item[2] for item in self.history])
         count, mean, variance = _rolling_stats(recent)
         unloaded_count, unloaded_mean, unloaded_variance = _rolling_stats(unloaded_recent)
         self.mean = np.where(count > 0, mean, np.nan)
@@ -94,10 +94,13 @@ class SensorHealth:
                               unloaded_mean - reference, np.nan)
 
         if pressure_calibration is not None:
-            self.calibrated = np.asarray([
-                [pressure_calibration.is_calibrated(row, col) for col in range(config.TOTAL_COLS)]
-                for row in range(config.TOTAL_ROWS)
-            ])
+            if hasattr(pressure_calibration, "calibrated_mask"):  # cached per calibration change, not one call per cell
+                self.calibrated = pressure_calibration.calibrated_mask()
+            else:
+                self.calibrated = np.asarray([
+                    [pressure_calibration.is_calibrated(row, col) for col in range(config.TOTAL_COLS)]
+                    for row in range(config.TOTAL_ROWS)
+                ])
         self.states = np.where(self.calibrated, 0, 7)
         self.states = np.where((unloaded_count >= 20) & (self.noise > HEALTH_NOISE_STD), 1, self.states)
         drift_ready = (timestamp - self.reference_time >= HEALTH_DRIFT_MIN_S) & unloaded
