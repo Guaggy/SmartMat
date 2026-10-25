@@ -11,7 +11,7 @@ from server.__main__ import Server
 from server.alerts import AlertManager
 from server.app import create_app
 from server.engine import MatEngine
-from server.push import PushSender, build_messages, is_quiet, parse_hhmm
+from server.push import PushSender, build_messages, build_ntfy, is_quiet, ntfy_settings, parse_hhmm
 from server.store import Store
 
 PIN = "1234"
@@ -189,6 +189,121 @@ class SenderTests(StoreCase):
             self.store.add_device(f"ExponentPushToken[d{i}]", "android", "Kari", float(i))
         self.sender.notify(ALERT)
         self.assertEqual([len(chunk) for _, chunk, _ in self.sent], [100, 20])
+
+
+NTFY = {"enabled": True, "url": "https://ntfy.sh/", "topic": "smartmat-k3j9x2q7vb", "token": "", "click_url": "", "lang": "en"}
+
+
+class NtfyMessageTests(unittest.TestCase):
+    MAT = {"name": "Stol 1", "room": "101", "seat": "A"}
+
+    def test_same_text_as_expo_with_priority_tags_and_topic(self):
+        message = build_ntfy(ALERT, self.MAT, NTFY)
+        self.assertEqual(message["url"], "https://ntfy.sh")  # no trailing slash
+        self.assertEqual(message["payload"], {"topic": "smartmat-k3j9x2q7vb", "title": "Stol 1",
+                                              "message": "Room 101: High pressure risk (indicative)",
+                                              "priority": 4, "tags": ["rotating_light"]})
+        offline = build_ntfy(dict(ALERT, kind="offline"), self.MAT, NTFY)["payload"]
+        self.assertEqual((offline["message"], offline["tags"]), ("Room 101: Mat offline", ["electric_plug"]))
+        norwegian = build_ntfy(ALERT, self.MAT, dict(NTFY, lang="nb"))["payload"]
+        self.assertEqual(norwegian["message"], "Rom 101: Høy risiko (veiledende)")
+
+    def test_only_mat_name_and_room_reach_the_message(self):
+        mat = dict(self.MAT, patient="Ola Nordmann", seat="A")
+        text = str(build_ntfy(ALERT, mat, NTFY)["payload"])
+        self.assertNotIn("Ola", text)
+        self.assertNotIn("patient", text)
+
+    def test_click_url_with_alert_id_and_token(self):
+        message = build_ntfy(ALERT, self.MAT, dict(NTFY, click_url="http://100.64.0.1:8000/#{alert_id}", token="tk_x"))
+        self.assertEqual(message["payload"]["click"], "http://100.64.0.1:8000/#a1")
+        self.assertEqual(message["token"], "tk_x")
+        self.assertNotIn("click", build_ntfy(ALERT, self.MAT, NTFY)["payload"])
+
+    def test_off_or_unusable_settings_give_nothing(self):
+        for extra in ({"enabled": False}, {"topic": ""}, {"topic": "has space"}, {"topic": "a/b"}, {"topic": "x" * 65},
+                      {"url": "ntfy.sh"}, {"url": ""}):
+            self.assertIsNone(build_ntfy(ALERT, self.MAT, dict(NTFY, **extra)), extra)
+
+    def test_config_without_the_new_keys_means_off(self):
+        saved = {k: getattr(push.config, k) for k in dir(push.config) if k.startswith("NTFY_")}
+        for key in saved:
+            delattr(push.config, key)
+        try:
+            settings = ntfy_settings()
+            self.assertFalse(settings["enabled"])
+            self.assertIsNone(build_ntfy(ALERT, self.MAT, settings))
+        finally:
+            for key, value in saved.items():
+                setattr(push.config, key, value)
+
+
+class NtfySenderTests(StoreCase):
+    def setUp(self):
+        super().setUp()
+        self.calls, self.expo = [], []
+        self.fail = None
+        self.store.set_meta("m1", {"name": "Stol 1", "room": "101"})
+
+    def ntfy_post(self, url, payload, token):
+        self.calls.append((url, payload, token))
+        if self.fail:
+            raise self.fail
+
+    def sender(self, **extra):
+        return PushSender(self.store, post=lambda u, c, t: self.expo.append(c) or {"data": []}, clock=lambda: utc(12),
+                          background=False, enabled=True, ntfy=dict(NTFY, **extra), ntfy_post=self.ntfy_post)
+
+    def test_publishes_without_any_registered_phone(self):
+        self.sender(token="tk_x").notify(ALERT)
+        self.assertEqual(len(self.calls), 1)
+        self.assertEqual(self.calls[0][0], "https://ntfy.sh")
+        self.assertEqual(self.calls[0][2], "tk_x")
+        self.assertEqual(self.expo, [])
+
+    def test_expo_and_ntfy_both_fire(self):
+        self.store.add_device(TOKEN, "android", "Kari", 1.0)
+        self.sender().notify(ALERT)
+        self.assertEqual((len(self.calls), len(self.expo)), (1, 1))
+
+    def test_off_by_default_and_by_the_master_switch(self):
+        self.sender(enabled=False).notify(ALERT)
+        PushSender(self.store, clock=lambda: utc(12), background=False, enabled=False, ntfy=NTFY,
+                   ntfy_post=self.ntfy_post).notify(ALERT)
+        self.assertEqual(self.calls, [])
+
+    def test_failure_is_swallowed_logged_once_and_expo_still_goes(self):
+        import contextlib
+        import io
+        self.store.add_device(TOKEN, "android", "Kari", 1.0)
+        self.fail = OSError("no internet")
+        sender = self.sender()
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            sender.notify(ALERT)
+            sender.notify(dict(ALERT, id="a2"))
+        self.assertEqual(len(self.calls), 2)
+        self.assertEqual(out.getvalue().count("ntfy:"), 1)
+        self.assertEqual(len(self.expo), 2)
+        self.fail = None
+        sender.notify(ALERT)
+        self.fail = OSError("again")
+        with contextlib.redirect_stdout(out):
+            sender.notify(ALERT)
+        self.assertEqual(out.getvalue().count("ntfy:"), 2)  # logged again after a success
+
+    def test_slow_ntfy_does_not_block_the_caller_when_in_background(self):
+        import threading
+        release = threading.Event()
+        started = threading.Event()
+
+        def slow(url, payload, token):
+            started.set()
+            release.wait(5)
+        sender = PushSender(self.store, clock=lambda: utc(12), background=True, enabled=True, ntfy=NTFY, ntfy_post=slow)
+        sender.notify(ALERT)  # returns while the post is still waiting
+        self.assertTrue(started.wait(2))
+        release.set()
 
 
 class TickTests(StoreCase):

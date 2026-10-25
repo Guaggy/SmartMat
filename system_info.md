@@ -57,5 +57,7 @@ The two can be combined: the desktop talks to the same broker and server as ever
 ## Status
 
 - Server, layered settings, desktop sync and passport are done and tested without hardware (unit tests plus an end-to-end run over a real broker).
-- Not yet run on real hardware: the passport code in the firmware.
+- Hardware: the ESP32-S3 bridge has run once with the real Maxrays mat (raw dump taken; the decoder was fixed for the 4 trailer bytes
+  this mat sends). Not yet checked on hardware: the passport code in the firmware, the resistive board, two boards together, the
+  server on the real Pi, push to a real phone.
 - Open for regulated use: MQTT login with TLS, HTTPS, a test that runs one recording through both the desktop and the server engine, exporting the audit log, per-mat occupancy settings. The full list is in `notes.md`.

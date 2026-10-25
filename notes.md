@@ -1,14 +1,26 @@
 ### Notes for future improvements and bugfixes
 
-- Live site is currently just a placeholder at guaggy.github.io/SmartMat, deployed
-  automatically from `Website/site/` on every push to `main` under `Website/**` (see
-  `.github/workflows/deploy-pages.yml`). Swap in the real site when there's something
-  to show.
-- Custom domain: decided to stick with the default `guaggy.github.io/SmartMat` for now
-  rather than a free `is-a.dev` subdomain (needs a volunteer maintainer to merge a PR,
-  out of our control) or buying a real domain. Revisit if/when it matters.
-- See each subfolder's own `notes.md` (`ESP32_Resistive/`, `ESP32_China/`, `Raspberry Pi/`,
-  `Website/`) for component-specific TODOs, and `SETUP_AND_TEST.md` for installing and testing the devices.
+- The public website is not part of this repo any more (no `Website/` folder, no Pages workflow).
+- See each subfolder's own `notes.md` (`ESP32_Resistive/`, `ESP32_China/`, `Raspberry Pi/`)
+  for component-specific TODOs, and `SETUP_AND_TEST.md` for installing and testing the devices.
+
+### Backlog (2026-10-25 plan)
+
+Nothing below is built yet unless a later note says so.
+
+- Desktop (Tk): reduce CPU use of the live view.
+- Web dashboard: rework the heatmap and add layers.
+- History: a snapshot every 5 minutes, with playback in the web dashboard and in the Tk app.
+- Alerts: persist open alerts, so a restart does not raise and push them again.
+- Mats: a "forget mat" action (retired mats stay listed as offline while the broker holds their retained `meta`).
+- CSV exports: audit log, history, repositioning.
+- Phone: ntfy push, and testing the app in Expo Go.
+- Demo mode.
+- Kiosk: a toggle for the alert sound.
+- Hardware tests still open: test H on the Pi, the passport on a real board, the resistive board, two boards together
+  (the S3 bridge with the real mat has run once, see `ESP32_China/notes.md`).
+- Regulated path: MQTT TLS, HTTPS through `tailscale serve`, a golden test (one recording through both the desktop pipeline
+  and the server engine), per-mat occupancy and index-hold settings.
 
 ### Thoughts
 
@@ -23,7 +35,9 @@ Still open (everything else from this list is shipped - see "Shipped" in `Raspbe
   matter)", chevron rows, posture-coloured timeline with a risk strip and the red "Handle nå" link, soft map with Front on
   top, details folded away). Open: check it on a real tablet and phone with real mats; the "+" icon of the slide has no
   counterpart yet (adding mats happens on its own when they connect).
-- Do a thorough check of the program
+- Checks that are still open (replaces the old "thorough check of the program"): run the whole suite on the Pi
+  (`pytest` from `Raspberry Pi/`), the Windows tests that need Tk (I step 5 in `SETUP_AND_TEST.md`), and the open hardware tests
+  in the backlog above.
 - Headless server: built and tested in simulation (alerts survive restarts, one failing mat does not stop the others,
   WAL database, systemd unit). Open: run it on the real Pi (`SETUP_AND_TEST.md` test H).
 - Dashboard configuration page: done (gear button "Innstillinger": mats edit/remove/restore, alert holds, push on/off,

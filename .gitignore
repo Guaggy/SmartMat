@@ -23,3 +23,8 @@ build/
 # PyInstaller output (rebuild with build_exe.bat)
 **/dist/
 **/build/
+
+# Test-run output and backups (reports worth keeping live in test_reports/)
+Logs/
+*.smp
+!test_reports/**/*.smp

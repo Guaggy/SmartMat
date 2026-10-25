@@ -19,12 +19,14 @@ Setting up and testing devices: [SETUP_AND_TEST.md](SETUP_AND_TEST.md). Backlog 
 
 ## Network and logins (home test setup)
 
-| What | Value |
-|---|---|
-| WiFi SSID / password | `Kusk 2.0` / `Bussfortog` |
-| Raspberry Pi (broker + server) | `10.0.0.15`, MQTT port 1883, dashboard `http://10.0.0.15:8000` |
-| MQTT user / password | `smartmat` / `smartmat` |
+Real credentials are not kept in this file. The home-test values (Wi-Fi SSID and password, the Pi's address, MQTT user and
+password) live only in the gitignored files below. Copy each `*.example` file and fill it in.
 
-The same values go in `Raspberry Pi/config.py` (`mqtt_username`, `mqtt_password`; `broker_host` stays `localhost` on the Pi),
-`ESP32_Resistive/src/secrets.h` and `ESP32_China/src/secrets.h` (gitignored copies of `secrets.h.example`), and the
-desktop app under Engineering > Connection.
+| What | Where |
+|---|---|
+| WiFi SSID / password | `ESP32_Resistive/src/secrets.h` and `ESP32_China/src/secrets.h` (copy `secrets.h.example`) |
+| Raspberry Pi (broker + server) | `<pi-address>`, MQTT port 1883, dashboard `http://<pi-address>:8000` |
+| MQTT user / password | `Raspberry Pi/config.py` (`mqtt_username`, `mqtt_password`; copy `config.example.py`), the `secrets.h` files, and the desktop app under Engineering > Connection |
+
+`broker_host` stays `localhost` in `config.py` on the Pi itself. If a password was ever committed, treat it as exposed and change it
+on the Wi-Fi router and in Mosquitto.

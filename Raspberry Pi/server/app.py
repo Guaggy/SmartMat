@@ -2,9 +2,12 @@
 user's PIN in its JSON body and is written to the event log with that user's name. The JSON shapes are
 documented in design/api-contract.md (that is what server/static/app.js reads)."""
 
+import csv
+import io
 import json
 import subprocess
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
@@ -15,7 +18,7 @@ import config
 from matlink.passport_link import PassportError
 from processing import calibration, passport
 from processing.posture import risk_sort_key
-from server import push
+from server import history, push
 from server.passports import apply_profile
 from server.settings import SITE, Settings
 from server.store import DEVICE_FIELDS, META_FIELDS
@@ -172,7 +175,8 @@ def create_app(store, alerts, engines, clock=time.time, settings=None, control=N
     def list_alerts():
         meta = store.mats()
         return jsonify({"alerts": [dict(a, name=mat_info(a["chip_id"], meta)["name"],
-                                        room=mat_info(a["chip_id"], meta)["room"]) for a in alerts.recent()]})
+                                        room=mat_info(a["chip_id"], meta)["room"],
+                                        demo=a["chip_id"].startswith(DEMO_PREFIX)) for a in alerts.recent()]})
 
     @app.route("/api/users", methods=["GET", "POST"])
     def users():
@@ -327,6 +331,120 @@ def create_app(store, alerts, engines, clock=time.time, settings=None, control=N
             raise ApiError(404, "that mat is not removed")
         store.log(clock(), "mat restored", chip_id, user["name"])
         return jsonify({"ok": True, "user": user["name"]})
+
+    @app.route("/api/mats/<chip_id>/restore", methods=["POST"])
+    def restore_mat(chip_id):
+        return show_mat(chip_id)
+
+    @app.route("/api/mats/<chip_id>/forget", methods=["POST"])
+    def forget_mat(chip_id):
+        """A retired mat: removed like /hide, and its retained topics on the broker are emptied so it does not come back"""
+        if chip_id not in engines and chip_id not in store.mats() and chip_id not in store.hidden_mats():
+            raise ApiError(404, "unknown mat")
+        data = body()
+        user = actor(data, admin=True)
+        reason = reason_of(data)
+        if control is None or not hasattr(control, "forget"):
+            raise ApiError(501, "this server cannot remove mats")
+        try:
+            cleared = bool(control.forget(chip_id, clock()))
+        except ValueError as error:
+            raise ApiError(409, str(error))
+        store.log(clock(), "mat forgotten", chip_id, user["name"], {"reason": reason, "broker_cleared": cleared})
+        return jsonify({"ok": True, "user": user["name"], "broker_cleared": cleared})
+
+    # ---- snapshot history (server/history.py) and CSV exports
+
+    def number_arg(name, default=None, low=None, high=None, whole=False):
+        raw = request.args.get(name)
+        if raw in (None, ""):
+            return default
+        try:
+            value = int(raw) if whole else float(raw)
+        except ValueError:
+            raise ApiError(400, f"{name} must be a number")
+        return value if low is None else min(max(value, low), high)
+
+    def time_range(default_hours=24):
+        until = number_arg("to", clock())
+        return number_arg("from", until - default_hours * 3600), until
+
+    @app.route("/api/mats/<chip_id>/history")
+    def mat_history(chip_id):
+        known(chip_id)
+        since, until = time_range()
+        grids = request.args.get("with_grids") in ("1", "true")
+        limit = number_arg("limit", 500, 1, 300 if grids else 5000, whole=True)
+        rows, more = store.snapshots(chip_id, since, until, limit, grids, after=request.args.get("after") in ("1", "true"))
+        return jsonify({"id": chip_id, "enabled": history.ENABLED, "interval_s": history.INTERVAL_S, "snapshots": rows,
+                        "truncated": more, "next_from": rows[-1]["t"] if more else None})
+
+    @app.route("/api/mats/<chip_id>/history/<int:snap_id>")
+    def mat_snapshot(chip_id, snap_id):
+        known(chip_id)
+        snapshot = store.snapshot(chip_id, snap_id)
+        if snapshot is None:
+            raise ApiError(404, "no such snapshot")
+        return jsonify(snapshot)
+
+    def csv_response(name, header, rows):
+        out = io.StringIO()
+        writer = csv.writer(out, lineterminator="\r\n")
+        writer.writerow(header)
+        writer.writerows(rows)
+        return app.response_class(out.getvalue(), mimetype="text/csv", headers={
+            "Content-Disposition": f'attachment; filename="{name}"'})
+
+    def iso(t):
+        return datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    @app.route("/api/export/audit.csv")
+    def export_audit():
+        since, until = number_arg("from"), number_arg("to")
+        rows = store.events_between(since, until, number_arg("limit", 20000, 1, 100000, whole=True))
+        return csv_response("smartmat-audit.csv", ("time_iso", "t", "kind", "mat", "user", "reason", "detail"), (
+            (iso(e["t"]), e["t"], e["kind"], e["chip_id"] or "", e["user"] or "",
+             (e["detail"] or {}).get("reason", "") if isinstance(e["detail"], dict) else "",
+             "" if e["detail"] is None else json.dumps(e["detail"], ensure_ascii=False)) for e in rows))
+
+    def snapshot_rows(chip_id, periodic_only=False):
+        known(chip_id)
+        since, until = time_range(24 * 7)
+        rows, _ = store.snapshots(chip_id, since, until, number_arg("limit", 20000, 1, 50000, whole=True))
+        return [r for r in rows if r["reason"] == "periodic" or not periodic_only]
+
+    def blank(value):
+        return "" if value is None else value
+
+    @app.route("/api/mats/<chip_id>/history.csv")
+    def export_history(chip_id):
+        keys = ("reason", "risk", "score", "posture", "occupied", "peak_kpa", "contact_cells", "contact_area_cm2",
+                "load_kg")
+        rows = snapshot_rows(chip_id)
+        return csv_response(f"smartmat-{chip_id}-history.csv",
+                            ("time_iso", "t", *keys, "hotspots", "since_movement_s", "since_reposition_s", "alert_kind"),
+                            ((iso(r["t"]), r["t"], *(blank(r.get(k)) for k in keys),
+                              "; ".join(f"{h['peak_kpa']} kPa @ r{h['centre'][0]}c{h['centre'][1]}" for h in r.get("hotspots", [])
+                                        if h.get("centre")), blank(r.get("since_movement_s")),
+                              blank(r.get("since_reposition_s")), blank(r["alert_kind"])) for r in rows))
+
+    @app.route("/api/mats/<chip_id>/repositioning.csv")
+    def export_repositioning(chip_id):
+        def lines():
+            previous = None
+            for r in snapshot_rows(chip_id, periodic_only=True):
+                per_hour = None
+                if previous is not None and r["t"] > previous["t"] and None not in (r.get("repositions"), previous.get("repositions")):
+                    count = r["repositions"] - previous["repositions"]
+                    count = r["repositions"] if count < 0 else count   # the counter restarted (server or analysis restart)
+                    per_hour = round(count / ((r["t"] - previous["t"]) / 3600), 2)
+                previous = r
+                yield (iso(r["t"]), r["t"], r["posture"], blank(r.get("occupied")), blank(r.get("since_movement_s")),
+                       blank(r.get("since_reposition_s")), blank(r.get("movements")), blank(r.get("repositions")),
+                       blank(per_hour))
+        return csv_response(f"smartmat-{chip_id}-repositioning.csv",
+                            ("time_iso", "t", "posture", "occupied", "since_movement_s", "since_reposition_s", "movements",
+                             "repositions", "repositions_per_hour"), lines())
 
     @app.route("/api/mats/<chip_id>/profile", methods=["GET", "PUT"])
     def profile(chip_id):

@@ -27,6 +27,9 @@ export function MatRow({ row }: { row: OverviewRow }) {
         <RiskPill risk={risk} />
       </View>
       <Text style={styles.status}>{status}</Text>
+      {row.online && typeof row.since_movement_s === "number" ? (
+        <Text style={styles.status}>{t("sinceMovementShort", { t: formatDuration(row.since_movement_s, settings.lang) })}</Text>
+      ) : null}
       {row.open_alerts > 0 ? <Text style={styles.alert}>● {badge}</Text> : null}
     </View>
   );

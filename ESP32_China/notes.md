@@ -1,6 +1,6 @@
 ### Notes for future improvements and bugfixes
 
-Current state (2026-10-15): compiles and passes the host tests; **not yet run on hardware**. Wiring, power,
+Current state (2026-10-25): compiles and passes the host tests. It has run once on hardware with the real Maxrays mat (see "First hardware run" below); most of the bring-up checklist is still unchecked. Wiring, power,
 build commands and the bring-up checklist are in `README.md`; the step-by-step test is in `../SETUP_AND_TEST.md`.
 
 ## Toolchain
@@ -26,12 +26,21 @@ build commands and the bring-up checklist are in `README.md`; the step-by-step t
   Known quirk kept on purpose: a false header followed by two real frames within 32 bytes can emit one
   garbage frame; the raw capture will show whether it matters.
 
+## First hardware run (2026-10-25)
+
+What the commits show (`38b97d0`, `5109231`): with the real mat attached, frames did not decode. A `DUMP_RAW` build
+(`pio run -e esp32-s3-dump`) prints the first ~900 bytes as hex. The dump showed this mat sends `A5 5A 01 96`, a 406-byte
+payload and then 4 trailer bytes `01 99 01 99`, so each packet is 408 bytes, not 406 + 2. The decoder (here and in
+`sources/maxrays.py`) now waits for the next header instead of discarding a packet that is longer than declared; there is a
+host test with 4 trailer bytes in small chunks. The fix is covered by unit tests; a hardware re-run after the fix (frames/s,
+discarded/invalid flat, MQTT to the server) is not written down anywhere yet.
+
 ## Open / untested without hardware
 
 - CH34x at 921600 through the host driver, enumeration on GPIO19/20, replug rebinding, VBUS from the 5V pin.
 - Two-core timing during a real broker outage; the 8 KB network stack (watch `net stack free`, raise
   `network_stack_bytes` if under ~1 KB).
-- Trailer/checksum of the packets is still undocumented (needs the raw capture or the vendor).
+- Trailer/checksum of the packets is still undocumented (needs the vendor). The 4 trailer bytes are known now, but not what they mean.
 
 ## Future product work (not planned now)
 

@@ -3,6 +3,7 @@
 import copy
 import json
 import shutil
+import sys
 import tempfile
 import threading
 import time
@@ -61,8 +62,16 @@ class Stub(BaseHTTPRequestHandler):
             self.reply(403, b'{"error": "wrong PIN"}')
 
 
+class QuietServer(ThreadingHTTPServer):
+    """A client that gave up (the timeout tests) makes the stub's late reply fail with a connection error: that is expected, not a traceback"""
+
+    def handle_error(self, request, client_address):
+        if not issubclass(sys.exc_info()[0], ConnectionError):
+            super().handle_error(request, client_address)
+
+
 def serve(handler):
-    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    server = QuietServer(("127.0.0.1", 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, f"http://127.0.0.1:{server.server_port}"
 

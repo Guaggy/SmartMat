@@ -57,14 +57,17 @@ class PassportApiTests(ApiTests):
         self.assertEqual(self.client.get("/api/mats/m2/passport").status_code, 502)
 
     def test_adopting_a_slot_sets_the_calibration_and_logs_it(self):
-        self.give(custom=blob_of())
+        # build the expected profile once, before anything runs: demo_profile() reads the process-wide grid size in
+        # config, so building it a second time at the end could (rarely, in a full run) see another test's value
+        expected = demo_profile(20, 20)
+        self.give(custom=blob_of(**expected))
         self.assertEqual(self.post("/api/mats/m1/passport/adopt", slot="custom").status_code, 401)
         self.assertEqual(self.post("/api/mats/m1/passport/adopt", slot="custom", pin=NURSE).status_code, 403)     # admin only
         self.assertEqual(self.post("/api/mats/m1/passport/adopt", slot="x", pin=ADMIN).status_code, 400)
         reply = self.post("/api/mats/m1/passport/adopt", slot="custom", pin=ADMIN)
         self.assertEqual(reply.status_code, 200, reply.get_json())
         self.assertEqual(self.engines["m1"].profile_version, 1)
-        self.assertTrue(same_calibration(self.engines["m1"].profile, demo_profile(20, 20)))
+        self.assertTrue(same_calibration(self.engines["m1"].profile, expected))
         self.assertTrue(calibration.load_profile("m1"))
         self.assertIn(("passport adopted", "Admin"), self.kinds("m1"))
         self.assertTrue(self.client.get("/api/mats/m1/passport").get_json()["slots"]["custom"]["same_as_now"])

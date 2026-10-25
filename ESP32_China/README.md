@@ -42,7 +42,10 @@ the decoder resync. On its own core it only delays publishing, never the USB rea
 - `src/frame_accumulator.h` - header-only per-window mean (uint16 sums + count, rounded), no Arduino includes.
 - `src/maxrays_decoder.h` - header-only decoder, no Arduino includes. Same framing rules as
   `Raspberry Pi/sources/maxrays.py`: resync on `A5 5A`, packet end from the next header (404-436 bytes) or the
-  declared length (406, or declared+4), lone trailing `A5` kept, garbage dropped, payload = bytes 4..403.
+  declared length (406, or declared+4), lone trailing `A5` kept, garbage dropped, payload = bytes 4..403. The real mat
+  sends 4 trailer bytes (`01 99 01 99`), so its packets are 408 bytes; the decoder waits for the next header.
+- `esp32-s3-dump` env (`-DDUMP_RAW`): real firmware that also prints the first ~900 raw bytes from the mat as hex on the UART,
+  for finding out why frames do not decode.
 - `test/test_decoder/`, `test/test_accumulator/`, `test/test_mailbox/` - host Unity tests.
 - `src/secrets.h.example` - copy to `src/secrets.h` (gitignored) and fill in Wi-Fi and MQTT values.
 
@@ -119,6 +122,9 @@ Decoder/mailbox/accumulator host tests (needs `g++` on PATH, e.g. a MinGW instal
 6. Pull and replug the mat, and the Wi-Fi: it recovers without a reset, and `status` goes back to `online`.
    Stop the broker for 30 s: frames/s stays at about 60 and `discarded`/`invalid` do not grow, only
    `net dropped` does. If `net stack free` falls under about 1 KB, raise `network_stack_bytes`.
+
+Status 2026-10-25: step 5 has been tried once with the real mat (frames did not decode at first; the raw dump led to the
+4-trailer-byte decoder fix, see `notes.md`). Steps 1-4 and 6 and the result of step 5 after the fix are not recorded.
 
 Not verified without hardware: CH340 at 921600 through the host driver, enumeration on GPIO19/20, replug
 rebinding, and VBUS capability of the 5V pin.

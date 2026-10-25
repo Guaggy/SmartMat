@@ -30,6 +30,7 @@ export interface OverviewRow extends MatInfo {
   saturated_cells: number;
   saturated: boolean;
   since_relief_s: number | null;
+  since_movement_s?: number | null; // seconds since the mat last registered movement; not in every server version yet
   open_alerts: number;
 }
 

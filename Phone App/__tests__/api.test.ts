@@ -126,10 +126,43 @@ describe("api against the mock server", () => {
     await expect(api.updateDevice(token, { lang: "en" })).rejects.toMatchObject({ status: 404 });
   });
 
-  it("an unreachable server is status 0", async () => {
+  it("an unreachable server is status 0, kind network", async () => {
     const dead = createApi("http://127.0.0.1:1", 1000, nodeFetch);
     const error = await dead.health().catch((e) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).status).toBe(0);
+    expect((error as ApiError).kind).toBe("network");
+  });
+
+  it("a server that answers but is not SmartMat is notSmartMat", async () => {
+    const notSmartMat = (async () => ({ ok: true, status: 200, json: async () => ({ hello: "world" }) })) as unknown as typeof fetch;
+    const error = await createApi("http://x:80", 1000, notSmartMat).health().catch((e) => e);
+    expect((error as ApiError).kind).toBe("notSmartMat");
+  });
+
+  it("raise and clear from a script: a raised alert is open, clearing makes it vanish, rows carry since_movement_s", async () => {
+    const post = (path: string, body: unknown) =>
+      nodeFetch(`${base}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    await post("/__mock/raise", { chip_id: "sm-102", kind: "high" });
+    let alerts = (await api.alerts()).alerts.filter((a) => a.chip_id === "sm-102");
+    expect(alerts.map((a) => [a.kind, a.state])).toEqual([["high_risk", "open"]]);
+    const cleared = await (await post("/__mock/clear", { chip_id: "sm-102" })).json();
+    expect(cleared.cleared).toHaveLength(1);
+    alerts = (await api.alerts()).alerts.filter((a) => a.chip_id === "sm-102");
+    expect(alerts).toEqual([]);
+    const rows = (await api.overview()).mats;
+    expect(rows.find((m) => m.id === "sm-102")?.since_movement_s).toEqual(expect.any(Number));
+    expect(rows.find((m) => m.id === "sm-104")?.since_movement_s).toBeNull(); // offline
+  });
+
+  it("the mock logs method, path and status of each request", async () => {
+    const lines: string[] = [];
+    const logged = createMockServer(undefined, (line: string) => lines.push(line));
+    await new Promise<void>((resolve) => logged.listen(0, "127.0.0.1", resolve));
+    const url = `http://127.0.0.1:${(logged.address() as AddressInfo).port}`;
+    await createApi(url, 3000, nodeFetch).overview();
+    await createApi(url, 3000, nodeFetch).mat("nope").catch(() => undefined);
+    await new Promise<void>((resolve) => logged.close(() => resolve()));
+    expect(lines).toEqual(["GET /api/overview -> 200", "GET /api/mats/nope -> 404"]);
   });
 });

@@ -57,6 +57,19 @@ class ServerClient:
         history = data.get("history") if isinstance(data, dict) else None
         return (True, history) if isinstance(history, list) else (False, "the server sent no history")
 
+    def get_overview(self):
+        """(True, [mat, ...] as in /api/overview: id, name, online, risk, ...) or (False, text)"""
+        ok, data = self._call("GET", "/api/overview")
+        mats = data.get("mats") if ok and isinstance(data, dict) else None
+        return (True, mats) if isinstance(mats, list) else (False, data if not ok else "the server sent no mat list")
+
+    def get_snapshots(self, chip, since, until, limit=300, with_grids=True, after=False):
+        """One page of a mat's snapshot history: (True, {"snapshots", "truncated", "next_from", "enabled", "interval_s"})
+        or (False, text). Oldest first; `after` makes `since` exclusive (the next page starts at the last next_from)"""
+        query = f"from={since:.3f}&to={until:.3f}&limit={int(limit)}"
+        query += ("&with_grids=1" if with_grids else "") + ("&after=1" if after else "")
+        return self._call("GET", f"/api/mats/{_quote(chip)}/history?{query}")
+
     def rollback(self, chip, version, pin, reason=""):
         """Put a layer back as it was at an earlier version (a new version again). (True, page) or (False, text)"""
         return self._call("POST", "/api/config/rollback", {"scope": "site" if chip is None else chip, "version": version,
