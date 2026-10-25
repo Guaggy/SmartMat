@@ -23,6 +23,7 @@ from server.store import DEVICE_FIELDS, META_FIELDS
 DEMO_PREFIX = getattr(config, "DEMO_PREFIX", "demo-")
 KIOSK_MARK = "smartmat-kiosk-profile"  # the --user-data-dir name deploy/smartmat-kiosk.sh gives the browser
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+STARTED = int(time.time())
 MAX_TIMELINE_HOURS = 24 * 7
 SNAPSHOT_KEYS = ("unit", "scale_max", "grid", "occupied", "hotspots", "peak_kpa")
 
@@ -107,8 +108,10 @@ def create_app(store, alerts, engines, clock=time.time, settings=None, control=N
 
     @app.route("/api/health")
     def health():
+        # build changes when the server restarts or a static file changes: the kiosk page reloads itself on it
+        build = f"{STARTED}-{int(max(f.stat().st_mtime for f in STATIC_DIR.iterdir() if f.is_file()))}"
         return jsonify({"ok": True, "time": clock(), "mats": len(engines), "version": branding.VERSION,
-                        "needs_admin": store.user_count() == 0})
+                        "needs_admin": store.user_count() == 0, "build": build})
 
     @app.route("/api/kiosk/exit", methods=["POST"])
     def kiosk_exit():

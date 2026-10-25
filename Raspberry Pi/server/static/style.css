@@ -292,3 +292,8 @@ dialog label input, dialog label select { display: block; width: 100%; margin-to
   .bellpanel { left: 12px; right: 12px; width: auto; max-width: none; }
   .setrow { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* touchscreen kiosk (/?kiosk): no text selection or long-press menus, no pinch zoom */
+html.kiosk { user-select: none; -webkit-user-select: none; touch-action: manipulation; overscroll-behavior: none; }
+html.kiosk img { -webkit-user-drag: none; -webkit-touch-callout: none; }
+.brand img { cursor: pointer; }

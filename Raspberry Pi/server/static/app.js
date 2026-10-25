@@ -292,6 +292,9 @@ const clock = (ts) => new Date(ts * 1000).toLocaleTimeString(locale(), { hour: "
 const RISK_ORDER = { offline: 0, high: 1, medium: 2, low: 3, none: 4 };
 const RISKS = ["high", "medium", "low", "none"];
 const POSTURES = ["centred", "left", "right", "forward", "none"];
+const KIOSK = new URLSearchParams(location.search).has("kiosk"); // the touchscreen's fullscreen browser
+if (KIOSK) document.documentElement.classList.add("kiosk");
+
 const S = {
   mats: [], openAlerts: 0, alerts: [], timeline: null, mat: null, offset: 0, lost: false,
   selected: null, open: false, bellOpen: false, needsAdmin: false, setupShown: false,
@@ -858,6 +861,8 @@ $("usersClose").addEventListener("click", () => $("usersDlg").close());
 async function checkSetup() { // no users yet: ask for the first admin, once per page load
   const h = await api("/api/health");
   S.needsAdmin = !!h.needs_admin;
+  if (KIOSK && S.build && h.build && h.build !== S.build) location.reload(); // the server restarted or was updated: fetch the new page
+  S.build = h.build;
   if (S.needsAdmin && !S.setupShown && !$("dlg").open) { S.setupShown = true; firstUserDialog(); }
 }
 
@@ -1369,14 +1374,29 @@ async function loadTheme() { // colour ramp shared with the desktop app; the bui
   } catch (e) { /* fallback ramp */ }
 }
 
-// Touchscreen kiosk (/?kiosk): tap the logo 5 times within 3 s to close the browser (the server only obeys the Pi itself)
-if (new URLSearchParams(location.search).has("kiosk")) {
-  let taps = [];
-  for (const id of ["logo", "logoMark"]) $(id).addEventListener("click", (e) => {
-    e.preventDefault();
-    taps = [...taps.filter((t) => Date.now() - t < 3000), Date.now()];
-    if (taps.length >= 5) fetch("/api/kiosk/exit", { method: "POST" });
-  });
+// The logo is "home": back to the dashboard with the selected mat's pressure map open
+function goHome() {
+  setBell(false);
+  showView("dash");
+  if (S.selected && !S.open) select(S.selected);
+  window.scrollTo(0, 0);
+}
+
+// Touchscreen kiosk (/?kiosk): hold the logo 3 s, or tap it 5 times within 4 s, to close the browser (the server only obeys the Pi itself)
+let taps = [], held = null;
+const exitKiosk = () => fetch("/api/kiosk/exit", { method: "POST" }).catch(() => {});
+const brand = document.querySelector(".brand"); // the whole logo link, so a tap beside the image does not reload the page
+brand.addEventListener("click", (e) => {
+  e.preventDefault();
+  goHome();
+  if (!KIOSK) return;
+  taps = [...taps.filter((t) => Date.now() - t < 4000), Date.now()];
+  if (taps.length >= 5) exitKiosk();
+});
+if (KIOSK) {
+  brand.addEventListener("contextmenu", (e) => e.preventDefault());
+  brand.addEventListener("pointerdown", () => { held = setTimeout(exitKiosk, 3000); });
+  for (const ev of ["pointerup", "pointercancel", "pointerleave"]) brand.addEventListener(ev, () => clearTimeout(held));
 }
 
 applyLang();

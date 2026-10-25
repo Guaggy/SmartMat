@@ -4,6 +4,7 @@
 #   journalctl -u smartmat-server -f      # its output
 # The database, profiles and mat names live in /var/lib/smartmat (StateDirectory), outside the git checkout, so
 # updating the code never touches them. config.py (broker login, thresholds) is still read from the project folder.
+# Extra server options (e.g. SMARTMAT_ARGS="--demo 2" for two demo mats) go in /etc/default/smartmat-server; `smartmat_ctl.py sim` edits it.
 # A USB mat (SERVER_SERIAL_PORTS in config.py) also needs: sudo usermod -aG dialout <User>
 [Unit]
 Description=SmartMat server (mats, alerts, web dashboard)
@@ -14,7 +15,8 @@ StartLimitIntervalSec=0
 [Service]
 User=pi
 WorkingDirectory=/home/pi/SmartMat/Raspberry Pi
-ExecStart="/home/pi/SmartMat/Raspberry Pi/.venv/bin/python" -m server --data-dir /var/lib/smartmat
+EnvironmentFile=-/etc/default/smartmat-server
+ExecStart="/home/pi/SmartMat/Raspberry Pi/.venv/bin/python" -m server --data-dir /var/lib/smartmat $SMARTMAT_ARGS
 StateDirectory=smartmat
 Restart=always
 RestartSec=5
