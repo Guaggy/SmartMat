@@ -1369,6 +1369,16 @@ async function loadTheme() { // colour ramp shared with the desktop app; the bui
   } catch (e) { /* fallback ramp */ }
 }
 
+// Touchscreen kiosk (/?kiosk): tap the logo 5 times within 3 s to close the browser (the server only obeys the Pi itself)
+if (new URLSearchParams(location.search).has("kiosk")) {
+  let taps = [];
+  for (const id of ["logo", "logoMark"]) $(id).addEventListener("click", (e) => {
+    e.preventDefault();
+    taps = [...taps.filter((t) => Date.now() - t < 3000), Date.now()];
+    if (taps.length >= 5) fetch("/api/kiosk/exit", { method: "POST" });
+  });
+}
+
 applyLang();
 $("ramp").style.background = "linear-gradient(90deg," + S.ramp.map(([v, c]) => `rgb(${c.join(",")}) ${Math.round(v * 100)}%`).join(",") + ")";
 loadTheme();

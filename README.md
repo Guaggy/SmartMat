@@ -16,3 +16,15 @@ Setting up and testing devices: [SETUP_AND_TEST.md](SETUP_AND_TEST.md). Backlog 
 | `Phone App/` | Expo (React Native) app for status and alerts. Expo SDK 57, so the App Store's Expo Go can run it. |
 | `Data/` | Reference material: mat datasheet, presentation, logo. |
 | `test_reports/` | Dated reports from test passes on real machines. |
+
+## Network and logins (home test setup)
+
+| What | Value |
+|---|---|
+| WiFi SSID / password | `Kusk 2.0` / `Bussfortog` |
+| Raspberry Pi (broker + server) | `10.0.0.15`, MQTT port 1883, dashboard `http://10.0.0.15:8000` |
+| MQTT user / password | `smartmat` / `smartmat` |
+
+The same values go in `Raspberry Pi/config.py` (`mqtt_username`, `mqtt_password`; `broker_host` stays `localhost` on the Pi),
+`ESP32_Resistive/src/secrets.h` and `ESP32_China/src/secrets.h` (gitignored copies of `secrets.h.example`), and the
+desktop app under Engineering > Connection.

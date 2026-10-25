@@ -3,6 +3,7 @@ user's PIN in its JSON body and is written to the event log with that user's nam
 documented in design/api-contract.md (that is what server/static/app.js reads)."""
 
 import json
+import subprocess
 import time
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from server.settings import SITE, Settings
 from server.store import DEVICE_FIELDS, META_FIELDS
 
 DEMO_PREFIX = getattr(config, "DEMO_PREFIX", "demo-")
+KIOSK_MARK = "smartmat-kiosk-profile"  # the --user-data-dir name deploy/smartmat-kiosk.sh gives the browser
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 MAX_TIMELINE_HOURS = 24 * 7
 SNAPSHOT_KEYS = ("unit", "scale_max", "grid", "occupied", "hotspots", "peak_kpa")
@@ -107,6 +109,14 @@ def create_app(store, alerts, engines, clock=time.time, settings=None, control=N
     def health():
         return jsonify({"ok": True, "time": clock(), "mats": len(engines), "version": branding.VERSION,
                         "needs_admin": store.user_count() == 0})
+
+    @app.route("/api/kiosk/exit", methods=["POST"])
+    def kiosk_exit():
+        """Closes the touchscreen kiosk browser (deploy/smartmat-kiosk.sh). Only the Pi itself may ask."""
+        if request.remote_addr not in ("127.0.0.1", "::1"):
+            return jsonify({"error": "Only from the touchscreen itself"}), 403
+        subprocess.run(["pkill", "-f", KIOSK_MARK], check=False)
+        return jsonify({"ok": True})
 
     @app.route("/api/theme")
     def theme():

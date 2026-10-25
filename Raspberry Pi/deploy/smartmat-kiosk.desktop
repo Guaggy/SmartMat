@@ -1,0 +1,4 @@
+[Desktop Entry]
+Type=Application
+Name=SmartMat kiosk
+Exec=sh "/home/pi/SmartMat/Raspberry Pi/deploy/smartmat-kiosk.sh"

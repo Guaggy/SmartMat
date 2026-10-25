@@ -143,6 +143,22 @@ curl http://localhost:8000/api/health        # {"ok": true, ...}
   from outside use Tailscale (section 11), never a router port-forward.
 - A USB mat plugged into the Pi: add it to `SERVER_SERIAL_PORTS` in `config.py`, `sudo usermod -aG dialout pi`, restart.
 
+### Touchscreen kiosk (dashboard fullscreen at boot)
+For a Pi with a touchscreen on the desktop OS (log in automatically: `sudo raspi-config` > System Options > Boot / Auto Login > Desktop Autologin):
+```bash
+sudo apt install -y chromium-browser          # "chromium" on newer Pi OS
+chmod +x "deploy/smartmat-kiosk.sh"
+mkdir -p ~/.config/autostart
+cp deploy/smartmat-kiosk.desktop ~/.config/autostart/      # edit the path in Exec= if not /home/pi/SmartMat
+sudo raspi-config                              # Display Options > Screen Blanking > off
+sudo reboot
+```
+It waits for the server, then opens `http://localhost:8000/?kiosk` fullscreen. **Close it:** tap the logo 5 times within 3 s
+(only the Pi itself can trigger this), or Alt+F4 with a keyboard, or `pkill -f smartmat-kiosk-profile` over ssh. Without a
+touchscreen reachable, the desktop stays behind it. Raspberry Pi Connect *screen sharing* mirrors that same screen (so you see the
+kiosk); its *remote shell* and ssh are separate. For a different view on the HDMI port, use a second display (extended, not mirrored) and open
+`http://10.0.0.15:8000` there in a normal browser window.
+
 ## 4. Mosquitto broker on the Pi [unverified on your Pi]
 
 Mosquitto 2.x refuses remote clients unless you configure a listener and users.

@@ -37,6 +37,13 @@ class ApiTests(unittest.TestCase):
             engine.clock = lambda: self.now
         self.client = create_app(self.store, self.alerts, self.engines, clock=lambda: self.now).test_client()
 
+    def test_kiosk_exit_only_obeys_the_pi_itself(self):
+        with mock.patch("server.app.subprocess.run") as run:
+            self.assertEqual(self.client.post("/api/kiosk/exit", environ_base={"REMOTE_ADDR": "10.0.0.7"}).status_code, 403)
+            run.assert_not_called()
+            self.assertEqual(self.client.post("/api/kiosk/exit", environ_base={"REMOTE_ADDR": "127.0.0.1"}).status_code, 200)
+            run.assert_called_once()
+
     def post(self, url, **json):
         return self.client.post(url, json=json)
 
