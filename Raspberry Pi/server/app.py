@@ -174,7 +174,8 @@ def create_app(store, alerts, engines, clock=time.time, settings=None, control=N
     def list_alerts():
         meta = store.mats()
         return jsonify({"alerts": [dict(a, name=mat_info(a["chip_id"], meta)["name"],
-                                        room=mat_info(a["chip_id"], meta)["room"]) for a in alerts.recent()]})
+                                        room=mat_info(a["chip_id"], meta)["room"],
+                                        demo=a["chip_id"].startswith(DEMO_PREFIX)) for a in alerts.recent()]})
 
     @app.route("/api/users", methods=["GET", "POST"])
     def users():

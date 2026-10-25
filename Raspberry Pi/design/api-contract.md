@@ -277,6 +277,14 @@ Alerts are saved when raised, handled or cleared. After a restart the unresolved
 (same id, same state, `t_raised`), without a second `alert raised` event or push, and wait `ALERT_RESTORE_GRACE_S`
 (60 s) for a silent mat to report again before the `offline` rules may clear them.
 
+## Demo mats
+
+Chip ids starting with `DEMO_PREFIX` ("demo-") are demo mats: `demo: true` in the overview row, the mat detail and
+(new) on every row of `GET /api/alerts`, so the UI can show a DEMO badge. Their alerts are never pushed to phones
+unless `DEMO_PUSH = True`. `python -m server --demo N --demo-scenario [--demo-speed X]` (or `DEMO_SCENARIO`,
+`DEMO_SPEED` in `config.py`) plays a scripted 7 minute loop through the real pipeline, each mat at its own phase;
+`tools/seed_demo_history.py` fills the history with a simulated day. Default is off.
+
 ## What the dashboard stores in the browser
 
 `localStorage` keys (all optional, every access in try/catch): `sm.lang` (`nb`|`en`), `sm.theme` (`light`|`dark`),
