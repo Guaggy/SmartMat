@@ -55,6 +55,7 @@ from sources.simulated_source import SCENARIOS, SimulatedSource
 DEMO_DEVICE = "Demo: seat take 1"  # entry in the Simulated device list, played from the bundled sample
 DEMO_RECORDING = "samples/seat_take1.json"
 from gui import theme
+from gui.blit import Blitter
 from gui.calibration_window import CalibrationWindow
 from gui.analysis_window import AnalysisWindow
 from gui.diagnostics_window import DiagnosticsWindow
@@ -70,8 +71,23 @@ from gui.engineering_window import EngineeringWindow
 from gui.help_window import HelpWindow
 from processing.validation import compare_hotspot_roi
 
+
+
+def _ui_number(name, default, low):
+    """A numeric UI knob from config.py (an older config.py may not have it; a bad value falls back to the default)"""
+    try:
+        value = float(getattr(app_config, name, default))
+    except (TypeError, ValueError):
+        return default
+    return value if value >= low else default
+
+
 POLL_INTERVAL_MS = 50  # how often the GUI checks for a new frame
-DRAW_INTERVAL_S = 0.1  # cap the redraw rate - drawing is the expensive part
+UI_IDLE_POLL_MS = int(_ui_number("UI_IDLE_POLL_MS", 250, 50))  # poll rate with no source connected
+UI_MAX_FPS = _ui_number("UI_MAX_FPS", 5, 0.5)  # cap the heatmap redraw rate - drawing is the expensive part
+DRAW_INTERVAL_S = 1 / UI_MAX_FPS
+TOOL_REFRESH_S = _ui_number("UI_TOOL_REFRESH_S", 1.0, 0.1)  # how often the open tool tabs (analysis, temporal...) redraw
+UI_BLIT = bool(getattr(app_config, "UI_BLIT", True))  # redraw only the heatmap, not axes/ticks/colorbar (gui/blit.py)
 DATA_MODES = {
     "Raw / received": "raw",
     "Processed": "filtered",
@@ -204,6 +220,9 @@ class DesktopApp:
         self.last_reconnect_attempt = 0.0
         self._reconnect_since = None  # time the source went stale while auto-reconnect keeps retrying
         self._last_draw_time = 0.0
+        self._capture_enabled = None   # last state given to the capture button
+        self._occupancy_shown = None   # (text, colour) last put on the patient chip
+        self.blitter = None            # set by _build_plot for the 2D heatmap
         self._fps_frame_count = 0
         self._fps_last_check = time.time()
 
@@ -285,7 +304,7 @@ class DesktopApp:
         """Light / Dark switch: restyle everything that is open now, and remember the choice"""
         mode = theme.apply_theme(self.root, self.theme_var.get())
         self._show_header_logo()
-        self._update_occupancy()
+        self._update_occupancy(force=True)
         self._update_index_chips()
         # the heatmap ramp fades into the theme's own background (the figure itself was restyled in place;
         # rebuilding it here would leave the new canvas at the wrong size until the next window resize)
@@ -850,6 +869,10 @@ class DesktopApp:
         self.canvas = FigureCanvasTkAgg(self.figure, master=self.plot_area)
         self.canvas.mpl_connect("button_press_event", self._on_plot_click)
         self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        # the 2D heatmap is blitted (gui/blit.py); the 3D surface is rebuilt each time, so it always draws in full
+        self.blitter = Blitter(self.canvas) if UI_BLIT and self.plot_type_var.get() != "3D Surface" else None
+        # the plot is not drawn while its tab/window is hidden: catch up as soon as it shows again
+        self.canvas.get_tk_widget().bind("<Map>", lambda _event: self._plot_shown(), add="+")
 
         if self.frame is not None:
             self._update_plot()
@@ -916,11 +939,11 @@ class DesktopApp:
 
     def _update_cell_info(self):
         size = self.cell_size_mm
-        self.cell_info_var.set("Cell area: not configured" if size is None else
+        self._show(self.cell_info_var, "Cell area: not configured" if size is None else
                                f"Cell: {size[0]:.1f} x {size[1]:.1f} mm")
         model = getattr(self.source, "model", None)
         vendor = getattr(self.source, "vendor", None)
-        self.model_var.set(f"Mat: {vendor + ' ' if vendor else ''}{model}" if model else "")
+        self._show(self.model_var, f"Mat: {vendor + ' ' if vendor else ''}{model}" if model else "")
 
     def _set_mat_size(self):
         """Ask for the mat's physical sensing size (outer edge of the first to the last sensing element)"""
@@ -1060,7 +1083,10 @@ class DesktopApp:
     def _update_capture_button(self):
         """Enabled only while a Serial source is connected and no capture is running; reports a finished one"""
         source = self.source if isinstance(self.source, SerialSource) else None
-        self.capture_button.state(["!disabled" if source is not None and not source.capturing else "disabled"])
+        enabled = source is not None and not source.capturing
+        if enabled != self._capture_enabled:  # a Tk call every poll otherwise
+            self._capture_enabled = enabled
+            self.capture_button.state(["!disabled" if enabled else "disabled"])
         result = source.capture_result if source is not None else None
         if result is not None and result is not self._shown_capture:
             self._shown_capture = result
@@ -1622,7 +1648,7 @@ class DesktopApp:
         fine = np.kron(np.pad(mask, 1).astype(float), np.ones((8, 8)))  # padded: closes at the mat edge
         y = (np.arange(fine.shape[0]) + 0.5) / 8 - 1.5
         x = (np.arange(fine.shape[1]) + 0.5) / 8 - 1.5
-        self.axes.contour(x, y, fine, levels=[0.5], **style)
+        return self.axes.contour(x, y, fine, levels=[0.5], **style)
 
     def _refresh_analysis(self):
         if self._shown(self.analysis_window):
@@ -1819,15 +1845,15 @@ class DesktopApp:
                     grid = self._orient(grid)
                 self._handle_new_frame(grid, sample_time)
             self._check_connection_health()
-            if (self._shown(self.diagnostics_window)
-                    and time.time() - self._last_diagnostics_draw >= 0.5):
+            if (time.time() - self._last_diagnostics_draw >= TOOL_REFRESH_S  # time first: _shown asks Tk
+                    and self._shown(self.diagnostics_window)):
                 self._last_diagnostics_draw = time.time()
                 self.diagnostics_window.refresh()
-            if (self._shown(self.temporal_window)
-                    and time.time() - self._last_temporal_draw >= 0.5):
+            if (time.time() - self._last_temporal_draw >= TOOL_REFRESH_S
+                    and self._shown(self.temporal_window)):
                 self._last_temporal_draw = time.time()
                 self.temporal_window.refresh()
-            if time.time() - self._last_feature_draw >= 0.5:
+            if time.time() - self._last_feature_draw >= TOOL_REFRESH_S:
                 self._last_feature_draw = time.time()
                 if self._shown(self.hotspot_window):
                     self.hotspot_window.refresh()
@@ -1842,7 +1868,7 @@ class DesktopApp:
         self._retry_reconnect()
         self._update_occupancy()
         self._update_fps()
-        self.root.after(POLL_INTERVAL_MS, self._poll)
+        self.root.after(POLL_INTERVAL_MS if self.source is not None else UI_IDLE_POLL_MS, self._poll)
 
     def _handle_new_frame(self, grid, sample_time=None):
         self.last_frame_time = time.time()
@@ -1911,9 +1937,15 @@ class DesktopApp:
         if not self.paused_var.get() and now - self._last_draw_time >= DRAW_INTERVAL_S:
             self._last_draw_time = now
             self._update_plot()
-        if now - self._last_analysis_draw >= 0.5:
+        if now - self._last_analysis_draw >= TOOL_REFRESH_S:
             self._last_analysis_draw = now
             self._refresh_analysis()
+
+    @staticmethod
+    def _show(variable, text):
+        """variable.set(text) unless it already shows it"""
+        if variable.get() != text:
+            variable.set(text)
 
     def _notify(self, text, seconds=8.0):
         """Status-line message that stays in front of the live numbers for a few seconds"""
@@ -1926,8 +1958,12 @@ class DesktopApp:
         colour = theme.palette()[token]
         label.configure(bg=colour, fg=theme.text_on(colour))
 
-    def _update_occupancy(self):
+    def _update_occupancy(self, force=False):
         text, token = OCCUPANCY_LABELS[self.occupancy.occupied]
+        shown = (text, theme.palette()[token])  # the colour too: a theme switch repaints
+        if shown == self._occupancy_shown and not force:
+            return
+        self._occupancy_shown = shown
         self.occupancy_label.configure(text=text)
         self._status_cell(self.occupancy_label, token)
 
@@ -1990,7 +2026,7 @@ class DesktopApp:
     def _check_connection_health(self):
         """Flag a stale connection, and optionally auto-reconnect"""
         if getattr(self.source, "is_playback", False) and self.source.paused:
-            self.connection_var.set("Playback paused" + self._demo_tag())
+            self._show(self.connection_var, "Playback paused" + self._demo_tag())
             return
         if self.last_frame_time is None:
             return
@@ -1999,10 +2035,10 @@ class DesktopApp:
             if self._source_was_stale:
                 self.add_event("source_reconnected")
                 self._source_was_stale = False
-            self.connection_var.set("Connected" + self._demo_tag())
+            self._show(self.connection_var, "Connected" + self._demo_tag())
             return
 
-        self.connection_var.set(f"No data for {stale_for:.0f}s")
+        self._show(self.connection_var, f"No data for {stale_for:.0f}s")
         if not self._source_was_stale:
             self.add_event("source_disconnected")
             self._source_was_stale = True
@@ -2063,6 +2099,30 @@ class DesktopApp:
             vmax = float(finite_values.max()) if finite_values.size and finite_values.max() > 0 else 1.0
         else:
             vmin, vmax = self.calibration.vmin, self.calibration.vmax
+        if self._plot_visible():  # a hidden tab or minimised window skips the draw, not the status line below
+            self._draw_plot(grid, key, derived, difference, pressure_unavailable, finite_values, vmin, vmax)
+
+        if self.recorder is not None:
+            elapsed = time.time() - self.recorder.started_at
+            prefix = f"Recording '{self.recorder.name}' - {elapsed:.0f}s, {self.recorder.frame_count} frames   "
+        else:
+            prefix = ""
+        if pressure_unavailable and derived and self.frame["pressure"] is not None:
+            status = f"{self.data_mode_var.get()}: no value yet"
+        elif pressure_unavailable:
+            status = f"Pressure calibration incomplete ({self.pressure_calibration.calibrated_count}/{app_config.TOTAL_ROWS * app_config.TOTAL_COLS} cells)"
+        else:
+            unit = " kPa" if key == "pressure" else (f" {SIGNALS[key[7:]].unit}" if key.startswith("signal:") else "")
+            valid = grid[np.isfinite(grid)]
+            number = "{:.3g}" if derived else "{:.1f}"
+            status = (f"avg {number.format(valid.mean())}{unit}   max {number.format(valid.max())}{unit}   "
+                      f"min {number.format(valid.min())}{unit}" if valid.size else "No valid sensor values")
+        if time.time() < self._notice_until:
+            prefix = self._notice + "   " + prefix
+        self._show(self.status_var, prefix + ("Difference vs reference | " if difference else "") + status)
+
+    def _draw_plot(self, grid, key, derived, difference, pressure_unavailable, finite_values, vmin, vmax):
+        """Put the prepared grid on the canvas (the main heatmap or 3D surface)"""
         plot_grid = interpolate_grid(grid, self.interpolation_method, self.display_scale)
 
         if self.plot_type_var.get() == "3D Surface":
@@ -2083,10 +2143,20 @@ class DesktopApp:
                 collection.remove()
             self.image.set_data(plot_grid)
             # Smooth: bicubic resampling at screen resolution on top of the upsampled grid
-            self.image.set_interpolation("bicubic" if self.interpolation_method == "Smooth" else "antialiased")
-            self.image.set_extent((-0.5, app_config.TOTAL_COLS - 0.5, app_config.TOTAL_ROWS - 0.5, -0.5))
-            self.image.set_clim(vmin, vmax)
-            self.image.set_cmap("coolwarm" if difference else theme.heatmap_cmap())
+            interpolation = "bicubic" if self.interpolation_method == "Smooth" else "antialiased"
+            extent = (-0.5, app_config.TOTAL_COLS - 0.5, app_config.TOTAL_ROWS - 0.5, -0.5)
+            cmap = "coolwarm" if difference else theme.heatmap_cmap()
+            cmap_name = cmap if isinstance(cmap, str) else cmap.name
+            # each of these redraws the colorbar even when nothing changed, so only touch what did
+            if self.image.get_interpolation() != interpolation:
+                self.image.set_interpolation(interpolation)
+            if tuple(self.image.get_extent()) != extent:
+                self.image.set_extent(extent)
+            if self.image.get_clim() != (vmin, vmax):
+                self.image.set_clim(vmin, vmax)
+            if self.image.get_cmap().name != cmap_name:
+                self.image.set_cmap(cmap)
+            overlays = []  # artists redrawn on every update (blitted); the rest of the figure is a cached bitmap
             self.axes.set_xlim(-0.5, app_config.TOTAL_COLS - 0.5)
             self.axes.set_ylim(app_config.TOTAL_ROWS - 0.5, -0.5)
             if self.show_contours and not pressure_unavailable and not difference and not derived:
@@ -2096,19 +2166,20 @@ class DesktopApp:
                 if levels:
                     x = np.linspace(0, app_config.TOTAL_COLS - 1, plot_grid.shape[1])
                     y = np.linspace(0, app_config.TOTAL_ROWS - 1, plot_grid.shape[0])
-                    self.axes.contour(x, y, plot_grid, levels=levels, colors=theme.palette()["ink"],
-                                      linewidths=0.6, alpha=0.6)
+                    overlays.append(self.axes.contour(x, y, plot_grid, levels=levels, colors=theme.palette()["ink"],
+                                                      linewidths=0.6, alpha=0.6))
             if (self.show_hotspot_threshold and key == "pressure" and not difference and
                     finite_values.size and finite_values.min() < self.hotspots.activate_kpa < finite_values.max()):
                 x = np.linspace(0, app_config.TOTAL_COLS - 1, plot_grid.shape[1])
                 y = np.linspace(0, app_config.TOTAL_ROWS - 1, plot_grid.shape[0])
-                self.axes.contour(x, y, plot_grid, levels=[self.hotspots.activate_kpa],
-                                  colors="purple", linewidths=0.8, linestyles="dashed")
+                overlays.append(self.axes.contour(x, y, plot_grid, levels=[self.hotspots.activate_kpa],
+                                                  colors="purple", linewidths=0.8, linestyles="dashed"))
             if self.show_boundary and self.frame["pressure"] is not None:
                 mask = contact_mask(self.frame["pressure"], self.contact_threshold_kpa)
                 if mask.any() and not mask.all():
-                    self.axes.contour(np.arange(app_config.TOTAL_COLS), np.arange(app_config.TOTAL_ROWS), mask.astype(float),
-                                      levels=[0.5], colors="blue", linewidths=0.8, alpha=0.6)
+                    overlays.append(self.axes.contour(
+                        np.arange(app_config.TOTAL_COLS), np.arange(app_config.TOTAL_ROWS), mask.astype(float),
+                        levels=[0.5], colors="blue", linewidths=0.8, alpha=0.6))
             for label in self.hotspot_labels:
                 label.remove()
             self.hotspot_labels = []
@@ -2118,9 +2189,9 @@ class DesktopApp:
                     for row, col in track["cells"]:
                         mask[row, col] = 1
                     if not mask.all():
-                        self.axes.contour(np.arange(app_config.TOTAL_COLS), np.arange(app_config.TOTAL_ROWS), mask,
-                                          levels=[0.5], colors="red" if track["persistent"] else "orange",
-                                          linewidths=1.3)
+                        overlays.append(self.axes.contour(
+                            np.arange(app_config.TOTAL_COLS), np.arange(app_config.TOTAL_ROWS), mask,
+                            levels=[0.5], colors="red" if track["persistent"] else "orange", linewidths=1.3))
                     row, col = track["centroid"]
                     palette = theme.palette()
                     label = self.axes.text(col, row, f"#{track['id']} {track['active_s']:.0f}s",
@@ -2131,11 +2202,12 @@ class DesktopApp:
                 for name, state in self.indices.states.items():
                     mask = self.indices.over_mask(name) if state == OVER else None
                     if mask is not None and mask.any() and not mask.all():
-                        self.axes.contour(np.arange(app_config.TOTAL_COLS), np.arange(app_config.TOTAL_ROWS),
-                                          mask.astype(float), levels=[0.5], colors=INDEX_OUTLINE_COLOR,
-                                          linewidths=1.3, linestyles="dotted")
+                        overlays.append(self.axes.contour(
+                            np.arange(app_config.TOTAL_COLS), np.arange(app_config.TOTAL_ROWS),
+                            mask.astype(float), levels=[0.5], colors=INDEX_OUTLINE_COLOR,
+                            linewidths=1.3, linestyles="dotted"))
             if self.roi is not None:
-                self._outline_cells(self.roi, colors="blue", linewidths=1.5)
+                overlays.append(self._outline_cells(self.roi, colors="blue", linewidths=1.5))
             if self.selected_cell is not None:
                 self.selected_marker.set_data([self.selected_cell[1]], [self.selected_cell[0]])
             if self.cop_var.get() and self.display_cop[0] is not None:
@@ -2148,27 +2220,33 @@ class DesktopApp:
                         value = grid[row, col]
                         text = (f"{value:.1f}" if key == "pressure" else
                                 (f"{value:.3g}" if np.isfinite(value) else "") if derived else f"{value:.0f}")
-                        self.cell_labels[row][col].set_text(text)
+                        label = self.cell_labels[row][col]
+                        if label.get_text() != text:  # an unchanged label keeps its cached layout
+                            label.set_text(text)
+            if self.blitter is not None:
+                labels = [] if self.cell_labels is None else [label for line in self.cell_labels for label in line]
+                # the last argument is what the cached bitmap shows: colour scale, colormap, the colorbar's title
+                self.blitter.set_artists(
+                    [self.image, self.cop_marker, self.selected_marker, *overlays, *self.hotspot_labels, *labels,
+                     *self.axes.spines.values()],  # the image covers half a spine line otherwise
+                    (vmin, vmax, cmap_name, difference, key))
+                self.blitter.update()
+                return
         self.canvas.draw_idle()
 
-        if self.recorder is not None:
-            elapsed = time.time() - self.recorder.started_at
-            prefix = f"Recording '{self.recorder.name}' - {elapsed:.0f}s, {self.recorder.frame_count} frames   "
-        else:
-            prefix = ""
-        if pressure_unavailable and derived and self.frame["pressure"] is not None:
-            status = f"{self.data_mode_var.get()}: no value yet"
-        elif pressure_unavailable:
-            status = f"Pressure calibration incomplete ({self.pressure_calibration.calibrated_count}/{app_config.TOTAL_ROWS * app_config.TOTAL_COLS} cells)"
-        else:
-            unit = " kPa" if key == "pressure" else (f" {SIGNALS[key[7:]].unit}" if key.startswith("signal:") else "")
-            valid = grid[np.isfinite(grid)]
-            number = "{:.3g}" if derived else "{:.1f}"
-            status = (f"avg {number.format(valid.mean())}{unit}   max {number.format(valid.max())}{unit}   "
-                      f"min {number.format(valid.min())}{unit}" if valid.size else "No valid sensor values")
-        if time.time() < self._notice_until:
-            prefix = self._notice + "   " + prefix
-        self.status_var.set(prefix + ("Difference vs reference | " if difference else "") + status)
+    def _plot_visible(self):
+        """The live heatmap is on screen (not behind another tab, not a minimised window)"""
+        try:
+            return bool(self.canvas.get_tk_widget().winfo_viewable())
+        except tk.TclError:
+            return True
+
+    def _plot_shown(self):
+        """The heatmap just became visible again: draw the newest frame"""
+        if self.blitter is not None:
+            self.blitter.invalidate()
+        if self.frame is not None and not self.paused_var.get():
+            self._update_plot()
 
     def _hotspot_text(self):
         if not self.hotspots.data_valid:
@@ -2181,7 +2259,7 @@ class DesktopApp:
     def _show_saturation(self, count):
         """Amber warning under the load line while cells are at the sensor limit"""
         if count >= getattr(app_config, "SATURATION_WARN_CELLS", 1):
-            self.saturation_var.set(f"{count} cells at sensor limit: load and peak read low")
+            self._show(self.saturation_var, f"{count} cells at sensor limit: load and peak read low")
             if not self.saturation_label.winfo_manager():
                 self.saturation_label.pack(anchor="w", after=self._load_row)
         else:
@@ -2189,7 +2267,7 @@ class DesktopApp:
 
     def _update_stats(self):
         self._update_cell_info()
-        self.hotspots_var.set(self._hotspot_text())
+        self._show(self.hotspots_var, self._hotspot_text())
         if self.frame is None:
             self.display_cop = (None, None)
             self._show_saturation(0)
@@ -2209,34 +2287,34 @@ class DesktopApp:
 
         if self.frame is None or self.frame["pressure"] is None:
             count = self.pressure_calibration.calibrated_count
-            self.pressure_status_var.set(f"Calibrate {app_config.TOTAL_ROWS * app_config.TOTAL_COLS - count} more cells for pressure statistics")
-            self.peak_var.set("Peak: -")
-            self.mean_var.set("Mean contact: -")
-            self.area_var.set("Contact area: -")
-            self.force_var.set("Force: -")
-            self.load_var.set("Estimated load: -")
+            self._show(self.pressure_status_var, f"Calibrate {app_config.TOTAL_ROWS * app_config.TOTAL_COLS - count} more cells for pressure statistics")
+            self._show(self.peak_var, "Peak: -")
+            self._show(self.mean_var, "Mean contact: -")
+            self._show(self.area_var, "Contact area: -")
+            self._show(self.force_var, "Force: -")
+            self._show(self.load_var, "Estimated load: -")
             x, y = self.display_cop
-            self.cop_text_var.set(
-                f"CoP (relative): x={x:.1f}, y={y:.1f} cells" if x is not None else "CoP (relative): -")
+            self._show(self.cop_text_var,
+                       f"CoP (relative): x={x:.1f}, y={y:.1f} cells" if x is not None else "CoP (relative): -")
             self.stats = None
             return
 
         self.stats = pressure_statistics(self.frame["pressure"], self.contact_threshold_kpa,
                                          self.cell_area_m2)
-        self.pressure_status_var.set("Calibrated pressure")
-        self.peak_var.set(f"Peak: {self.stats['peak_kpa']:.1f} kPa")
+        self._show(self.pressure_status_var, "Calibrated pressure")
+        self._show(self.peak_var, f"Peak: {self.stats['peak_kpa']:.1f} kPa")
         mean = self.stats["mean_kpa"]
-        self.mean_var.set(f"Mean contact: {mean:.1f} kPa" if mean is not None else "Mean contact: -")
+        self._show(self.mean_var, f"Mean contact: {mean:.1f} kPa" if mean is not None else "Mean contact: -")
         count = self.stats["contact_cells"]
         area = self.stats["contact_area_m2"]
-        self.area_var.set(f"Contact area: {area * 10_000:.1f} cm² ({count} cells)" if area is not None
+        self._show(self.area_var, f"Contact area: {area * 10_000:.1f} cm² ({count} cells)" if area is not None
                           else f"Contact area: {count} cells")
         force = self.stats["force_n"]
-        self.force_var.set(f"Force: {force:.1f} N" if force is not None else "Force: set mat size")
-        self.load_var.set(load_estimate_text(force, self.pressure_calibration.is_default_curve, saturated))
+        self._show(self.force_var, f"Force: {force:.1f} N" if force is not None else "Force: set mat size")
+        self._show(self.load_var, load_estimate_text(force, self.pressure_calibration.is_default_curve, saturated))
         x, y = self.display_cop
         label = "CoP" if key == "pressure" else "CoP (relative)"
-        self.cop_text_var.set(f"{label}: x={x:.1f}, y={y:.1f} cells" if x is not None else f"{label}: -")
+        self._show(self.cop_text_var, f"{label}: x={x:.1f}, y={y:.1f} cells" if x is not None else f"{label}: -")
 
     def _on_plot_click(self, event):
         if self.plot_type_var.get() != "2D Heatmap" or event.inaxes != self.axes:

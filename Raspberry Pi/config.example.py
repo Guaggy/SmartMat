@@ -134,6 +134,12 @@ RECONNECT_INTERVAL_S = 3  # how often to retry when auto-reconnect is on
 # Start with the reduced Simple view (connect, tare, record, export, heatmap, key numbers); Advanced shows everything.
 START_IN_SIMPLE_MODE = True
 
+# Desktop CPU use (gui/desktop.py). Analysis still sees every frame; these only limit how often the screen is redrawn.
+UI_MAX_FPS = 5           # heatmap redraws per second at most (was 10); lower = cooler and cheaper
+UI_BLIT = True           # redraw only the heatmap, not the axes, ticks and colorbar (False = full redraw every time)
+UI_TOOL_REFRESH_S = 1.0  # how often the open tool tabs (analysis, temporal, hotspots, diagnostics...) refresh
+UI_IDLE_POLL_MS = 250    # how often the app polls while no source is connected
+
 # Saturation warning
 # Warn (and read the load as a lower bound) when at least this many cells are at the sensor limit
 SATURATION_WARN_CELLS = 1
