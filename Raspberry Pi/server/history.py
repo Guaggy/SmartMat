@@ -54,10 +54,8 @@ def numbers(snap, engine=None):
             out["contact_area_cm2"] = _round(mask.sum() * area * 1e4)
             out["load_kg"] = _round(a[mask].sum() * 1000 * area / G)
     if engine is not None:
-        motion, last_t = engine.motion, engine.last_t
-        if last_t is not None:
-            for key, last in (("since_movement_s", motion.last_movement_event), ("since_reposition_s", motion.last_reposition)):
-                out[key] = _round(last_t - last) if math.isfinite(last) else None
+        motion = engine.motion
+        out.update(engine.motion_ages())
         out["movements"], out["repositions"] = int(motion.movement_total), int(motion.reposition_total)
     return out
 

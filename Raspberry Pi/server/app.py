@@ -99,6 +99,7 @@ def create_app(store, alerts, engines, clock=time.time, settings=None, control=N
         """One overview row, also the head of the mat detail"""
         return dict(mat_info(chip_id, meta), online=snap["online"], risk=snap["risk"], posture=snap["posture"],
                     time_in_position_s=snap["time_in_position_s"], since_relief_s=snap["since_relief_s"],
+                    since_movement_s=snap.get("since_movement_s"), since_reposition_s=snap.get("since_reposition_s"),
                     saturated_cells=snap["saturated_cells"],
                     saturated=snap["saturated_cells"] >= settings.get("saturation_warn_cells"),
                     open_alerts=sum(a["chip_id"] == chip_id and a["state"] == "open" for a in open_alerts))

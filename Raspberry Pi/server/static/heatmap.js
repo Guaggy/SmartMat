@@ -12,7 +12,8 @@
 const HeatMap = (() => {
   const PAD = 2;            // mask padding in cells, so outlines at the seat edge run off the map instead of closing on it
   const LEVEL = 0.4;        // contour level of the blurred mask: the outline sits just outside the outer cells
-  const MAX_HEAT_PX = 1024; // backing-store cap of the heat canvas (it is smooth, so this is invisible)
+  const MAX_HEAT_PX = 720;  // backing-store cap of the heat canvas (it is smooth, so this is invisible and a Pi 4 copes)
+  const FRAME_MS = 30;      // the tween redraws at most ~30 times a second
   const MAX_OVERLAY_PX = 1800;
   const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
@@ -135,7 +136,12 @@ void main() {
   gl_FragColor = vec4(rgb * a, a);
 }`;
 
-  function glLayer(canvas) { // null when WebGL is not available
+  function glLayer(canvas, allowSoftware) { // null when WebGL is not available
+    const probe = document.createElement("canvas").getContext("webgl");   // on a spare canvas: a canvas keeps its first context type
+    if (!probe) return null;
+    const info = probe.getExtension("WEBGL_debug_renderer_info");   // a software GL (no GPU) is slower than the 2D path
+    const soft = info && /swiftshader|llvmpipe|softpipe|software/i.test(String(probe.getParameter(info.UNMASKED_RENDERER_WEBGL)));
+    if (soft && !allowSoftware) return null;
     let gl = null, prog = null, texV = null, texR = null, loc = null, shape = [0, 0], ramp = null;
     const init = () => {
       gl = canvas.getContext("webgl", { alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false, powerPreference: "low-power" });
@@ -248,12 +254,12 @@ void main() {
 
   // ---------- the map ----------
   function create({ seat, canvas, overlay, onPick, forceFallback = false }) {
-    const heat = (!forceFallback && glLayer(canvas)) || canvasLayer(canvas);
+    const heat = (!forceFallback && glLayer(canvas, /[?&]gl=force/.test(location.search))) || canvasLayer(canvas);
     const octx = overlay.getContext("2d");
     const reduceMotion = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)");
     let rows = 0, cols = 0, cur = null, from = null, to = null;
     let spots = new Map(), cop = null, copFrom = null, copTo = null, selected = null;
-    let t0 = 0, dur = 0, raf = 0, lastSet = 0, interval = 700, css = [0, 0], dpr = 1, colors = {}, drawMs = 0;
+    let lastFrame = 0, t0 = 0, dur = 0, raf = 0, lastSet = 0, interval = 700, css = [0, 0], dpr = 1, colors = {}, drawMs = 0;
 
     const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
     const refreshColors = () => {
@@ -312,7 +318,7 @@ void main() {
       const fresh = r !== rows || c !== cols || !cur;
       if (fresh) { rows = r; cols = c; spots = new Map(); cop = null; cur = null; }
       const target = turn(d.grid, d.scale);
-      const copTarget = d.cop ? [cols - 1 - d.cop[1] + 0.5, rows - 1 - d.cop[0] + 0.5]   // [x, y] in cell units : null;
+      const copTarget = d.cop ? [cols - 1 - d.cop[1] + 0.5, rows - 1 - d.cop[0] + 0.5] : null;   // [x, y] in cell units
       const snap = d.snap || fresh || !!(reduceMotion && reduceMotion.matches);
       interval = lastSet ? clamp(now - lastSet, 120, 1200) : interval;
       lastSet = now;
@@ -347,6 +353,8 @@ void main() {
       }
       t0 = now;
       dur = snap ? 0 : interval;
+      if (raf) { cancelAnimationFrame(raf); raf = 0; }
+      lastFrame = 0;
       step(now);
     }
 
@@ -364,6 +372,8 @@ void main() {
     function step(now) {
       raf = 0;
       const e = dur > 0 ? clamp((now - t0) / dur, 0, 1) : 1;
+      if (e < 1 && now - lastFrame < FRAME_MS) { if (!document.hidden) raf = requestAnimationFrame(step); return; }
+      lastFrame = now;
       blend(e);
       draw();
       if (e >= 1) {

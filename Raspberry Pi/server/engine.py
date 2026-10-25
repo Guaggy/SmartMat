@@ -201,6 +201,14 @@ class MatEngine:
         """What the map shows: kPa, or the tared signal while the mat has no pressure calibration"""
         return frame["pressure"] if frame["pressure"] is not None else frame["baseline_subtracted"]
 
+    def motion_ages(self):
+        """Seconds (frame time) since the last movement and the last reposition, None when there was none yet.
+        The one derivation the row, the detail and the history rows share."""
+        with self._lock:
+            return {key: round(self.last_t - stamp, 1) if self.last_t is not None and np.isfinite(stamp) else None
+                    for key, stamp in (("since_movement_s", self.motion.last_movement_event),
+                                       ("since_reposition_s", self.motion.last_reposition))}
+
     def snapshot(self, t=None):
         """JSON-ready state: the web dashboard's snapshot plus posture, risk, saturation and online"""
         with self._lock:
@@ -213,7 +221,7 @@ class MatEngine:
                     "posture": (self.posture.posture or "none") if online else "none",
                     "time_in_position_s": self.posture.time_in_position(t) if online else None,
                     "risk": risk_from(summary, occupied, online), "since_relief_s": None, "online": online, "peak_kpa": None,
-                    "shape": list(self.oriented_shape), "profile_version": self.profile_version}
+                    "shape": list(self.oriented_shape), "profile_version": self.profile_version, **self.motion_ages()}
             if self.frame is None:
                 return snap
             pressure = self.frame["pressure"]
@@ -290,8 +298,5 @@ class MatEngine:
             if weight.sum() > 0:   # column 0 is the sitter's right, the last row the front edge
                 out["left_percent"] = round(self._share_high(weight, 1), 1)
                 out["front_percent"] = round(self._share_high(weight, 0), 1)
-            for key, stamp in (("since_movement_s", self.motion.last_movement_event),
-                               ("since_reposition_s", self.motion.last_reposition)):
-                out[key] = round(self.last_t - stamp, 1) if np.isfinite(stamp) else None
             out["calibrated"] = self.profile is not None
             return out

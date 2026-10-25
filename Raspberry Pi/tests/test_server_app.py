@@ -147,7 +147,7 @@ class MatApiTests(ApiTests):
                          [("demo-1", "offline"), ("old1", "offline"), ("m1", "low")])
         self.assertEqual(set(rows[0]), {"id", "name", "room", "seat", "unit", "demo", "online", "risk", "posture",
                                         "time_in_position_s", "saturated", "saturated_cells", "open_alerts",
-                                        "since_relief_s"})
+                                        "since_relief_s", "since_movement_s", "since_reposition_s"})
         self.assertIsInstance(data["server_time"], float)
         self.assertEqual([r["demo"] for r in rows], [True, False, False])
         self.assertEqual((rows[2]["online"], rows[2]["posture"]), (True, "centred"))
@@ -242,7 +242,7 @@ class ContractTests(ApiTests):
                               "time_in_position_s", "since_relief_s", "saturated_cells", "open_alerts",
                               "snapshot", "age_s", "stale"}, set(mat))
         snap = mat["snapshot"]
-        self.assertEqual(set(snap), {"unit", "scale_max", "grid", "occupied", "hotspots", "indices", "peak_kpa"})
+        self.assertLessEqual({"unit", "scale_max", "grid", "occupied", "hotspots", "indices", "peak_kpa"}, set(snap))   # + the readouts of engine.detail
         self.assertEqual((snap["unit"], snap["occupied"], len(snap["grid"]), len(snap["grid"][0])),
                          ("kPa", True, 20, 20))
         self.assertAlmostEqual(snap["peak_kpa"], max(max(row) for row in snap["grid"]), places=1)

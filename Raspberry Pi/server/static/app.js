@@ -123,7 +123,9 @@ const i18n = {
       ]],
       map: ["Trykkartet", [
         "Fargene viser trykk i kPa fra lav (lys) til høy (mørk rød). «Foran» er forkanten av sittefladen.",
-        "Stiplet ramme markerer et hotspot, et område med høyt trykk over tid.",
+        "Stiplet ramme markerer et hotspot, et område med høyt trykk over tid. Rammen følger formen på området. Trykk på rammen eller i listen for å merke det.",
+        "Under «Data» kan kartet vise eksponering, belastning, tid siden avlastning eller belastet tid. «Visning» kan glatte bildet. Krysset er trykktyngdepunktet.",
+        "Veiledende last i kg er et grovt anslag fra trykk og matstørrelse, ikke en veiing.",
         "«Celler ved sensorgrensen» betyr at sensoren metter. Last og toppverdi er da høyere enn det som vises.",
         "Tid siden avlastning er tiden siden trykket sist ble tydelig flyttet eller tatt av.",
         "Tidslinjen under en rad viser stilling og risiko de siste timene. Tomme felt betyr at vi ikke har data.",
@@ -254,7 +256,9 @@ const i18n = {
       ]],
       map: ["The pressure map", [
         "Colours show pressure in kPa from low (light) to high (dark red). \"Front\" is the front edge of the seat.",
-        "A dashed outline marks a hotspot, an area of high pressure over time.",
+        "A dashed outline marks a hotspot, an area of high pressure over time. The outline follows the shape of the area. Tap it, or its row in the list, to highlight it.",
+        "Under 'Data' the map can show exposure, burden, time since relief or loaded time. 'View' can smooth the picture. The cross is the centre of pressure.",
+        "Indicative load in kg is a rough estimate from pressure and mat size, not a weighing.",
         "\"Cells at sensor limit\" means the sensor saturates. Load and peak are then higher than shown.",
         "Time since relief is the time since the pressure was last clearly moved or taken off.",
         "The timeline under a row shows posture and risk for the last hours. Empty parts mean we have no data.",
@@ -743,7 +747,7 @@ function renderPanel() {
   renderSpots(snap, snap ? snap.cell_area_cm2 : null);
   kv($("pmKv"), [
     [t("timeInPos"), stale ? "–" : dur(row.time_in_position_s)],
-    [t("sinceMove"), stale || !snap ? "–" : snap.since_movement_s == null ? t("never") : dur(snap.since_movement_s)],
+    [t("sinceMove"), stale ? "–" : d.since_movement_s == null ? t("never") : dur(d.since_movement_s)],
     [t("lastData"), age == null ? "–" : t("ago", { t: dur(age) })],
   ]);
   kv($("pmIdx"), (snap ? snap.indices : []).map((ix) => {

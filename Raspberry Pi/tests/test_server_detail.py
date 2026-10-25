@@ -82,6 +82,19 @@ class DetailTests(unittest.TestCase):
         self.assertEqual(json.dumps(engine.snapshot(6.0)), before)
 
 
+class MotionAgeTests(unittest.TestCase):
+    def test_none_until_a_movement_then_seconds_since_it(self):
+        engine = MatEngine("m1", 20, 20)
+        self.assertEqual(engine.motion_ages(), {"since_movement_s": None, "since_reposition_s": None})
+        engine = fed(blob(10, 10), steps=20)
+        engine.feed(blob(10, 10) * 0, 2.5)
+        engine.motion.last_movement_event = 1.0
+        ages = engine.motion_ages()
+        self.assertEqual(ages["since_movement_s"], 1.5)
+        self.assertIsNone(ages["since_reposition_s"])
+        self.assertEqual({k: engine.snapshot()[k] for k in ages}, ages)
+
+
 class DetailApiTests(unittest.TestCase):
     def setUp(self):
         self.dir = Path(tempfile.mkdtemp())
@@ -105,6 +118,14 @@ class DetailApiTests(unittest.TestCase):
         self.assertEqual(layer["hotspots"], plain["hotspots"])
         self.assertEqual(self.client.get("/api/mats/m1?view=average").get_json()["snapshot"]["view"], "average")
         self.assertEqual(self.client.get("/api/mats/m1?layer=%00&view=x").get_json()["snapshot"]["layer"], "pressure")
+
+    def test_rows_carry_the_motion_ages_for_the_phone_app(self):
+        self.engines["m1"].motion.last_movement_event = 4.0
+        row = self.client.get("/api/mats/m1").get_json()
+        self.assertEqual((row["since_movement_s"], row["since_reposition_s"]), (round(self.engines["m1"].last_t - 4.0, 1), None))
+        rows = {r["id"]: r for r in self.client.get("/api/overview").get_json()["mats"]}
+        self.assertEqual(rows["m1"]["since_movement_s"], row["since_movement_s"])
+        self.assertIsNone(rows["m2"]["since_movement_s"])
 
     def test_the_overview_does_not_carry_the_extras(self):
         rows = self.client.get("/api/overview").get_json()["mats"]
