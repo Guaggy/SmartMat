@@ -2,18 +2,32 @@ import type {
   Alert, AlertAction, AlertResult, DeviceSettings, Health, LogEvent, MatDetail, MatTimeline, Overview, Theme,
 } from "./types";
 
+/** Why a request failed, for a message that helps: "timeout" (no answer in time), "network" (could not connect at all:
+ *  wrong address or port, server off, VPN off, or iOS blocking plain http), "http" (the server answered with an error),
+ *  "notSmartMat" (something answered but it is not a SmartMat server, e.g. the wrong port). */
+export type ApiErrorKind = "timeout" | "network" | "http" | "notSmartMat";
+
 export class ApiError extends Error {
   // status 0 = no answer from the server (offline, wrong address, timeout)
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public kind: ApiErrorKind = status === 0 ? "network" : "http") {
     super(message);
   }
 }
 
-/** "192.168.1.50:8000/" -> "http://192.168.1.50:8000" */
+export const DEFAULT_PORT = 8000;
+
+/** What people type for the server -> "http://host:8000". Accepts a Tailscale 100.x address, a MagicDNS name
+ *  ("smartmat-pi", "pi.tail1234.ts.net"), a LAN address or a full URL. A bare host gets the server's port 8000; a path or
+ *  query after the host is dropped. "" when there is nothing usable. */
 export function normalizeUrl(input: string): string {
-  const trimmed = input.trim().replace(/\/+$/, "");
-  if (!trimmed) return "";
-  return /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  const trimmed = input.trim();
+  if (!trimmed || /\s/.test(trimmed)) return "";
+  const m = /^(?:(https?):\/\/)?([^/?#\s]+)/i.exec(trimmed);
+  if (!m) return "";
+  const scheme = (m[1] ?? "http").toLowerCase();
+  let host = m[2];
+  if (!/:\d+$/.test(host) && !m[1]) host = `${host}:${DEFAULT_PORT}`; // a bare host: the SmartMat server's own port
+  return `${scheme}://${host}`;
 }
 
 export function createApi(baseUrl: string, timeoutMs = 8000, fetchImpl: typeof fetch = fetch) {
@@ -28,8 +42,9 @@ export function createApi(baseUrl: string, timeoutMs = 8000, fetchImpl: typeof f
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
       });
-    } catch {
-      throw new ApiError(0, "no contact with the server");
+    } catch (e) {
+      const aborted = (e as { name?: string } | null)?.name === "AbortError";
+      throw new ApiError(0, aborted ? "timeout" : "no contact with the server", aborted ? "timeout" : "network");
     } finally {
       clearTimeout(timer);
     }
@@ -48,7 +63,11 @@ export function createApi(baseUrl: string, timeoutMs = 8000, fetchImpl: typeof f
 
   const mat = (id: string) => `/api/mats/${encodeURIComponent(id)}`;
   return {
-    health: () => request<Health>("GET", "/api/health"),
+    health: async () => {
+      const health = await request<Health | null>("GET", "/api/health");
+      if (!health || health.ok !== true || typeof health.version !== "string") throw new ApiError(200, "not a SmartMat server", "notSmartMat");
+      return health;
+    },
     overview: () => request<Overview>("GET", "/api/overview"),
     mat: (id: string) => request<MatDetail>("GET", mat(id)),
     timeline: (id: string, hours = 1) => request<MatTimeline>("GET", `${mat(id)}/timeline?hours=${hours}`),

@@ -1,7 +1,8 @@
 // Fake SmartMat server for developing the app without the real server or any hardware.
 // Mimics Raspberry Pi/server/app.py as on main (see Raspberry Pi/design/api-contract.md), including error texts.
 //   node mock-server/server.js            (PORT=8000, PIN 1234, user "Test Nurse")
-// Extra controls: POST /__mock/raise {chip_id, kind}, POST /__mock/reset
+// Extra controls: POST /__mock/raise {chip_id, kind}, POST /__mock/clear {alert_id | chip_id}, POST /__mock/reset
+// (scripts/mock-alert.mjs wraps them). Every request is logged: method, path, status.
 const http = require("node:http");
 
 const PIN = "1234";
@@ -26,7 +27,7 @@ const MATS = [
 ];
 const RISK_ORDER = ["offline", "high", "medium", "low", "none"];
 
-function createMockServer(clock = () => Date.now() / 1000) {
+function createMockServer(clock = () => Date.now() / 1000, log = null) {
   const t0 = clock();
   let alerts, events, wrongPins, lockedUntil, devices;
 
@@ -82,7 +83,9 @@ function createMockServer(clock = () => Date.now() / 1000) {
       id: m.id, name: m.name, room: m.room, seat: m.seat, unit: m.unit, demo: false,
       online, risk: m.risk, posture: online ? m.posture : "none",
       time_in_position_s: online && m.tip !== null ? m.tip + (now - t0) : null,
-      since_relief_s: online ? m.relief : null, saturated_cells: m.risk === "high" ? 2 : 0, saturated: m.risk === "high",
+      since_relief_s: online ? m.relief : null,
+      // not on the real server yet (the app shows it when present); a few minutes, restarting when "moved"
+      since_movement_s: online && m.tip !== null ? Math.round((m.tip % 420) + (now - t0)) : null, saturated_cells: m.risk === "high" ? 2 : 0, saturated: m.risk === "high",
       open_alerts: alerts.filter((a) => a.chip_id === m.id && a.state === "open").length,
     };
   }
@@ -167,6 +170,13 @@ function createMockServer(clock = () => Date.now() / 1000) {
     }
     if (req.method === "GET" && path === "/__mock/devices") return [200, devices];
     if (req.method === "POST" && path === "/__mock/reset") { reset(); return [200, { ok: true }]; }
+    if (req.method === "POST" && path === "/__mock/clear") {
+      // The condition went away: open alerts of that mat (or that alert id) clear, as on the real server
+      const hit = alerts.filter((a) => a.t_cleared === null && body && (a.id === body.alert_id || a.chip_id === body.chip_id));
+      // an unhandled alert simply disappears from the list; a handled one stays as history with t_cleared set
+      hit.forEach((a) => { if (a.state === "open") alerts.splice(alerts.indexOf(a), 1); else a.t_cleared = now; });
+      return [200, { cleared: hit.map((a) => a.id) }];
+    }
     if (req.method === "POST" && path === "/__mock/raise") {
       if (!body || !mat(body.chip_id)) return [404, { error: "Unknown mat" }];
       const a = alert(Math.random().toString(16).slice(2, 14), body.chip_id, body.kind === "offline" ? "offline" : "high_risk", now);
@@ -186,6 +196,7 @@ function createMockServer(clock = () => Date.now() / 1000) {
       let body = null;
       try { body = JSON.parse(Buffer.concat(chunks).toString() || "null"); } catch (e) { body = null; }
       const [status, payload] = route(req, new URL(req.url, "http://x"), body, clock());
+      if (log) log(`${req.method} ${String(req.url).split("?")[0]} -> ${status}`);
       res.writeHead(status, Object.assign({ "Content-Type": "application/json", "Cache-Control": "no-store" }, cors));
       res.end(JSON.stringify(payload));
     });
@@ -196,5 +207,5 @@ module.exports = { createMockServer, PIN, USER };
 
 if (require.main === module) {
   const port = Number(process.env.PORT || 8000);
-  createMockServer().listen(port, "0.0.0.0", () => console.log(`SmartMat mock server on http://0.0.0.0:${port} (PIN ${PIN})`));
+  createMockServer(undefined, (line) => console.log(new Date().toISOString().slice(11, 19), line)).listen(port, "0.0.0.0", () => console.log(`SmartMat mock server on http://0.0.0.0:${port} (PIN ${PIN})`));
 }

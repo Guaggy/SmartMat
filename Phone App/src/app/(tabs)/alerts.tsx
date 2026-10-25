@@ -8,7 +8,7 @@ import { useApp } from "../../state";
 import { formatDuration } from "../../strings";
 import { colors } from "../../theme";
 import type { Alert, AlertAction } from "../../types";
-import { usePoll } from "../../usePoll";
+import { useAlertsFeed } from "../../alertsFeed";
 import { useServerNow } from "../../useServerNow";
 
 interface Pending {
@@ -22,7 +22,8 @@ const order = (a: Alert, b: Alert) => Number(b.state === "open") - Number(a.stat
 export default function Alerts() {
   const { api, settings, t } = useApp();
   const now = useServerNow(api);
-  const { data, error, refreshing, refresh } = usePoll(api ? () => api.alerts() : null, settings.serverUrl);
+  const { alerts: list, error, refreshing, refresh } = useAlertsFeed();
+  const data = list ? { alerts: list } : null;
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
