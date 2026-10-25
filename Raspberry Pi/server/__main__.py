@@ -25,6 +25,7 @@ from matlink.passport_link import PahoTransport, PassportLink
 from processing import calibration
 from processing.calibration import IndividualCalibration, UniformCalibration, load_profile
 from server.alerts import AlertManager
+from server.demo_scenario import DEMO_RELIEF_MIN, PERIOD_S, ScenarioMat
 from server.app import DEMO_PREFIX, create_app
 from server.engine import MatEngine, grid_shape
 from server.history import HistoryRecorder
@@ -39,6 +40,9 @@ PURGE_EVERY_S = 3600
 OPEN_RETRY_S = 10
 REPORT_EVERY_S = 60   # a repeating fault of one mat is printed this often at most
 CLOCK_JUMP_S = 30     # ticks further apart than this (or going backwards) mean the clock jumped or the loop stalled
+DEMO_PUSH = getattr(config, "DEMO_PUSH", False)            # demo mats never push to phones unless this is on
+DEMO_SCENARIO_HOLD_S = 6.0                                   # the scripted demo raises its alert after this much demo time
+MAX_DEMO_SPEED = 8.0   # one pump step (0.25 s) times the speed must stay under TEMPORAL_MAX_GAP_S
 SAMPLE = paths.resource_path("samples/seat_take1.json")
 DEMO_SPEEDS = (1, 3, 5, 2, 4)  # demo clock runs this many times faster (keeps a frame step under TEMPORAL_MAX_GAP_S)
 DEMO_SHIFTS = ((0, 0), (0, -4), (0, 4), (4, 0), (0, 0))  # (rows, cols) the load is moved: centred, left, right, forward
@@ -165,7 +169,7 @@ class MqttMat:
 
 class Server:
     def __init__(self, store, alerts, demo=0, serial_ports=(), use_mqtt=True, pusher=None, settings=None,
-                 history=None):
+                 history=None, demo_scenario=False, demo_speed=1.0):
         self.store, self.alerts = store, alerts
         self.history = history if history is not None else HistoryRecorder(store)
         self.settings = settings if settings is not None else Settings(store)
@@ -178,13 +182,21 @@ class Server:
         self._threads = []
         self._reported = {}   # (chip_id, place) -> when a fault was last printed
         self._last_tick = None
+        self.demo_speed = min(max(float(demo_speed), 0.1), MAX_DEMO_SPEED)
+        self.scenario_mats = set()   # demo mats that play the scripted scenario (relief_minutes and alert delay follow the demo clock)
         self.hidden = store.hidden_mats()   # retired mats an admin removed: not read, not listed
         self.discovery = None
         if demo:
-            frames = load_frames()
-            rows, cols = frames[0][0].shape
+            frames = None if demo_scenario else load_frames()
+            rows, cols = (20, 20) if demo_scenario else frames[0][0].shape
             for index in range(demo):
                 chip_id = f"{DEMO_PREFIX}{index + 1}"
+                if demo_scenario:   # the same loop on every mat, each at its own phase so they are not in step
+                    feed = ScenarioMat(offset_s=PERIOD_S * index / demo, speed=self.demo_speed)
+                    self.scenario_mats.add(chip_id)
+                    self._add(chip_id, MatEngine(chip_id, rows, cols, profile=demo_profile(rows, cols)), feed)
+                    self.engines[chip_id].clock = feed.clock
+                    continue
                 feed = DemoMat(frames, offset_s=7.0 * index, mirror=index % 2 == 1,
                                speed=DEMO_SPEEDS[index % len(DEMO_SPEEDS)],
                                shift=DEMO_SHIFTS[index % len(DEMO_SHIFTS)])
@@ -224,6 +236,8 @@ class Server:
     def _configure(self, chip_id, engine):
         """This mat's settings: its own layer on top of the site layer on top of the factory values"""
         values = self.settings.resolved(chip_id)
+        if chip_id in self.scenario_mats:   # a demo loop is minutes long: shorten what normally takes hours
+            values = dict(values, relief_minutes=DEMO_RELIEF_MIN, alert_high_hold_s=DEMO_SCENARIO_HOLD_S / self.demo_speed)
         engine.configure(values)
         self.alerts.set_holds(chip_id, values["alert_high_hold_s"], values["alert_offline_s"])
 
@@ -373,7 +387,7 @@ class Server:
         for kind, alert in self.alerts.update(chip_id, risk, online, now):
             self.store.log(now, f"alert {kind}", chip_id, None, {"alert": alert["id"], "kind": alert["kind"]})
             self.history.alert(kind, alert, snap, engine, now)
-            if kind == "raised":
+            if kind == "raised" and (DEMO_PUSH or not chip_id.startswith(DEMO_PREFIX)):   # demo mats never wake real phones
                 self.pusher.notify(alert)
 
     def run_loops(self):
@@ -423,6 +437,12 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="python -m server", description="SmartMat server (headless)")
     parser.add_argument("--demo", nargs="?", type=int, const=5, default=0, metavar="N",
                         help="add N demo mats replaying samples/seat_take1.json (default 5)")
+    parser.add_argument("--demo-scenario", action=argparse.BooleanOptionalAction,
+                        default=getattr(config, "DEMO_SCENARIO", False),
+                        help="demo mats play the scripted 7 minute scenario (sit, hotspot, alert, relief, leave) instead of the recording; "
+                             "with --demo N (3 mats if --demo is left out)")
+    parser.add_argument("--demo-speed", type=float, default=getattr(config, "DEMO_SPEED", 1.0),
+                        help=f"run the demo clock this many times faster (up to {MAX_DEMO_SPEED:g})")
     parser.add_argument("--port", type=int, default=getattr(config, "SERVER_PORT", 8000))
     parser.add_argument("--data-dir", type=Path, default=paths.APP_DIR,
                         help="database, profiles/ and mats.json (default: the app data folder)")
@@ -436,7 +456,8 @@ def main(argv=None):
     alerts = AlertManager(high_hold_s=settings.get("alert_high_hold_s"), offline_hold_s=settings.get("alert_offline_s"),
                           on_change=store.save_alert, stamp=settings.stamp)
     alerts.restore(store.saved_alerts(), time.time())  # alerts open before a restart stay open and are not pushed again
-    server = Server(store, alerts, demo=args.demo, serial_ports=getattr(config, "SERVER_SERIAL_PORTS", ()),
+    demo = args.demo or (3 if args.demo_scenario else 0)
+    server = Server(store, alerts, demo=demo, demo_scenario=args.demo_scenario, demo_speed=args.demo_speed, serial_ports=getattr(config, "SERVER_SERIAL_PORTS", ()),
                     settings=settings)
     server.run_loops()
     http = make_server("0.0.0.0", args.port, create_app(store, server.alerts, server.engines, settings=settings, control=server, passports=server.passports),

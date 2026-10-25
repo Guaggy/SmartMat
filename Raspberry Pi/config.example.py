@@ -141,6 +141,9 @@ SATURATION_WARN_CELLS = 1
 # Demo mats
 # Chip ids starting with this are replayed recordings (tools/publish_demo_mat.py); the app labels them "(demo)".
 DEMO_PREFIX = "demo-"
+DEMO_SCENARIO = False         # python -m server --demo N plays the scripted presentation scenario instead of the recording (or --demo-scenario)
+DEMO_SPEED = 1.0              # demo clock factor for --demo (up to 8); tools/seed_demo_history.py has no limit
+DEMO_PUSH = False             # demo mats' alerts are pushed to the phones too (default: never)
 
 # Server (python -m server): headless analysis, alerts and web dashboard for every mat
 SERVER_PORT = 8000            # web UI + REST
