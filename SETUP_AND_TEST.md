@@ -3,7 +3,7 @@
 Read this top to bottom before a hardware session. Engineering aid, not a medical device.
 
 Status key used below: **[verified]** = done and checked on this PC (build, unit tests, exe self-test),
-**[not on hardware yet]** = compiled/simulated only, **[unverified]** = standard commands I have not run on your Pi.
+**[not on hardware yet]** = compiled/simulated only, **[partly on hardware]** = tried once on the real device, results not fully recorded, **[unverified]** = standard commands I have not run on your Pi.
 
 ## 1. What is what
 
@@ -216,7 +216,7 @@ Copy-Item src\secrets.h.example src\secrets.h          # then edit Wi-Fi + MQTT 
 Test-mode settings are already set in `src/main.cpp`: `send_frame_serial = true`, `serial_debug = false`,
 serial copy limited to 5 fps (the 115200 link cannot carry 10 fps of 240 values), MQTT 10 fps.
 
-### ESP32-S3 bridge [compiles; not on hardware yet]
+### ESP32-S3 bridge [partly on hardware: ran once with the real mat, 2026-10-25]
 Plain `pio` is too old and pioarduino must not touch your global PlatformIO core, so use a separate core dir
 (already downloaded to `%USERPROFILE%\.pio-core-s3`; a fresh one takes about 20 minutes on first build).
 ```powershell
@@ -291,7 +291,11 @@ crashes, and each mat's tare/calibration/orientation comes back from `profiles\<
    keep-alive (about 15 s).
 3. App MQTT source: a 20 x 20 mat appears ("Mat: MC266") with a moving blob, about 10 fps, default size 343 x 358.
 
-### Test F - S3 bridge with the real mat [first hardware run]
+### Test F - S3 bridge with the real mat [partly done 2026-10-25]
+Done once (from commits `38b97d0`, `5109231`): the bridge was flashed and connected to the real mat; frames did not decode, a raw dump
+(`-e esp32-s3-dump`) showed 4 trailer bytes (`01 99 01 99`, packets of 408 bytes), and the decoder was fixed on both sides (unit tests added).
+Still to check (not recorded): steps 1-2 (power, current), the numbers in step 3 after the fix, steps 4-6. If frames do not decode,
+flash `esp32-s3-dump` and send the hex.
 1. Multimeter: S3 powered from the UART port, VBUS on the breakout is about 5 V and not shorted to GND.
 2. Inline meter on the mat: note idle and pressed current.
 3. Flash `esp32-s3-devkitc-1`, mat in the breakout. UART log: mat up, about 60 frames/s decoded, discarded and
@@ -393,7 +397,7 @@ Then open the app, Source **MQTT**, and pick **demo-take1 (demo)**. Stop the too
 
 | Item | Why |
 |---|---|
-| Both raw `.bin` captures (unloaded, loaded) | Decode the 2 trailer bytes (checksum?), real frame rate, noise, saturation; becomes the test fixture |
+| Both raw `.bin` captures (unloaded, loaded) | Decode the 4 trailer bytes `01 99 01 99` (checksum? constant?), real frame rate, noise, saturation; becomes the test fixture |
 | Polarity, saturation, orientation, idle noise in counts | Health-threshold retune for the 8-bit mat; orientation default |
 | Measured mat sensing size | Replace the +/-5 % preset estimate |
 | Inline-meter currents (idle / pressed) | Confirms the 5V pin can feed the mat |
@@ -431,7 +435,7 @@ Then open the app, Source **MQTT**, and pick **demo-take1 (demo)**. Stop the too
 
 ## 11. Parked / after the test
 
-- Decode the raw capture: trailer/checksum, then decide whether to validate frames; retune the health
+- Decode the raw capture: trailer/checksum (the trailer is `01 99 01 99`, meaning unknown), then decide whether to validate frames; retune the health
   thresholds for 8-bit counts; guided known-weight calibration (the vendor says the mat is for trends, about
   +/-10 % at best, so the kg readout stays "indicative").
 - Ask the vendor (amy@maxrays.cn) for the protocol document and what "Send to Serial Port" does.

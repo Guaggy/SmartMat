@@ -1,12 +1,10 @@
 ### Notes for future improvements and bugfixes
 
-- Public website "Live" currently relies on a free Cloudflare quick tunnel (URL changes every restart) - and its target endpoint no longer exists at all (see "Known limitations" below). Switch to a named tunnel or a proper always-on relay if/when the widget is reconnected to something real.
-- Website widget's RECORDED_FRAMES are still all null (placeholders only) - drop in real captured recordings once available
 - Raspberry Pi deployment at home: the headless server (`python -m server`, MQTT mats, systemd unit, data in `/var/lib/smartmat`) is written and documented (`../SETUP_AND_TEST.md` section 4b), but it has not run on the real Pi yet: do test H there. Remote access (Raspberry Pi Connect, Tailscale) is sketched in `../SETUP_AND_TEST.md`; HTTPS is not built (LAN or Tailscale only).
 
 ## Known bugs
 
-None known. (Hardware validation of the Maxrays mat, the S3 bridge and the resistive board is still open - see `../SETUP_AND_TEST.md`.)
+None known. (The S3 bridge with the real Maxrays mat has run once; the resistive board, two boards together and the Pi are still unverified - see `../SETUP_AND_TEST.md`.)
 
 ## Known limitations (shipped deliberately scoped down, not bugs)
 
@@ -15,10 +13,9 @@ None known. (Hardware validation of the Maxrays mat, the S3 bridge and the resis
 - Indices: every default reference value is an untuned placeholder - set real ones before reading anything into an index. Map indices and the cell signals are in the main Data dropdown (they need a complete pressure calibration; colour scale is always auto, no difference mode, no contours, hotspot outlines only on Calibrated pressure), but there are no sound/pop-up alerts (only the status-bar chip).
 - Patient-detected indicator only means "enough cells loaded for long enough" - calibration weights also read as a patient. Not yet: timeline events, recording it.
 - ROI: several named ROIs at once, saving ROIs to a file and an adjustable brush size are not built (the ROI is remembered per mat in its profile).
-- The public website widget's "Live" mode is fully broken, not just a stale tunnel URL: `Website/smartmat-heatmap-widget.html` still points at the old `/data` address, which no longer exists after the web-dashboard rework (the new API is `/api/mats` and `/api/mats/<mat_id>`, shaped differently). See `Website/notes.md`.
 - Mat size / load estimate: the "Estimated load" line is indicative only (force from calibrated pressure x cell area / 9.81, an engineering aid, not a weight measurement; the vendor says the mat is not for weighing). It needs the mat's physical sensing size entered once per mat ("Mat size...", or the preset); with the default linear pressure curve it is shown as "default curve, not calibrated". Cells are assumed uniform per mat (width / cols, height / rows), so edge margins or gaps between cells are not modelled.
 - Packaging: the exe is unsigned, so Windows SmartScreen warns on first run (More info > Run anyway); a code-signing certificate would remove that and most antivirus flags. The one-file build trips antivirus more often and starts in 6-8 s. `settings.json` stores the MQTT password as plain text (chosen; revisit if the app is distributed widely). An open MQTT connection keeps its old broker until it reconnects.
-- Maxrays: defaults are retuned from ONE seat take only (see "Retune assumptions" below); the config is global, so the resistive mat gets the same values. The 2 trailer bytes of each packet are ignored (checksum undocumented).
+- Maxrays: defaults are retuned from ONE seat take only (see "Retune assumptions" below); the config is global, so the resistive mat gets the same values. The trailer bytes of each packet are ignored (checksum undocumented). The real mat sends 4 (`01 99 01 99`) after a declared 406-byte payload, so its packets are 408 bytes; the decoder waits for the next header instead of dropping the packet.
 - Changing rotation or mirror while connected wipes that mat's tare and calibration (re-tare afterwards).
 - ESP32: `mux_settling_delay_us` and the ADC calibration assumptions haven't been verified against real hardware yet (only tested in simulation so far).
 
@@ -46,7 +43,7 @@ None known. (Hardware validation of the Maxrays mat, the S3 bridge and the resis
 - Multi-mat: connect to and record multiple mats at once (today you switch between them one at a time) - advanced per-cell stuff doesn't need to run for every mat automatically (save compute).
 - Load estimate: scale-factor calibration with a known weight (the kg figure is only as good as the pressure calibration), and an option to estimate load per marked ROI / body part. Conductance-based or piecewise calibration for the Maxrays mat (conductance is roughly linear with pressure).
 - "Time since movement" and per-cell rolling-average signals for the Expression window (see the root `notes.md`).
-- Maxrays: retune health thresholds in counts and decide whether to validate the packet trailer, from the raw capture; ask the vendor for the protocol document.
+- Maxrays: retune health thresholds in counts and decide whether to validate the packet trailer (now seen: `01 99 01 99`; meaning still unknown); ask the vendor for the protocol document.
 - Body-part recognition (deliberately deferred for now - mat position -> anatomical region, posture-dependent).
 
 ## Shipped (see docs/superpowers/ for the design/plan trail)

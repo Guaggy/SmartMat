@@ -1,3 +1,0 @@
-POST /api/users role=user by admin: 201 PASS {"created": {"active": true, "id": 2, "name": "Nurse1", "role": "user"}, "ok": true, "user": "Admin"}
-PUT /api/settings with user(nurse) PIN (expect 403): 403 PASS {"error": "Only an admin can do this"}
-alert_offline_s still 10: 200 PASS {"value": 10, "changed": true}
